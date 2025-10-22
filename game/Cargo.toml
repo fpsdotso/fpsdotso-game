@@ -1,0 +1,9 @@
+[package]
+name = "fpsdotso-game"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+raylib = "5.5.1"
+# NOTE: solana-client is built separately as a wasm-bindgen library
+# and communication happens via JavaScript bridge

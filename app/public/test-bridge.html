@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bridge Test - FPS.so</title>
+    <style>
+        body {
+            font-family: monospace;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #1e1e1e;
+            color: #d4d4d4;
+        }
+        .container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        .panel {
+            background: #252526;
+            border: 1px solid #3e3e42;
+            border-radius: 8px;
+            padding: 20px;
+        }
+        h2 {
+            color: #4ec9b0;
+            margin-top: 0;
+        }
+        button {
+            background: #0e639c;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            margin: 5px;
+            cursor: pointer;
+            border-radius: 4px;
+            font-family: monospace;
+        }
+        button:hover {
+            background: #1177bb;
+        }
+        button:disabled {
+            background: #3e3e42;
+            cursor: not-allowed;
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+            background: #1e1e1e;
+        }
+        .status.success { border-left: 4px solid #4ec9b0; }
+        .status.error { border-left: 4px solid #f48771; }
+        .status.info { border-left: 4px solid #4fc1ff; }
+        .log {
+            background: #1e1e1e;
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+            max-height: 300px;
+            overflow-y: auto;
+            font-size: 12px;
+        }
+        .log-entry {
+            padding: 5px;
+            border-bottom: 1px solid #3e3e42;
+        }
+        .log-entry:last-child {
+            border-bottom: none;
+        }
+        input {
+            background: #1e1e1e;
+            color: #d4d4d4;
+            border: 1px solid #3e3e42;
+            padding: 8px;
+            margin: 5px;
+            border-radius: 4px;
+            font-family: monospace;
+        }
+        .badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            margin: 2px;
+        }
+        .badge.ready { background: #4ec9b0; color: #1e1e1e; }
+        .badge.loading { background: #ce9178; color: #1e1e1e; }
+        .badge.error { background: #f48771; color: #1e1e1e; }
+    </style>
+</head>
+<body>
+    <h1>🔗 FPS.so Bridge Test Console</h1>
+
+    <div class="status info">
+        <strong>Status:</strong>
+        <span class="badge loading" id="solana-status">Solana: Loading</span>
+        <span class="badge loading" id="game-status">Game: Loading</span>
+    </div>
+
+    <div class="container">
+        <div class="panel">
+            <h2>Solana Functions</h2>
+
+            <button onclick="testConnectWallet()">Connect Wallet</button>
+            <button onclick="testGetBalance()">Get Balance</button>
+            <br>
+
+            <input type="text" id="killer" placeholder="Killer ID" value="player1">
+            <input type="text" id="victim" placeholder="Victim ID" value="player2">
+            <button onclick="testRegisterKill()">Register Kill</button>
+            <br>
+
+            <input type="text" id="playerId" placeholder="Player ID" value="player1">
+            <button onclick="testGetStats()">Get Player Stats</button>
+            <br>
+
+            <button onclick="testIsSolanaReady()">Check Solana Ready</button>
+        </div>
+
+        <div class="panel">
+            <h2>Game Functions</h2>
+
+            <button onclick="testGameMessage()">Send Test Message</button>
+            <button onclick="testGameStatus()">Check Game Status</button>
+            <br>
+
+            <input type="text" id="customMessage" placeholder="Custom message">
+            <button onclick="sendCustomMessage()">Send Custom</button>
+            <br>
+
+            <h3>Quick Tests</h3>
+            <button onclick="runAllTests()">Run All Tests</button>
+            <button onclick="clearLog()">Clear Log</button>
+        </div>
+    </div>
+
+    <div class="panel">
+        <h2>Console Log</h2>
+        <div class="log" id="log"></div>
+    </div>
+
+    <script type="module">
+        let logs = [];
+
+        function addLog(message, type = 'info') {
+            const timestamp = new Date().toLocaleTimeString();
+            logs.push({ message, type, timestamp });
+
+            const logDiv = document.getElementById('log');
+            const entry = document.createElement('div');
+            entry.className = 'log-entry';
+            entry.innerHTML = `<span style="color: #858585">[${timestamp}]</span> ${message}`;
+            logDiv.appendChild(entry);
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+
+        window.addLog = addLog;
+
+        function updateStatus() {
+            const solanaReady = window.gameBridge?.isSolanaReady?.() || false;
+            const gameReady = !!window.Module?.onRuntimeInitialized;
+
+            const solanaStatus = document.getElementById('solana-status');
+            const gameStatus = document.getElementById('game-status');
+
+            if (solanaReady) {
+                solanaStatus.textContent = 'Solana: Ready';
+                solanaStatus.className = 'badge ready';
+            }
+
+            if (gameReady) {
+                gameStatus.textContent = 'Game: Ready';
+                gameStatus.className = 'badge ready';
+            }
+        }
+
+        setInterval(updateStatus, 1000);
+
+        // Initialize
+        addLog('🚀 Test console loaded', 'info');
+        addLog('Loading Solana client module...', 'info');
+
+        async function loadScript(src) {
+            return new Promise((resolve, reject) => {
+                if (document.querySelector(`script[src="${src}"]`)) {
+                    resolve();
+                    return;
+                }
+                const script = document.createElement('script');
+                script.src = src;
+                script.type = 'module';
+                script.onload = () => resolve();
+                script.onerror = () => reject(new Error(`Failed to load: ${src}`));
+                document.head.appendChild(script);
+            });
+        }
+
+        async function waitForGlobal(name, timeout = 5000) {
+            return new Promise((resolve, reject) => {
+                if (window[name]) {
+                    resolve();
+                    return;
+                }
+                const start = Date.now();
+                const interval = setInterval(() => {
+                    if (window[name]) {
+                        clearInterval(interval);
+                        resolve();
+                    } else if (Date.now() - start > timeout) {
+                        clearInterval(interval);
+                        reject(new Error(`Timeout waiting for ${name}`));
+                    }
+                }, 100);
+            });
+        }
+
+        async function initSolana() {
+            try {
+                addLog('Loading script...', 'info');
+                await loadScript('./solana-client/solana_client.js');
+
+                addLog('Waiting for wasm_bindgen...', 'info');
+                await waitForGlobal('wasm_bindgen');
+
+                addLog('Initializing WASM...', 'info');
+                await window.wasm_bindgen('./solana-client/solana_client_bg.wasm');
+
+                window.solanaModule = window.wasm_bindgen;
+                window.solanaClient = new window.wasm_bindgen.SolanaClient();
+
+                // Set up game bridge
+                window.gameBridge = {
+                    registerKill: async (killer, victim) => {
+                        addLog(`📊 registerKill(${killer}, ${victim})`);
+                        try {
+                            await window.solanaClient.register_kill(killer, victim);
+                            addLog('✅ Kill registered', 'success');
+                            return true;
+                        } catch (error) {
+                            addLog(`❌ Error: ${error}`, 'error');
+                            return false;
+                        }
+                    },
+                    getPlayerStats: async (playerId) => {
+                        addLog(`📊 getPlayerStats(${playerId})`);
+                        try {
+                            const stats = await window.solanaClient.get_player_stats(playerId);
+                            addLog(`✅ Stats: ${JSON.stringify(stats)}`, 'success');
+                            return stats;
+                        } catch (error) {
+                            addLog(`❌ Error: ${error}`, 'error');
+                            return null;
+                        }
+                    },
+                    connectWallet: async () => {
+                        addLog('📊 connectWallet()');
+                        try {
+                            const result = await window.solanaClient.connect_wallet();
+                            addLog(`✅ Wallet: ${result}`, 'success');
+                            return result;
+                        } catch (error) {
+                            addLog(`❌ Error: ${error}`, 'error');
+                            return null;
+                        }
+                    },
+                    getBalance: async () => {
+                        addLog('📊 getBalance()');
+                        try {
+                            const balance = await window.solanaClient.get_balance();
+                            addLog(`✅ Balance: ${balance}`, 'success');
+                            return balance;
+                        } catch (error) {
+                            addLog(`❌ Error: ${error}`, 'error');
+                            return 0;
+                        }
+                    },
+                    isSolanaReady: () => {
+                        return !!window.solanaClient;
+                    },
+                    sendMessage: (message) => {
+                        addLog(`💬 Game Message: ${message}`, 'info');
+                    }
+                };
+
+                addLog('✅ Solana client initialized!', 'success');
+            } catch (error) {
+                addLog(`❌ Failed to initialize Solana: ${error}`, 'error');
+            }
+        }
+
+        initSolana();
+
+        // Test functions
+        window.testConnectWallet = async () => {
+            await window.gameBridge.connectWallet();
+        };
+
+        window.testGetBalance = async () => {
+            await window.gameBridge.getBalance();
+        };
+
+        window.testRegisterKill = async () => {
+            const killer = document.getElementById('killer').value;
+            const victim = document.getElementById('victim').value;
+            await window.gameBridge.registerKill(killer, victim);
+        };
+
+        window.testGetStats = async () => {
+            const playerId = document.getElementById('playerId').value;
+            await window.gameBridge.getPlayerStats(playerId);
+        };
+
+        window.testIsSolanaReady = () => {
+            const ready = window.gameBridge.isSolanaReady();
+            addLog(`Solana ready: ${ready}`, ready ? 'success' : 'error');
+        };
+
+        window.testGameMessage = () => {
+            window.gameBridge.sendMessage('Test message from console');
+        };
+
+        window.testGameStatus = () => {
+            const ready = !!window.Module;
+            addLog(`Game module loaded: ${ready}`, ready ? 'success' : 'error');
+        };
+
+        window.sendCustomMessage = () => {
+            const msg = document.getElementById('customMessage').value;
+            window.gameBridge.sendMessage(msg);
+        };
+
+        window.runAllTests = async () => {
+            addLog('🔄 Running all tests...', 'info');
+            await testConnectWallet();
+            await new Promise(r => setTimeout(r, 500));
+            await testGetBalance();
+            await new Promise(r => setTimeout(r, 500));
+            await testRegisterKill();
+            await new Promise(r => setTimeout(r, 500));
+            await testGetStats();
+            addLog('✅ All tests complete!', 'success');
+        };
+
+        window.clearLog = () => {
+            document.getElementById('log').innerHTML = '';
+            logs = [];
+            addLog('Log cleared', 'info');
+        };
+    </script>
+</body>
+</html>
