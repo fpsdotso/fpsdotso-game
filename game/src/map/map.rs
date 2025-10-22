@@ -14,6 +14,8 @@ pub enum ModelType {
     Sphere,
     Cylinder,
     Plane,
+    SpawnPointBlue,
+    SpawnPointRed,
 }
 
 /// Compact representation of a 3D object in the map
@@ -21,38 +23,53 @@ pub enum ModelType {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MapObject {
     /// Model type
+    #[serde(rename = "t")]
     pub model_type: ModelType,
 
     /// Position (stored as i16, converted to/from f32)
     /// Range: -100.0 to 100.0 (scaled from i16 range)
+    #[serde(rename = "px")]
     pub pos_x: i16,
+    #[serde(rename = "py")]
     pub pos_y: i16,
+    #[serde(rename = "pz")]
     pub pos_z: i16,
 
     /// Rotation in degrees (0-360, stored as u16)
+    #[serde(rename = "rx")]
     pub rot_x: u16,
+    #[serde(rename = "ry")]
     pub rot_y: u16,
+    #[serde(rename = "rz")]
     pub rot_z: u16,
 
     /// Scale (stored as u8, divided by 10 to get actual scale)
     /// Range: 0.1 to 25.5
+    #[serde(rename = "sx")]
     pub scale_x: u8,
+    #[serde(rename = "sy")]
     pub scale_y: u8,
+    #[serde(rename = "sz")]
     pub scale_z: u8,
 
     /// Color (RGB)
+    #[serde(rename = "cr")]
     pub color_r: u8,
+    #[serde(rename = "cg")]
     pub color_g: u8,
+    #[serde(rename = "cb")]
     pub color_b: u8,
 }
 
 impl MapObject {
     /// Create a new map object with default values
     pub fn new(model_type: ModelType) -> Self {
-        // Set default scale based on model type
-        let (scale_x, scale_y, scale_z) = match model_type {
-            ModelType::Rectangle => (30, 5, 15), // Wide, flat rectangular prism (3.0 x 0.5 x 1.5)
-            _ => (10, 10, 10), // Default 1.0 x 1.0 x 1.0
+        // Set default scale and color based on model type
+        let (scale_x, scale_y, scale_z, color_r, color_g, color_b) = match model_type {
+            ModelType::Rectangle => (30, 5, 15, 70, 130, 180), // Wide, flat rectangular prism
+            ModelType::SpawnPointBlue => (10, 5, 10, 0, 100, 255), // Blue spawn point
+            ModelType::SpawnPointRed => (10, 5, 10, 255, 50, 50), // Red spawn point
+            _ => (10, 10, 10, 70, 130, 180), // Default prototype blue
         };
 
         Self {
@@ -66,10 +83,9 @@ impl MapObject {
             scale_x,
             scale_y,
             scale_z,
-            // Prototype/blueprint style: dark blue
-            color_r: 70,
-            color_g: 130,
-            color_b: 180,
+            color_r,
+            color_g,
+            color_b,
         }
     }
 
@@ -260,6 +276,48 @@ impl MapObject {
                     wire_color,
                 );
             }
+            ModelType::SpawnPointBlue | ModelType::SpawnPointRed => {
+                // Draw spawn point as a cylinder with a cone on top (arrow pointing up)
+                let cylinder_height = scale.y * 0.6;
+                let cone_height = scale.y * 0.4;
+                let radius = scale.x.max(scale.z) / 2.0;
+
+                // Draw cylinder base
+                d.draw_cylinder(
+                    Vector3::new(0.0, -cylinder_height / 2.0, 0.0),
+                    radius,
+                    radius,
+                    cylinder_height,
+                    16,
+                    color,
+                );
+                d.draw_cylinder_wires(
+                    Vector3::new(0.0, -cylinder_height / 2.0, 0.0),
+                    radius,
+                    radius,
+                    cylinder_height,
+                    16,
+                    wire_color,
+                );
+
+                // Draw cone on top (pointing up)
+                d.draw_cylinder(
+                    Vector3::new(0.0, cylinder_height / 2.0, 0.0),
+                    0.0,  // Top radius (point)
+                    radius * 1.5, // Bottom radius (wider than cylinder)
+                    cone_height,
+                    16,
+                    color,
+                );
+                d.draw_cylinder_wires(
+                    Vector3::new(0.0, cylinder_height / 2.0, 0.0),
+                    0.0,
+                    radius * 1.5,
+                    cone_height,
+                    16,
+                    wire_color,
+                );
+            }
         }
 
         // Pop the transformation matrix
@@ -274,15 +332,21 @@ impl MapObject {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Map {
     /// Map metadata
+    #[serde(rename = "n")]
     pub name: String,
+    #[serde(rename = "v")]
     pub version: u8,
 
     /// Collection of map objects
+    #[serde(rename = "o")]
     pub objects: Vec<MapObject>,
 
     /// Spawn point for players
+    #[serde(rename = "sx")]
     pub spawn_x: i16,
+    #[serde(rename = "sy")]
     pub spawn_y: i16,
+    #[serde(rename = "sz")]
     pub spawn_z: i16,
 }
 

@@ -126,6 +126,10 @@ impl MapBuilder {
             self.status_timer -= delta;
         }
 
+        // Check for uploaded map file (Emscripten only)
+        #[cfg(target_os = "emscripten")]
+        self.check_uploaded_map();
+
         // Camera controls
         self.update_camera(rl, delta);
 
@@ -193,6 +197,12 @@ impl MapBuilder {
                 } else if rl.is_key_pressed(KeyboardKey::KEY_P) {
                     self.current_model_type = ModelType::Plane;
                     self.set_status("Model: Plane");
+                } else if rl.is_key_pressed(KeyboardKey::KEY_B) {
+                    self.current_model_type = ModelType::SpawnPointBlue;
+                    self.set_status("Model: Blue Spawn Point");
+                } else if rl.is_key_pressed(KeyboardKey::KEY_D) {
+                    self.current_model_type = ModelType::SpawnPointRed;
+                    self.set_status("Model: Red Spawn Point");
                 }
             }
 
@@ -574,44 +584,8 @@ impl MapBuilder {
             d.draw_grid(50, 1.0);
         }
 
-        // Draw four walls around the perimeter (semi-transparent)
-        let wall_color = Color::new(120, 120, 120, 100);
-
-        // North wall (positive Z)
-        d.draw_cube(
-            Vector3::new(0.0, wall_height / 2.0, half),
-            WORLD_SIZE,
-            wall_height,
-            wall_thickness,
-            wall_color,
-        );
-
-        // South wall (negative Z)
-        d.draw_cube(
-            Vector3::new(0.0, wall_height / 2.0, -half),
-            WORLD_SIZE,
-            wall_height,
-            wall_thickness,
-            wall_color,
-        );
-
-        // East wall (positive X)
-        d.draw_cube(
-            Vector3::new(half, wall_height / 2.0, 0.0),
-            wall_thickness,
-            wall_height,
-            WORLD_SIZE,
-            wall_color,
-        );
-
-        // West wall (negative X)
-        d.draw_cube(
-            Vector3::new(-half, wall_height / 2.0, 0.0),
-            wall_thickness,
-            wall_height,
-            WORLD_SIZE,
-            wall_color,
-        );
+        // Walls are invisible but still exist as boundaries
+        // (boundaries are enforced in clamp_to_world function)
     }
 
     /// Draw preview object
@@ -849,6 +823,79 @@ impl MapBuilder {
         self.status_timer = 3.0; // Show for 3 seconds
     }
 
+    /// Check for uploaded map file from JavaScript (Emscripten only)
+    #[cfg(target_os = "emscripten")]
+    fn check_uploaded_map(&mut self) {
+        use std::ffi::CString;
+        use base64::{Engine as _, engine::general_purpose};
+
+        extern "C" {
+            pub fn emscripten_run_script_string(script: *const i8) -> *const i8;
+        }
+
+        // Check if there's uploaded data
+        let js_check = CString::new("typeof Module.uploadedMapData !== 'undefined' ? 'true' : 'false'").unwrap();
+        let has_data = unsafe {
+            let result_ptr = emscripten_run_script_string(js_check.as_ptr());
+            if result_ptr.is_null() {
+                return;
+            }
+            let result = std::ffi::CStr::from_ptr(result_ptr).to_str().unwrap_or("false");
+            result == "true"
+        };
+
+        if !has_data {
+            return;
+        }
+
+        // Get the uploaded data as base64
+        let js_get_data = CString::new(r#"
+            (function() {
+                if (!Module.uploadedMapData) return '';
+                var bytes = Module.uploadedMapData;
+                var binary = '';
+                for (var i = 0; i < bytes.length; i++) {
+                    binary += String.fromCharCode(bytes[i]);
+                }
+                var base64 = btoa(binary);
+                delete Module.uploadedMapData;
+                delete Module.uploadedMapFilename;
+                return base64;
+            })()
+        "#).unwrap();
+
+        let base64_data = unsafe {
+            let result_ptr = emscripten_run_script_string(js_get_data.as_ptr());
+            if result_ptr.is_null() {
+                return;
+            }
+            std::ffi::CStr::from_ptr(result_ptr).to_str().unwrap_or("")
+        };
+
+        if base64_data.is_empty() {
+            return;
+        }
+
+        // Decode base64 and load map
+        match general_purpose::STANDARD.decode(base64_data) {
+            Ok(bytes) => {
+                match Map::from_json_bytes(&bytes) {
+                    Ok(map) => {
+                        self.map = map;
+                        self.selected_object = None;
+                        self.set_status(&format!("Map loaded successfully ({} objects)", self.map.objects.len()));
+                    }
+                    Err(e) => {
+                        self.set_status(&format!("Failed to load map: {}", e));
+                    }
+                }
+            }
+            Err(e) => {
+                self.set_status(&format!("Failed to decode map data: {}", e));
+            }
+        }
+    }
+
     /// Draw all imgui panels (Unity-style layout)
     /// Returns true if mouse is over any UI element
     pub fn draw_imgui_ui(&mut self, ui: &mut imgui::Ui, viewport_width: f32) -> bool {
@@ -865,14 +912,68 @@ impl MapBuilder {
 
                 ui.separator();
 
-                if ui.menu_item("Save Current Map (Base64)") {
+                if ui.menu_item("Save Current Map (.fpssomap)") {
                     match self.map.to_json_bytes() {
                         Ok(bytes) => {
                             use base64::{Engine as _, engine::general_purpose};
                             let base64_string = general_purpose::STANDARD.encode(&bytes);
-                            // Copy to clipboard (would need clipboard crate)
-                            self.set_status(&format!("Map saved as Base64 ({} bytes)", bytes.len()));
-                            println!("Base64 Map Data:\n{}", base64_string);
+                            let filename = format!("{}.fpssomap", self.map.name.replace(" ", "_"));
+
+                            // Trigger browser download via Emscripten JavaScript interop
+                            #[cfg(target_os = "emscripten")]
+                            {
+                                use std::ffi::CString;
+
+                                extern "C" {
+                                    pub fn emscripten_run_script(script: *const i8);
+                                }
+
+                                let js_code = format!(
+                                    r#"
+                                    (function() {{
+                                        var base64Data = '{}';
+                                        var filename = '{}';
+
+                                        // Decode base64 to binary
+                                        var byteCharacters = atob(base64Data);
+                                        var byteNumbers = new Array(byteCharacters.length);
+                                        for (var i = 0; i < byteCharacters.length; i++) {{
+                                            byteNumbers[i] = byteCharacters.charCodeAt(i);
+                                        }}
+                                        var byteArray = new Uint8Array(byteNumbers);
+
+                                        // Create blob and download
+                                        var blob = new Blob([byteArray], {{type: 'application/octet-stream'}});
+                                        var url = URL.createObjectURL(blob);
+                                        var a = document.createElement('a');
+                                        a.href = url;
+                                        a.download = filename;
+                                        document.body.appendChild(a);
+                                        a.click();
+                                        document.body.removeChild(a);
+                                        URL.revokeObjectURL(url);
+                                    }})();
+                                    "#,
+                                    base64_string, filename
+                                );
+
+                                let c_str = CString::new(js_code).unwrap();
+                                unsafe {
+                                    emscripten_run_script(c_str.as_ptr());
+                                }
+
+                                self.set_status(&format!("Map downloaded: {} ({} bytes)", filename, bytes.len()));
+                            }
+
+                            #[cfg(not(target_os = "emscripten"))]
+                            {
+                                // For native builds, save to file
+                                if let Err(e) = std::fs::write(&filename, bytes) {
+                                    self.set_status(&format!("Failed to save: {}", e));
+                                } else {
+                                    self.set_status(&format!("Map saved: {}", filename));
+                                }
+                            }
                         }
                         Err(e) => {
                             self.set_status(&format!("Failed to save: {}", e));
@@ -880,9 +981,58 @@ impl MapBuilder {
                     }
                 }
 
-                if ui.menu_item("Import from Base64") {
-                    self.set_status("Import from Base64 - paste in console");
-                    // This would need a text input dialog
+                if ui.menu_item("Import from .fpssomap") {
+                    // Trigger file picker via Emscripten JavaScript interop
+                    #[cfg(target_os = "emscripten")]
+                    {
+                        use std::ffi::CString;
+
+                        extern "C" {
+                            pub fn emscripten_run_script(script: *const i8);
+                        }
+
+                        let js_code = r#"
+                        (function() {
+                            // Create a file input element
+                            var input = document.createElement('input');
+                            input.type = 'file';
+                            input.accept = '.fpssomap';
+
+                            input.onchange = function(e) {
+                                var file = e.target.files[0];
+                                if (!file) return;
+
+                                var reader = new FileReader();
+                                reader.onload = function(event) {
+                                    var arrayBuffer = event.target.result;
+                                    var bytes = new Uint8Array(arrayBuffer);
+
+                                    // Store in Module for Rust to access
+                                    Module.uploadedMapData = bytes;
+                                    Module.uploadedMapFilename = file.name;
+
+                                    // Signal Rust that file is ready
+                                    console.log('Map file loaded: ' + file.name + ' (' + bytes.length + ' bytes)');
+                                };
+                                reader.readAsArrayBuffer(file);
+                            };
+
+                            input.click();
+                        })();
+                        "#;
+
+                        let c_str = CString::new(js_code).unwrap();
+                        unsafe {
+                            emscripten_run_script(c_str.as_ptr());
+                        }
+
+                        self.set_status("Select .fpssomap file to import...");
+                    }
+
+                    #[cfg(not(target_os = "emscripten"))]
+                    {
+                        self.set_status("Import from .fpssomap - feature only available in browser");
+                    }
                 }
 
                 ui.separator();
@@ -927,6 +1077,8 @@ impl MapBuilder {
                 ui.text("  S - Sphere");
                 ui.text("  L - Cylinder");
                 ui.text("  P - Plane");
+                ui.text("  B - Blue Spawn Point");
+                ui.text("  D - Red Spawn Point");
 
                 ui.separator();
                 ui.text("Actions:");
@@ -1176,6 +1328,16 @@ impl MapBuilder {
                 }
                 if ui.button("P - Plane") {
                     self.current_model_type = ModelType::Plane;
+                }
+
+                ui.separator();
+                ui.text("Spawn Points:");
+
+                if ui.button("B - Blue Spawn") {
+                    self.current_model_type = ModelType::SpawnPointBlue;
+                }
+                if ui.button("D - Red Spawn") {
+                    self.current_model_type = ModelType::SpawnPointRed;
                 }
 
                 ui.separator();
