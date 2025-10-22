@@ -1,7 +1,6 @@
 [workspace]
 members = [
     "game",
-    "solana-client"
 ]
 resolver = "2"
 

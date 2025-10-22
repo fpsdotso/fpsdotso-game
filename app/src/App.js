@@ -7,13 +7,14 @@ function App() {
   const [solanaReady, setSolanaReady] = useState(false);
   const [gameReady, setGameReady] = useState(false);
   const [walletConnected, setWalletConnected] = useState(false);
+  const [walletAddress, setWalletAddress] = useState('');
   const [balance, setBalance] = useState(0);
   const [gameMessages, setGameMessages] = useState([]);
 
   useEffect(() => {
     async function init() {
-      // Step 1: Initialize Solana client
-      console.log('🚀 Initializing Solana client...');
+      // Step 1: Initialize Solana connection
+      console.log('🚀 Initializing Solana connection...');
       const solanaSuccess = await initSolanaClient();
       setSolanaReady(solanaSuccess);
 
@@ -69,8 +70,9 @@ function App() {
 
   const handleConnectWallet = async () => {
     const result = await connectWallet();
-    if (result) {
+    if (result && result.connected) {
       setWalletConnected(true);
+      setWalletAddress(result.publicKey);
       const bal = await getBalance();
       setBalance(bal);
     }
@@ -83,13 +85,13 @@ function App() {
 
   return (
     <div id="container">
-      <div style={{ marginBottom: '20px' }}>
-        <h1>FPS.so - Solana Game</h1>
+      <div style={{ marginBottom: '20px', padding: '20px', backgroundColor: '#1a1a1a', color: '#fff' }}>
+        <h1 style={{ margin: '0 0 20px 0' }}>FPS.so - Solana Game</h1>
 
-        <div style={{ display: 'flex', gap: '20px', marginBottom: '10px' }}>
+        <div style={{ display: 'flex', gap: '30px', marginBottom: '10px', flexWrap: 'wrap' }}>
           <div>
             <strong>Status:</strong>
-            <div>
+            <div style={{ marginTop: '5px' }}>
               Solana: {solanaReady ? '✅ Ready' : '⏳ Loading...'}
             </div>
             <div>
@@ -99,17 +101,45 @@ function App() {
 
           <div>
             <strong>Wallet:</strong>
-            <div>
+            <div style={{ marginTop: '5px' }}>
               {walletConnected ? (
                 <>
                   <div>✅ Connected</div>
-                  <div>Balance: {balance}</div>
-                  <button onClick={handleRefreshBalance} style={{ marginTop: '5px' }}>
+                  <div style={{ fontSize: '0.85em', opacity: 0.8 }}>
+                    {walletAddress.slice(0, 4)}...{walletAddress.slice(-4)}
+                  </div>
+                  <div>Balance: {balance.toFixed(4)} SOL</div>
+                  <button
+                    onClick={handleRefreshBalance}
+                    style={{
+                      marginTop: '8px',
+                      padding: '6px 12px',
+                      backgroundColor: '#512da8',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '4px',
+                      cursor: 'pointer'
+                    }}
+                  >
                     Refresh Balance
                   </button>
                 </>
               ) : (
-                <button onClick={handleConnectWallet} disabled={!solanaReady}>
+                <button
+                  onClick={handleConnectWallet}
+                  disabled={!solanaReady}
+                  style={{
+                    marginTop: '8px',
+                    padding: '8px 16px',
+                    backgroundColor: solanaReady ? '#9c27b0' : '#666',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: solanaReady ? 'pointer' : 'not-allowed',
+                    fontSize: '14px',
+                    fontWeight: 'bold'
+                  }}
+                >
                   Connect Wallet
                 </button>
               )}

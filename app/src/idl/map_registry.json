@@ -1,0 +1,887 @@
+{
+  "address": "6XPHneawKSf2BWTtfZurtMdVvBiKsriTnGLKjoWdK791",
+  "metadata": {
+    "name": "map_registry",
+    "version": "0.1.0",
+    "spec": "0.1.0",
+    "description": "Created with Anchor"
+  },
+  "instructions": [
+    {
+      "name": "create_map",
+      "docs": [
+        "Creates a new map with both metadata and data",
+        "",
+        "This instruction:",
+        "1. Creates a MapMetadata PDA to store map information (name, description, creator, etc.)",
+        "2. Creates a MapData PDA to store the actual map data (game level data, tiles, etc.)",
+        "3. Updates the global map registry counters",
+        "4. Adds the map to the creator's personal index for easy lookup",
+        "",
+        "# Arguments",
+        "* `ctx` - The context containing all required accounts",
+        "* `map_id` - Unique identifier for the map (used to derive PDAs)",
+        "* `name` - Display name of the map",
+        "* `description` - Description of the map",
+        "* `is_default` - Whether this is a default/official map or user-created",
+        "* `map_data` - The actual map data as a byte array (level layout, objects, etc.)",
+        "",
+        "# Accounts",
+        "* `map_metadata` - New PDA to store map metadata",
+        "* `map_data_account` - New PDA to store actual map data",
+        "* `map_registry` - Global registry to update counters",
+        "* `user_map_index` - User's personal index to track their maps",
+        "* `user` - The map creator and transaction signer",
+        "* `system_program` - Solana system program"
+      ],
+      "discriminator": [
+        119,
+        8,
+        165,
+        241,
+        187,
+        193,
+        182,
+        112
+      ],
+      "accounts": [
+        {
+          "name": "map_metadata",
+          "docs": [
+            "New PDA account to store map metadata (name, creator, timestamps, etc.)",
+            "Derived from [MAP_METADATA_SEED, map_id]"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  102,
+                  112,
+                  115,
+                  46,
+                  115,
+                  111,
+                  32,
+                  109,
+                  97,
+                  112,
+                  45,
+                  109,
+                  101,
+                  116,
+                  97,
+                  100,
+                  97,
+                  116,
+                  97
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "map_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "map_data_account",
+          "docs": [
+            "New PDA account to store the actual map data (level layout, objects, etc.)",
+            "Derived from [MAP_DATA_SEED, map_id]",
+            "Space is calculated dynamically based on the size of map_data"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  102,
+                  112,
+                  115,
+                  46,
+                  115,
+                  111,
+                  32,
+                  109,
+                  97,
+                  112,
+                  45,
+                  100,
+                  97,
+                  116,
+                  97
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "map_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "map_registry",
+          "docs": [
+            "The global registry to update counters"
+          ],
+          "writable": true
+        },
+        {
+          "name": "user_map_index",
+          "docs": [
+            "The user's personal index of maps they've created",
+            "Uses init_if_needed for first-time map creators"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  102,
+                  112,
+                  115,
+                  46,
+                  115,
+                  111,
+                  32,
+                  117,
+                  115,
+                  101,
+                  114,
+                  45,
+                  109,
+                  97,
+                  112,
+                  45,
+                  105,
+                  110,
+                  100,
+                  101,
+                  120
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "user"
+              }
+            ]
+          }
+        },
+        {
+          "name": "user",
+          "docs": [
+            "The map creator and transaction signer"
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "docs": [
+            "Solana system program"
+          ],
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "map_id",
+          "type": "string"
+        },
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "description",
+          "type": "string"
+        },
+        {
+          "name": "is_default",
+          "type": "bool"
+        },
+        {
+          "name": "map_data",
+          "type": "bytes"
+        }
+      ]
+    },
+    {
+      "name": "delete_map",
+      "docs": [
+        "Deletes a map and all its associated data",
+        "",
+        "Only the map creator can delete their map.",
+        "This instruction:",
+        "1. Removes the map from the user's personal index",
+        "2. Closes the map_metadata account (refunds rent to user)",
+        "3. Closes the map_data_account (refunds rent to user)",
+        "",
+        "# Arguments",
+        "* `ctx` - The context containing all required accounts",
+        "",
+        "# Accounts",
+        "* `map_metadata` - The metadata account to close",
+        "* `map_data_account` - The data account to close",
+        "* `user_map_index` - The user's index to remove the map from",
+        "* `user` - Must be the original creator (receives rent refund)",
+        "* `creator` - The creator's public key for validation",
+        "* `system_program` - Needed for closing accounts",
+        "",
+        "# Security",
+        "* Checks that the signer is the map creator before allowing deletion",
+        "* Closes accounts to prevent them from being used again"
+      ],
+      "discriminator": [
+        67,
+        93,
+        211,
+        211,
+        155,
+        204,
+        208,
+        34
+      ],
+      "accounts": [
+        {
+          "name": "map_metadata",
+          "docs": [
+            "The map's metadata account",
+            "close = user means rent is refunded to user when account is closed",
+            "has_one = creator ensures the creator field matches the creator account"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  102,
+                  112,
+                  115,
+                  46,
+                  115,
+                  111,
+                  32,
+                  109,
+                  97,
+                  112,
+                  45,
+                  109,
+                  101,
+                  116,
+                  97,
+                  100,
+                  97,
+                  116,
+                  97
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "map_metadata.map_id",
+                "account": "MapMetadata"
+              }
+            ]
+          }
+        },
+        {
+          "name": "map_data_account",
+          "docs": [
+            "The map's data account to close"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  102,
+                  112,
+                  115,
+                  46,
+                  115,
+                  111,
+                  32,
+                  109,
+                  97,
+                  112,
+                  45,
+                  100,
+                  97,
+                  116,
+                  97
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "map_metadata.map_id",
+                "account": "MapMetadata"
+              }
+            ]
+          }
+        },
+        {
+          "name": "user_map_index",
+          "docs": [
+            "The user's personal index to update"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  102,
+                  112,
+                  115,
+                  46,
+                  115,
+                  111,
+                  32,
+                  117,
+                  115,
+                  101,
+                  114,
+                  45,
+                  109,
+                  97,
+                  112,
+                  45,
+                  105,
+                  110,
+                  100,
+                  101,
+                  120
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "user"
+              }
+            ]
+          }
+        },
+        {
+          "name": "user",
+          "docs": [
+            "The user deleting the map (must be the creator)"
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "creator",
+          "docs": [
+            "The creator's public key for validation"
+          ],
+          "relations": [
+            "map_metadata"
+          ]
+        },
+        {
+          "name": "system_program",
+          "docs": [
+            "System program"
+          ],
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "initialize",
+      "docs": [
+        "Initializes the global map registry",
+        "",
+        "This should be called once to set up the program's global state.",
+        "It creates a PDA account that tracks the total number of default and user-created maps.",
+        "",
+        "# Arguments",
+        "* `ctx` - The context containing the map_registry account to initialize",
+        "",
+        "# Accounts",
+        "* `map_registry` - The global registry account (PDA)",
+        "* `user` - The signer paying for account creation",
+        "* `system_program` - Solana system program for account creation"
+      ],
+      "discriminator": [
+        175,
+        175,
+        109,
+        31,
+        13,
+        152,
+        155,
+        237
+      ],
+      "accounts": [
+        {
+          "name": "map_registry",
+          "docs": [
+            "The global registry PDA that tracks all maps",
+            "Uses init_if_needed so it can be called multiple times safely"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  102,
+                  112,
+                  115,
+                  46,
+                  115,
+                  111,
+                  32,
+                  109,
+                  97,
+                  112,
+                  45,
+                  114,
+                  101,
+                  103,
+                  105,
+                  115,
+                  116,
+                  114,
+                  121
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "user",
+          "docs": [
+            "The user paying for the account creation"
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "docs": [
+            "Solana system program (required for creating accounts)"
+          ],
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "update_map_data",
+      "docs": [
+        "Updates the actual map data",
+        "",
+        "Only the map creator can update their map's data.",
+        "This replaces the entire map data with new data.",
+        "Uses reallocation to resize the account if the new data is a different size.",
+        "",
+        "# Arguments",
+        "* `ctx` - The context containing map_metadata and map_data_account",
+        "* `map_data` - The new map data to replace the existing data",
+        "",
+        "# Accounts",
+        "* `map_metadata` - Used to verify the creator (read-only)",
+        "* `map_data_account` - The data account to update (will be reallocated if needed)",
+        "* `user` - Must be the original creator of the map",
+        "* `system_program` - Needed for reallocation",
+        "",
+        "# Security",
+        "* Checks that the signer is the map creator before allowing updates",
+        "* Validates new data size is within limits"
+      ],
+      "discriminator": [
+        17,
+        72,
+        140,
+        250,
+        90,
+        174,
+        19,
+        55
+      ],
+      "accounts": [
+        {
+          "name": "map_metadata",
+          "docs": [
+            "The map's metadata (used to verify the creator)",
+            "Seeds constraint ensures we're working with the correct map"
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  102,
+                  112,
+                  115,
+                  46,
+                  115,
+                  111,
+                  32,
+                  109,
+                  97,
+                  112,
+                  45,
+                  109,
+                  101,
+                  116,
+                  97,
+                  100,
+                  97,
+                  116,
+                  97
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "map_metadata.map_id",
+                "account": "MapMetadata"
+              }
+            ]
+          }
+        },
+        {
+          "name": "map_data_account",
+          "docs": [
+            "The map's data account to update",
+            "Uses realloc to resize the account if the new data is a different size"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  102,
+                  112,
+                  115,
+                  46,
+                  115,
+                  111,
+                  32,
+                  109,
+                  97,
+                  112,
+                  45,
+                  100,
+                  97,
+                  116,
+                  97
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "map_metadata.map_id",
+                "account": "MapMetadata"
+              }
+            ]
+          }
+        },
+        {
+          "name": "user",
+          "docs": [
+            "The user attempting to update (must be the creator)"
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "docs": [
+            "System program (needed for reallocation)"
+          ],
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "map_data",
+          "type": "bytes"
+        }
+      ]
+    },
+    {
+      "name": "update_map_metadata",
+      "docs": [
+        "Updates the metadata of an existing map",
+        "",
+        "Only the map creator can update their map's metadata.",
+        "This allows changing the name and/or description without touching the actual map data.",
+        "The updated_at timestamp is automatically refreshed.",
+        "",
+        "# Arguments",
+        "* `ctx` - The context containing the map_metadata account",
+        "* `name` - Optional new name for the map",
+        "* `description` - Optional new description for the map",
+        "",
+        "# Accounts",
+        "* `map_metadata` - The map's metadata account to update",
+        "* `user` - Must be the original creator of the map",
+        "",
+        "# Security",
+        "* Checks that the signer is the map creator before allowing updates"
+      ],
+      "discriminator": [
+        159,
+        12,
+        58,
+        77,
+        27,
+        72,
+        54,
+        190
+      ],
+      "accounts": [
+        {
+          "name": "map_metadata",
+          "docs": [
+            "The map's metadata account to update"
+          ],
+          "writable": true
+        },
+        {
+          "name": "user",
+          "docs": [
+            "The user attempting to update (must be the creator)"
+          ],
+          "writable": true,
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "name",
+          "type": {
+            "option": "string"
+          }
+        },
+        {
+          "name": "description",
+          "type": {
+            "option": "string"
+          }
+        }
+      ]
+    }
+  ],
+  "accounts": [
+    {
+      "name": "MapData",
+      "discriminator": [
+        117,
+        157,
+        116,
+        167,
+        252,
+        79,
+        29,
+        37
+      ]
+    },
+    {
+      "name": "MapMetadata",
+      "discriminator": [
+        248,
+        190,
+        206,
+        246,
+        83,
+        170,
+        160,
+        254
+      ]
+    },
+    {
+      "name": "MapRegistry",
+      "discriminator": [
+        228,
+        148,
+        223,
+        9,
+        78,
+        31,
+        65,
+        72
+      ]
+    },
+    {
+      "name": "UserMapIndex",
+      "discriminator": [
+        60,
+        99,
+        152,
+        100,
+        155,
+        78,
+        200,
+        200
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "Unauthorized",
+      "msg": "Unauthorized: You are not the creator of this map"
+    },
+    {
+      "code": 6001,
+      "name": "UserMapLimitReached",
+      "msg": "User has reached the maximum number of maps (100)"
+    },
+    {
+      "code": 6002,
+      "name": "MapDataTooLarge",
+      "msg": "Map data exceeds maximum allowed size (10KB)"
+    }
+  ],
+  "types": [
+    {
+      "name": "MapData",
+      "docs": [
+        "The actual map data (level layout, tiles, objects, etc.)"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "data",
+            "docs": [
+              "Raw byte data representing the map",
+              "Format is application-specific (could be JSON, binary format, etc.)"
+            ],
+            "type": "bytes"
+          }
+        ]
+      }
+    },
+    {
+      "name": "MapMetadata",
+      "docs": [
+        "Metadata about a specific map"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "map_id",
+            "docs": [
+              "Unique identifier for the map (used in PDA derivation)"
+            ],
+            "type": "string"
+          },
+          {
+            "name": "name",
+            "docs": [
+              "Display name shown to users"
+            ],
+            "type": "string"
+          },
+          {
+            "name": "description",
+            "docs": [
+              "Description of the map"
+            ],
+            "type": "string"
+          },
+          {
+            "name": "creator",
+            "docs": [
+              "Public key of the user who created this map"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "created_at",
+            "docs": [
+              "Unix timestamp when the map was created"
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "updated_at",
+            "docs": [
+              "Unix timestamp when the map was last updated"
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "is_default",
+            "docs": [
+              "Whether this is an official map or user-created"
+            ],
+            "type": "bool"
+          }
+        ]
+      }
+    },
+    {
+      "name": "MapRegistry",
+      "docs": [
+        "Global registry that tracks statistics about all maps"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "default_maps_count",
+            "docs": [
+              "Number of official/default maps"
+            ],
+            "type": "u32"
+          },
+          {
+            "name": "user_maps_count",
+            "docs": [
+              "Number of user-created maps"
+            ],
+            "type": "u32"
+          }
+        ]
+      }
+    },
+    {
+      "name": "UserMapIndex",
+      "docs": [
+        "Personal index for each user to track their created maps"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "owner",
+            "docs": [
+              "The user who owns this index"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "map_count",
+            "docs": [
+              "Number of maps this user has created"
+            ],
+            "type": "u32"
+          },
+          {
+            "name": "map_ids",
+            "docs": [
+              "List of map IDs this user has created",
+              "Maximum 100 maps per user, each map_id up to 50 characters"
+            ],
+            "type": {
+              "vec": "string"
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

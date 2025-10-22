@@ -15,21 +15,10 @@ fi
 rustup target add wasm32-unknown-emscripten
 
 # Set Emscripten compiler flags for WASM
+
 export EMCC_CFLAGS="-O3 -sUSE_GLFW=3 -sASSERTIONS=1 -sWASM=1 -sASYNCIFY -sGL_ENABLE_GET_PROC_ADDRESS=1"
 
-echo "Step 1: Building Solana client library (wasm-bindgen)..."
-cd solana-client
-wasm-pack build --target web --out-dir ../app/public/solana-client
-cd ..
 
-if [ $? -ne 0 ]; then
-    echo ""
-    echo "❌ Solana client build failed!"
-    exit 1
-fi
-
-echo ""
-echo "Step 2: Building Raylib game (Emscripten)..."
 cargo build --release --target wasm32-unknown-emscripten -p fpsdotso-game
 
 # Check if build succeeded
