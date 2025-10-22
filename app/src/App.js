@@ -3,6 +3,20 @@ import './App.css';
 import { initSolanaClient, connectWallet, getBalance } from './solana-bridge';
 import { initGameBridge, onGameMessage } from './game-bridge';
 
+import * as solanaBridge from './solana-bridge';
+
+// Polyfill Buffer for browser environment (required by Solana/Anchor)
+import { Buffer } from 'buffer';
+window.Buffer = Buffer;
+
+// Expose Solana bridge globally for Rust/Emscripten to access
+window.solanaMapBridge = {
+  createMap: solanaBridge.createMap,
+  getUserMaps: solanaBridge.getUserMaps,
+  getMapData: solanaBridge.getMapData,
+  getMapMetadata: solanaBridge.getMapMetadata
+};
+
 function App() {
   const [solanaReady, setSolanaReady] = useState(false);
   const [gameReady, setGameReady] = useState(false);

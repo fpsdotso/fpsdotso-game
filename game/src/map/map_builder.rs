@@ -63,6 +63,16 @@ pub struct MapBuilder {
     pub show_hierarchy: bool,
     pub status_message: String,
     pub status_timer: f32,
+
+    /// Solana upload popup state
+    pub show_upload_popup: bool,
+    pub upload_map_id: String,
+    pub upload_map_name: String,
+    pub upload_map_description: String,
+
+    /// My Maps view state
+    pub show_my_maps: bool,
+    pub user_map_ids: Vec<String>,
 }
 
 impl MapBuilder {
@@ -92,6 +102,12 @@ impl MapBuilder {
             show_hierarchy: true, // Show hierarchy by default
             status_message: "Welcome! Press H for help, U for hierarchy".to_string(),
             status_timer: 5.0,
+            show_upload_popup: false,
+            upload_map_id: String::new(),
+            upload_map_name: String::new(),
+            upload_map_description: String::new(),
+            show_my_maps: false,
+            user_map_ids: Vec::new(),
         }
     }
 
@@ -129,6 +145,10 @@ impl MapBuilder {
         // Check for uploaded map file (Emscripten only)
         #[cfg(target_os = "emscripten")]
         self.check_uploaded_map();
+
+        // Check for loaded map data from Solana (Emscripten only)
+        #[cfg(target_os = "emscripten")]
+        self.check_loaded_map_from_solana();
 
         // Camera controls
         self.update_camera(rl, delta);
@@ -1037,12 +1057,15 @@ impl MapBuilder {
 
                 ui.separator();
 
-                if ui.menu_item("Load Map from Address") {
-                    self.set_status("Load from Address - feature coming soon");
+                if ui.menu_item("My Maps") {
+                    self.show_my_maps = !self.show_my_maps;
                 }
 
                 if ui.menu_item("Upload Map to Solana") {
-                    self.set_status("Upload to Solana - feature coming soon");
+                    self.show_upload_popup = true;
+                    self.upload_map_id = String::new();
+                    self.upload_map_name = self.map.name.clone();
+                    self.upload_map_description = String::new();
                 }
 
                 ui.separator();
@@ -1100,6 +1123,7 @@ impl MapBuilder {
         ui.window("Inspector")
             .position([viewport_width + 10.0, menu_bar_height + 5.0], imgui::Condition::Always)
             .size([390.0, 330.0], imgui::Condition::Always)
+            .collapsible(false)
             .build(|| {
                 ui.text_colored([0.3, 0.8, 1.0, 1.0], "INSPECTOR");
                 ui.separator();
@@ -1255,6 +1279,7 @@ impl MapBuilder {
         ui.window("Hierarchy")
             .position([viewport_width + 10.0, menu_bar_height + 5.0 + 330.0], imgui::Condition::Always)
             .size([390.0, 365.0], imgui::Condition::Always)
+            .collapsible(false)
             .build(|| {
                 ui.text_colored([0.3, 0.8, 1.0, 1.0], "HIERARCHY");
                 ui.separator();
@@ -1366,6 +1391,110 @@ impl MapBuilder {
                 });
         }
 
+        // Upload to Solana Window
+        if self.show_upload_popup {
+            ui.window("Upload to Solana")
+                .position([400.0, 200.0], imgui::Condition::Appearing)
+                .size([400.0, 300.0], imgui::Condition::Always)
+                .collapsible(false)
+                .build(|| {
+                    ui.text("Upload Map to Solana Blockchain");
+                    ui.separator();
+
+                    ui.text("Map ID (unique identifier):");
+                    ui.input_text("##mapid", &mut self.upload_map_id).build();
+
+                    ui.text("Map Name:");
+                    ui.input_text("##mapname", &mut self.upload_map_name).build();
+
+                    ui.text("Description:");
+                    ui.input_text_multiline("##mapdesc", &mut self.upload_map_description, [350.0, 80.0]).build();
+
+                    ui.separator();
+
+                    if ui.button("Upload") {
+                        // Call JavaScript to upload map
+                        self.upload_map_to_solana();
+                        self.show_upload_popup = false;
+                    }
+
+                    ui.same_line();
+
+                    if ui.button("Cancel") {
+                        self.show_upload_popup = false;
+                    }
+                });
+        }
+
+        // My Maps Window
+        if self.show_my_maps {
+            // Check for updated map IDs from JavaScript
+            #[cfg(target_os = "emscripten")]
+            self.check_user_map_ids();
+
+            ui.window("My Maps")
+                .position([400.0, 100.0], imgui::Condition::FirstUseEver)
+                .size([500.0, 400.0], imgui::Condition::FirstUseEver)
+                .build(|| {
+                    ui.text_colored([0.3, 0.8, 1.0, 1.0], "MY MAPS");
+                    ui.separator();
+
+                    ui.text("Your maps stored on Solana:");
+                    ui.separator();
+
+                    // Request user maps from JavaScript
+                    #[cfg(target_os = "emscripten")]
+                    {
+                        if ui.button("Refresh Maps") {
+                            self.request_user_maps();
+                        }
+
+                        ui.same_line();
+                        ui.text_colored([0.7, 0.7, 0.7, 1.0], &format!("({} maps)", self.user_map_ids.len()));
+                    }
+
+                    #[cfg(not(target_os = "emscripten"))]
+                    {
+                        ui.text_colored([1.0, 0.5, 0.0, 1.0], "Solana features only available in browser");
+                    }
+
+                    ui.separator();
+
+                    // Display list of user's maps
+                    if self.user_map_ids.is_empty() {
+                        ui.text_colored([0.7, 0.7, 0.7, 1.0], "No maps found. Create one to get started!");
+                    } else {
+                        ui.text("Click a map to load it:");
+                        ui.separator();
+
+                        let mut map_to_load: Option<String> = None;
+
+                        for (i, map_id) in self.user_map_ids.iter().enumerate() {
+                            // Display map ID
+                            ui.text(map_id);
+                            ui.same_line();
+
+                            // Load button with unique ID
+                            let button_label = format!("Load##{}", i);
+                            if ui.button(&button_label) {
+                                map_to_load = Some(map_id.clone());
+                            }
+                        }
+
+                        // Load map after iteration to avoid borrow issues
+                        if let Some(map_id) = map_to_load {
+                            self.load_map_from_solana(&map_id);
+                        }
+                    }
+
+                    ui.separator();
+
+                    if ui.button("Close") {
+                        self.show_my_maps = false;
+                    }
+                });
+        }
+
         // Update mouse_over_ui after drawing all UI
         mouse_over_ui = mouse_over_ui || ui.is_any_item_hovered() || ui.is_window_hovered();
 
@@ -1376,5 +1505,306 @@ impl MapBuilder {
         }
 
         mouse_over_ui
+    }
+
+    /// Upload current map to Solana
+    #[cfg(target_os = "emscripten")]
+    fn upload_map_to_solana(&mut self) {
+        use std::ffi::CString;
+        use base64::{Engine as _, engine::general_purpose};
+
+        extern "C" {
+            pub fn emscripten_run_script(script: *const i8);
+        }
+
+        match self.map.to_json_bytes() {
+            Ok(bytes) => {
+                let base64_string = general_purpose::STANDARD.encode(&bytes);
+
+                let js_code = format!(
+                    r#"
+                    (async function() {{
+                        try {{
+                            // Check if Solana bridge is available
+                            if (!window.solanaMapBridge) {{
+                                throw new Error('Solana bridge not initialized. Please connect your wallet first.');
+                            }}
+
+                            const mapId = '{}';
+                            const name = '{}';
+                            const description = '{}';
+                            const mapDataBase64 = '{}';
+
+                            // Decode base64 to Uint8Array
+                            const byteCharacters = atob(mapDataBase64);
+                            const byteNumbers = new Array(byteCharacters.length);
+                            for (let i = 0; i < byteCharacters.length; i++) {{
+                                byteNumbers[i] = byteCharacters.charCodeAt(i);
+                            }}
+                            const mapData = new Uint8Array(byteNumbers);
+
+                            // Call Solana bridge via global window object
+                            const result = await window.solanaMapBridge.createMap(
+                                mapId,
+                                name,
+                                description,
+                                false, // isDefault
+                                mapData
+                            );
+
+                            if (result) {{
+                                console.log('Map uploaded successfully:', result);
+                                alert('Map uploaded to Solana successfully!\\nTransaction: ' + result.transaction);
+                            }} else {{
+                                console.error('Failed to upload map - result is null');
+                                alert('Failed to upload map. Check console for details.');
+                            }}
+                        }} catch (error) {{
+                            console.error('Full error details:', error);
+                            console.error('Error uploading map:', error);
+                            alert('Error: ' + error.message);
+                        }}
+                    }})();
+                    "#,
+                    self.upload_map_id.replace("'", "\\'"),
+                    self.upload_map_name.replace("'", "\\'"),
+                    self.upload_map_description.replace("'", "\\'"),
+                    base64_string
+                );
+
+                let c_str = CString::new(js_code).unwrap();
+                unsafe {
+                    emscripten_run_script(c_str.as_ptr());
+                }
+
+                self.set_status("Uploading map to Solana...");
+            }
+            Err(e) => {
+                self.set_status(&format!("Failed to serialize map: {}", e));
+            }
+        }
+    }
+
+    #[cfg(not(target_os = "emscripten"))]
+    fn upload_map_to_solana(&mut self) {
+        self.set_status("Solana upload only available in browser");
+    }
+
+    /// Request user's maps from Solana
+    #[cfg(target_os = "emscripten")]
+    fn request_user_maps(&mut self) {
+        use std::ffi::CString;
+
+        extern "C" {
+            pub fn emscripten_run_script(script: *const i8);
+        }
+
+        let js_code = r#"
+        (async function() {
+            try {
+                // Check if Solana bridge is available
+                if (!window.solanaMapBridge) {
+                    throw new Error('Solana bridge not initialized. Please connect your wallet first.');
+                }
+
+                const userMaps = await window.solanaMapBridge.getUserMaps();
+                console.log('User maps:', userMaps);
+
+                // Store map IDs as JSON string for Rust to access
+                if (userMaps && userMaps.mapIds) {
+                    Module.userMapIdsJson = JSON.stringify(userMaps.mapIds);
+                    alert('Found ' + userMaps.mapIds.length + ' maps!');
+                } else {
+                    Module.userMapIdsJson = '[]';
+                    alert('No maps found');
+                }
+            } catch (error) {
+                console.error('Error fetching user maps:', error);
+                Module.userMapIdsJson = '[]';
+                alert('Error: ' + error.message);
+            }
+        })();
+        "#;
+
+        let c_str = CString::new(js_code).unwrap();
+        unsafe {
+            emscripten_run_script(c_str.as_ptr());
+        }
+
+        self.set_status("Fetching maps from Solana...");
+    }
+
+    #[cfg(not(target_os = "emscripten"))]
+    fn request_user_maps(&mut self) {
+        self.set_status("Solana features only available in browser");
+    }
+
+    /// Check if map IDs have been loaded from JavaScript
+    #[cfg(target_os = "emscripten")]
+    fn check_user_map_ids(&mut self) {
+        use std::ffi::CString;
+
+        extern "C" {
+            pub fn emscripten_run_script_string(script: *const i8) -> *const i8;
+            pub fn emscripten_run_script(script: *const i8);
+        }
+
+        // Check if map IDs JSON exists
+        let js_check = CString::new("typeof Module.userMapIdsJson !== 'undefined' ? Module.userMapIdsJson : ''").unwrap();
+
+        unsafe {
+            let result_ptr = emscripten_run_script_string(js_check.as_ptr());
+            if result_ptr.is_null() {
+                return;
+            }
+
+            let c_str = std::ffi::CStr::from_ptr(result_ptr);
+            if let Ok(json_str) = c_str.to_str() {
+                if !json_str.is_empty() {
+                    // Parse JSON array
+                    if let Ok(map_ids) = serde_json::from_str::<Vec<String>>(json_str) {
+                        self.user_map_ids = map_ids;
+
+                        // Clear the JavaScript variable so we don't keep re-parsing
+                        let clear_js = CString::new("delete Module.userMapIdsJson;").unwrap();
+                        emscripten_run_script(clear_js.as_ptr());
+                    }
+                }
+            }
+        }
+    }
+
+    #[cfg(not(target_os = "emscripten"))]
+    fn check_user_map_ids(&mut self) {
+        // No-op on non-Emscripten platforms
+    }
+
+    /// Load a map from Solana by ID
+    #[cfg(target_os = "emscripten")]
+    fn load_map_from_solana(&mut self, map_id: &str) {
+        use std::ffi::CString;
+
+        extern "C" {
+            pub fn emscripten_run_script(script: *const i8);
+        }
+
+        let js_code = format!(
+            r#"
+            (async function() {{
+                try {{
+                    if (!window.solanaMapBridge) {{
+                        throw new Error('Solana bridge not initialized.');
+                    }}
+
+                    const mapId = '{}';
+                    console.log('Loading map:', mapId);
+
+                    // Get map data from Solana
+                    const mapData = await window.solanaMapBridge.getMapData(mapId);
+
+                    if (!mapData) {{
+                        throw new Error('Map data not found');
+                    }}
+
+                    // Convert Uint8Array to base64
+                    // getMapData returns the byte array directly, not wrapped in an object
+                    const bytes = new Uint8Array(mapData);
+                    let binary = '';
+                    for (let i = 0; i < bytes.length; i++) {{
+                        binary += String.fromCharCode(bytes[i]);
+                    }}
+                    const base64Data = btoa(binary);
+
+                    // Store for Rust to access
+                    Module.loadedMapData = base64Data;
+                    Module.loadedMapId = mapId;
+
+                    console.log('Map data loaded successfully');
+                }} catch (error) {{
+                    console.error('Error loading map:', error);
+                    alert('Error loading map: ' + error.message);
+                }}
+            }})();
+            "#,
+            map_id.replace("'", "\\'")
+        );
+
+        let c_str = CString::new(js_code).unwrap();
+        unsafe {
+            emscripten_run_script(c_str.as_ptr());
+        }
+
+        self.set_status(&format!("Loading map {}...", map_id));
+    }
+
+    #[cfg(not(target_os = "emscripten"))]
+    fn load_map_from_solana(&mut self, _map_id: &str) {
+        self.set_status("Solana features only available in browser");
+    }
+
+    /// Check if map data has been loaded from Solana and apply it
+    #[cfg(target_os = "emscripten")]
+    fn check_loaded_map_from_solana(&mut self) {
+        use std::ffi::CString;
+        use base64::{Engine as _, engine::general_purpose};
+
+        extern "C" {
+            pub fn emscripten_run_script_string(script: *const i8) -> *const i8;
+            pub fn emscripten_run_script(script: *const i8);
+        }
+
+        // Check if map data exists
+        let js_check = CString::new("typeof Module.loadedMapData !== 'undefined' ? Module.loadedMapData : ''").unwrap();
+
+        unsafe {
+            let result_ptr = emscripten_run_script_string(js_check.as_ptr());
+            if result_ptr.is_null() {
+                return;
+            }
+
+            let c_str = std::ffi::CStr::from_ptr(result_ptr);
+            if let Ok(base64_str) = c_str.to_str() {
+                if !base64_str.is_empty() {
+                    // Decode base64
+                    if let Ok(bytes) = general_purpose::STANDARD.decode(base64_str) {
+                        // Parse map from bytes
+                        match Map::from_json_bytes(&bytes) {
+                            Ok(loaded_map) => {
+                                // Get the map ID for status message
+                                let js_get_id = CString::new("typeof Module.loadedMapId !== 'undefined' ? Module.loadedMapId : 'unknown'").unwrap();
+                                let id_ptr = emscripten_run_script_string(js_get_id.as_ptr());
+                                let map_id = if !id_ptr.is_null() {
+                                    std::ffi::CStr::from_ptr(id_ptr).to_str().unwrap_or("unknown").to_string()
+                                } else {
+                                    "unknown".to_string()
+                                };
+
+                                self.map = loaded_map;
+                                self.selected_object = None;
+                                self.mode = EditorMode::Placing;
+                                self.show_my_maps = false; // Close the My Maps window
+                                self.set_status(&format!("Loaded map '{}' from Solana - Ready to edit!", map_id));
+
+                                // Clear the JavaScript variables
+                                let clear_js = CString::new("delete Module.loadedMapData; delete Module.loadedMapId;").unwrap();
+                                emscripten_run_script(clear_js.as_ptr());
+                            }
+                            Err(e) => {
+                                self.set_status(&format!("Failed to parse map: {}", e));
+
+                                // Clear the JavaScript variables even on error
+                                let clear_js = CString::new("delete Module.loadedMapData; delete Module.loadedMapId;").unwrap();
+                                emscripten_run_script(clear_js.as_ptr());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[cfg(not(target_os = "emscripten"))]
+    fn check_loaded_map_from_solana(&mut self) {
+        // No-op on non-Emscripten platforms
     }
 }

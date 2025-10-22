@@ -183,6 +183,9 @@ export async function createMap(mapId, name, description, isDefault, mapData) {
   try {
     console.log(`📝 Creating map: ${name} (${mapId})`);
 
+    // Ensure registry is initialized first
+    await initializeRegistry();
+
     // Derive PDAs
     const [mapMetadataPda] = PublicKey.findProgramAddressSync(
       [Buffer.from('fps.so map-metadata'), Buffer.from(mapId)],
@@ -225,6 +228,7 @@ export async function createMap(mapId, name, description, isDefault, mapData) {
     };
   } catch (error) {
     console.error('❌ Failed to create map:', error);
+    console.error('Error details:', error.logs || error.message);
     return null;
   }
 }
