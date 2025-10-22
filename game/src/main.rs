@@ -1,21 +1,52 @@
 use raylib::prelude::*;
 
+mod map;
+
+use map::MapBuilder;
+
 fn main() {
     // Initialize the Raylib window
     let (mut rl, thread) = raylib::init()
-        .size(800, 600) // Set the window size
-        .title("Hello, World!") // Set the window title
+        .size(1280, 720)
+        .title("FPS.so Map Builder")
         .build();
+
+    rl.set_target_fps(60);
+
+    // Create a new map builder
+    let mut map_builder = MapBuilder::new("My Map".to_string());
 
     // Main game loop
     while !rl.window_should_close() {
-        // Begin drawing
+        let delta = rl.get_frame_time();
+
+        // Update map builder
+        map_builder.update(&rl, delta);
+
+        // Handle save/load
+        if rl.is_key_pressed(KeyboardKey::KEY_F5) {
+            match map_builder.save_map("map.json") {
+                Ok(_) => println!("Map saved successfully!"),
+                Err(e) => eprintln!("Failed to save map: {}", e),
+            }
+        }
+        if rl.is_key_pressed(KeyboardKey::KEY_F9) {
+            match MapBuilder::load_map("map.json") {
+                Ok(loaded) => {
+                    map_builder = loaded;
+                    println!("Map loaded successfully!");
+                }
+                Err(e) => eprintln!("Failed to load map: {}", e),
+            }
+        }
+
+        // Render
         let mut d = rl.begin_drawing(&thread);
+        d.clear_background(Color::SKYBLUE);
 
-        // Clear the background with a color
-        d.clear_background(Color::RAYWHITE);
+        map_builder.render(&mut d, &thread);
 
-        // Draw "Hello, World!" text on the screen
-        d.draw_text("Hello, World!", 350, 280, 20, Color::BLACK);
+        // Save/Load instructions
+        d.draw_text("F5: Save | F9: Load", 10, 540, 20, Color::BLACK);
     }
 }
