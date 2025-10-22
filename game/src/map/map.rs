@@ -1,14 +1,15 @@
 use raylib::prelude::*;
 use serde::{Deserialize, Serialize};
 
-/// Maximum world size (200x200 units)
-pub const WORLD_SIZE: f32 = 200.0;
+/// Maximum world size (50x50 units)
+pub const WORLD_SIZE: f32 = 50.0;
 pub const WORLD_HALF_SIZE: f32 = WORLD_SIZE / 2.0;
 
 /// Types of 3D models that can be placed in the map
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 pub enum ModelType {
     Cube,
+    Rectangle,
     Triangle,
     Sphere,
     Cylinder,
@@ -48,6 +49,12 @@ pub struct MapObject {
 impl MapObject {
     /// Create a new map object with default values
     pub fn new(model_type: ModelType) -> Self {
+        // Set default scale based on model type
+        let (scale_x, scale_y, scale_z) = match model_type {
+            ModelType::Rectangle => (30, 5, 15), // Wide, flat rectangular prism (3.0 x 0.5 x 1.5)
+            _ => (10, 10, 10), // Default 1.0 x 1.0 x 1.0
+        };
+
         Self {
             model_type,
             pos_x: 0,
@@ -56,12 +63,13 @@ impl MapObject {
             rot_x: 0,
             rot_y: 0,
             rot_z: 0,
-            scale_x: 10, // 1.0 scale
-            scale_y: 10,
-            scale_z: 10,
-            color_r: 255,
-            color_g: 255,
-            color_b: 255,
+            scale_x,
+            scale_y,
+            scale_z,
+            // Prototype/blueprint style: dark blue
+            color_r: 70,
+            color_g: 130,
+            color_b: 180,
         }
     }
 
@@ -125,52 +133,138 @@ impl MapObject {
         self.color_b = color.b;
     }
 
-    /// Draw this object using Raylib
+    /// Draw this object using Raylib with shading
     pub fn draw(&self, d: &mut RaylibMode3D<RaylibDrawHandle>) {
         let position = self.get_position();
-        let _rotation = self.get_rotation();
+        let rotation = self.get_rotation();
         let scale = self.get_scale();
         let color = self.get_color();
 
+        // Create lighter/brighter color for wireframe (light blue for prototype look)
+        let wire_color = Color::new(
+            color.r.saturating_add(80).min(255),
+            color.g.saturating_add(80).min(255),
+            color.b.saturating_add(50).min(255),
+            255,
+        );
+
+        // Apply rotation using push/pop matrix
+        unsafe {
+            raylib::ffi::rlPushMatrix();
+            raylib::ffi::rlTranslatef(position.x, position.y, position.z);
+            raylib::ffi::rlRotatef(rotation.y, 0.0, 1.0, 0.0); // Y rotation (yaw)
+            raylib::ffi::rlRotatef(rotation.x, 1.0, 0.0, 0.0); // X rotation (pitch)
+            raylib::ffi::rlRotatef(rotation.z, 0.0, 0.0, 1.0); // Z rotation (roll)
+        }
+
         match self.model_type {
             ModelType::Cube => {
-                d.draw_cube(
-                    position,
-                    scale.x,
-                    scale.y,
-                    scale.z,
+                d.draw_cube_v(
+                    Vector3::zero(),
+                    Vector3::new(scale.x, scale.y, scale.z),
                     color,
+                );
+                d.draw_cube_wires_v(
+                    Vector3::zero(),
+                    Vector3::new(scale.x, scale.y, scale.z),
+                    wire_color,
+                );
+            }
+            ModelType::Rectangle => {
+                // Same as cube but with different default proportions
+                d.draw_cube_v(
+                    Vector3::zero(),
+                    Vector3::new(scale.x, scale.y, scale.z),
+                    color,
+                );
+                d.draw_cube_wires_v(
+                    Vector3::zero(),
+                    Vector3::new(scale.x, scale.y, scale.z),
+                    wire_color,
                 );
             }
             ModelType::Triangle => {
-                // Draw a triangular prism
+                // Draw a triangular prism (using local coordinates)
                 d.draw_triangle3D(
-                    Vector3::new(position.x - scale.x / 2.0, position.y, position.z),
-                    Vector3::new(position.x + scale.x / 2.0, position.y, position.z),
-                    Vector3::new(position.x, position.y + scale.y, position.z),
+                    Vector3::new(-scale.x / 2.0, 0.0, 0.0),
+                    Vector3::new(scale.x / 2.0, 0.0, 0.0),
+                    Vector3::new(0.0, scale.y, 0.0),
                     color,
+                );
+                // Draw wireframe outline
+                d.draw_line_3D(
+                    Vector3::new(-scale.x / 2.0, 0.0, 0.0),
+                    Vector3::new(scale.x / 2.0, 0.0, 0.0),
+                    wire_color,
+                );
+                d.draw_line_3D(
+                    Vector3::new(scale.x / 2.0, 0.0, 0.0),
+                    Vector3::new(0.0, scale.y, 0.0),
+                    wire_color,
+                );
+                d.draw_line_3D(
+                    Vector3::new(0.0, scale.y, 0.0),
+                    Vector3::new(-scale.x / 2.0, 0.0, 0.0),
+                    wire_color,
                 );
             }
             ModelType::Sphere => {
-                d.draw_sphere(position, scale.x.max(scale.y).max(scale.z) / 2.0, color);
+                d.draw_sphere(Vector3::zero(), scale.x.max(scale.y).max(scale.z) / 2.0, color);
+                d.draw_sphere_wires(Vector3::zero(), scale.x.max(scale.y).max(scale.z) / 2.0, 16, 16, wire_color);
             }
             ModelType::Cylinder => {
                 d.draw_cylinder(
-                    position,
+                    Vector3::zero(),
                     scale.x / 2.0,
                     scale.z / 2.0,
                     scale.y,
                     16,
                     color,
                 );
+                d.draw_cylinder_wires(
+                    Vector3::zero(),
+                    scale.x / 2.0,
+                    scale.z / 2.0,
+                    scale.y,
+                    16,
+                    wire_color,
+                );
             }
             ModelType::Plane => {
                 d.draw_plane(
-                    position,
+                    Vector3::zero(),
                     Vector2::new(scale.x, scale.z),
                     color,
                 );
+                // Draw a grid wireframe on the plane
+                let half_x = scale.x / 2.0;
+                let half_z = scale.z / 2.0;
+                d.draw_line_3D(
+                    Vector3::new(-half_x, 0.0, -half_z),
+                    Vector3::new(half_x, 0.0, -half_z),
+                    wire_color,
+                );
+                d.draw_line_3D(
+                    Vector3::new(half_x, 0.0, -half_z),
+                    Vector3::new(half_x, 0.0, half_z),
+                    wire_color,
+                );
+                d.draw_line_3D(
+                    Vector3::new(half_x, 0.0, half_z),
+                    Vector3::new(-half_x, 0.0, half_z),
+                    wire_color,
+                );
+                d.draw_line_3D(
+                    Vector3::new(-half_x, 0.0, half_z),
+                    Vector3::new(-half_x, 0.0, -half_z),
+                    wire_color,
+                );
             }
+        }
+
+        // Pop the transformation matrix
+        unsafe {
+            raylib::ffi::rlPopMatrix();
         }
     }
 }

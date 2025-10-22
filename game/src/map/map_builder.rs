@@ -60,6 +60,7 @@ pub struct MapBuilder {
 
     /// UI state
     pub show_help: bool,
+    pub show_hierarchy: bool,
     pub status_message: String,
     pub status_timer: f32,
 }
@@ -79,7 +80,7 @@ impl MapBuilder {
             mode: EditorMode::Placing,
             selected_object: None,
             current_model_type: ModelType::Cube,
-            current_color: Color::WHITE,
+            current_color: Color::new(70, 130, 180, 255), // Prototype/blueprint style: dark blue
             camera,
             preview_position: Vector3::new(0.0, 1.0, 0.0), // Start at 1 unit above ground
             current_axis: Axis::All,
@@ -88,7 +89,8 @@ impl MapBuilder {
             grid_size: 1.0,
             show_grid: true,
             show_help: true, // Show help by default
-            status_message: "Welcome! Press H to toggle help".to_string(),
+            show_hierarchy: true, // Show hierarchy by default
+            status_message: "Welcome! Press H for help, U for hierarchy".to_string(),
             status_timer: 5.0,
         }
     }
@@ -118,7 +120,7 @@ impl MapBuilder {
     }
 
     /// Update the map builder state
-    pub fn update(&mut self, rl: &RaylibHandle, delta: f32) {
+    pub fn update(&mut self, rl: &RaylibHandle, delta: f32, mouse_over_ui: bool) {
         // Update status timer
         if self.status_timer > 0.0 {
             self.status_timer -= delta;
@@ -129,72 +131,78 @@ impl MapBuilder {
 
         // Handle input based on mode
         match self.mode {
-            EditorMode::Placing => self.handle_placing_mode(rl),
+            EditorMode::Placing => self.handle_placing_mode(rl, mouse_over_ui),
             EditorMode::Selecting => self.handle_selecting_mode(rl),
             EditorMode::Moving => self.handle_moving_mode(rl, delta),
             EditorMode::Rotating => self.handle_rotating_mode(rl, delta),
             EditorMode::Scaling => self.handle_scaling_mode(rl, delta),
         }
 
-        // Mode switching
-        if rl.is_key_pressed(KeyboardKey::KEY_ONE) {
-            self.mode = EditorMode::Placing;
-            self.set_status("Mode: Placing");
-        } else if rl.is_key_pressed(KeyboardKey::KEY_TWO) {
-            self.mode = EditorMode::Selecting;
-            self.set_status("Mode: Selecting");
-        } else if rl.is_key_pressed(KeyboardKey::KEY_THREE) && self.selected_object.is_some() {
-            self.mode = EditorMode::Moving;
-            self.set_status("Mode: Moving");
-        } else if rl.is_key_pressed(KeyboardKey::KEY_FOUR) && self.selected_object.is_some() {
-            self.mode = EditorMode::Rotating;
-            self.set_status("Mode: Rotating");
-        } else if rl.is_key_pressed(KeyboardKey::KEY_FIVE) && self.selected_object.is_some() {
-            self.mode = EditorMode::Scaling;
-            self.set_status("Mode: Scaling");
-        }
-
-        // Axis switching (for manipulation modes)
-        if rl.is_key_pressed(KeyboardKey::KEY_X) {
-            self.current_axis = Axis::X;
-            self.set_status("Axis: X");
-        } else if rl.is_key_pressed(KeyboardKey::KEY_Y) {
-            self.current_axis = Axis::Y;
-            self.set_status("Axis: Y");
-        } else if rl.is_key_pressed(KeyboardKey::KEY_Z) {
-            self.current_axis = Axis::Z;
-            self.set_status("Axis: Z");
-        } else if rl.is_key_pressed(KeyboardKey::KEY_A) {
-            self.current_axis = Axis::All;
-            self.set_status("Axis: All");
-        }
-
-        // Model type switching (in placing mode)
-        if self.mode == EditorMode::Placing {
-            if rl.is_key_pressed(KeyboardKey::KEY_C) {
-                self.current_model_type = ModelType::Cube;
-                self.set_status("Model: Cube");
-            } else if rl.is_key_pressed(KeyboardKey::KEY_T) {
-                self.current_model_type = ModelType::Triangle;
-                self.set_status("Model: Triangle");
-            } else if rl.is_key_pressed(KeyboardKey::KEY_S) {
-                self.current_model_type = ModelType::Sphere;
-                self.set_status("Model: Sphere");
-            } else if rl.is_key_pressed(KeyboardKey::KEY_L) {
-                self.current_model_type = ModelType::Cylinder;
-                self.set_status("Model: Cylinder");
-            } else if rl.is_key_pressed(KeyboardKey::KEY_P) {
-                self.current_model_type = ModelType::Plane;
-                self.set_status("Model: Plane");
+        // Only process keyboard shortcuts when not hovering over UI
+        if !mouse_over_ui {
+            // Mode switching
+            if rl.is_key_pressed(KeyboardKey::KEY_ONE) {
+                self.mode = EditorMode::Placing;
+                self.set_status("Mode: Placing");
+            } else if rl.is_key_pressed(KeyboardKey::KEY_TWO) {
+                self.mode = EditorMode::Selecting;
+                self.set_status("Mode: Selecting");
+            } else if rl.is_key_pressed(KeyboardKey::KEY_THREE) && self.selected_object.is_some() {
+                self.mode = EditorMode::Moving;
+                self.set_status("Mode: Moving");
+            } else if rl.is_key_pressed(KeyboardKey::KEY_FOUR) && self.selected_object.is_some() {
+                self.mode = EditorMode::Rotating;
+                self.set_status("Mode: Rotating");
+            } else if rl.is_key_pressed(KeyboardKey::KEY_FIVE) && self.selected_object.is_some() {
+                self.mode = EditorMode::Scaling;
+                self.set_status("Mode: Scaling");
             }
-        }
 
-        // Delete selected object
-        if rl.is_key_pressed(KeyboardKey::KEY_DELETE) || rl.is_key_pressed(KeyboardKey::KEY_BACKSPACE) {
-            if let Some(index) = self.selected_object {
-                self.map.remove_object(index);
-                self.selected_object = None;
-                self.set_status("Object deleted");
+            // Axis switching (for manipulation modes)
+            if rl.is_key_pressed(KeyboardKey::KEY_X) {
+                self.current_axis = Axis::X;
+                self.set_status("Axis: X");
+            } else if rl.is_key_pressed(KeyboardKey::KEY_Y) {
+                self.current_axis = Axis::Y;
+                self.set_status("Axis: Y");
+            } else if rl.is_key_pressed(KeyboardKey::KEY_Z) {
+                self.current_axis = Axis::Z;
+                self.set_status("Axis: Z");
+            } else if rl.is_key_pressed(KeyboardKey::KEY_A) {
+                self.current_axis = Axis::All;
+                self.set_status("Axis: All");
+            }
+
+            // Model type switching (in placing mode)
+            if self.mode == EditorMode::Placing {
+                if rl.is_key_pressed(KeyboardKey::KEY_C) {
+                    self.current_model_type = ModelType::Cube;
+                    self.set_status("Model: Cube");
+                } else if rl.is_key_pressed(KeyboardKey::KEY_R) {
+                    self.current_model_type = ModelType::Rectangle;
+                    self.set_status("Model: Rectangle");
+                } else if rl.is_key_pressed(KeyboardKey::KEY_T) {
+                    self.current_model_type = ModelType::Triangle;
+                    self.set_status("Model: Triangle");
+                } else if rl.is_key_pressed(KeyboardKey::KEY_S) {
+                    self.current_model_type = ModelType::Sphere;
+                    self.set_status("Model: Sphere");
+                } else if rl.is_key_pressed(KeyboardKey::KEY_L) {
+                    self.current_model_type = ModelType::Cylinder;
+                    self.set_status("Model: Cylinder");
+                } else if rl.is_key_pressed(KeyboardKey::KEY_P) {
+                    self.current_model_type = ModelType::Plane;
+                    self.set_status("Model: Plane");
+                }
+            }
+
+            // Delete selected object
+            if rl.is_key_pressed(KeyboardKey::KEY_DELETE) || rl.is_key_pressed(KeyboardKey::KEY_BACKSPACE) {
+                if let Some(index) = self.selected_object {
+                    self.map.remove_object(index);
+                    self.selected_object = None;
+                    self.set_status("Object deleted");
+                }
             }
         }
 
@@ -212,6 +220,11 @@ impl MapBuilder {
         // Toggle help
         if rl.is_key_pressed(KeyboardKey::KEY_H) || rl.is_key_pressed(KeyboardKey::KEY_F1) {
             self.show_help = !self.show_help;
+        }
+
+        // Toggle hierarchy
+        if rl.is_key_pressed(KeyboardKey::KEY_U) {
+            self.show_hierarchy = !self.show_hierarchy;
         }
     }
 
@@ -277,80 +290,86 @@ impl MapBuilder {
     }
 
     /// Handle placing mode
-    fn handle_placing_mode(&mut self, rl: &RaylibHandle) {
-        // By default, preview follows camera target but snaps to ground
-        self.preview_position = self.camera.target;
-        self.preview_position.y = 0.5; // Default to 0.5 units above ground (half a unit cube)
+    fn handle_placing_mode(&mut self, rl: &RaylibHandle, mouse_over_ui: bool) {
+        // Use mouse raycast to determine placement position
+        if !mouse_over_ui {
+            let mouse_pos = rl.get_mouse_position();
+            let viewport_width = 1280.0 * 0.7; // 70% of screen for viewport
 
-        // Override with manual positioning if keys are pressed
-        let move_speed = if rl.is_key_down(KeyboardKey::KEY_LEFT_SHIFT) { 0.1 } else { 0.5 };
+            // Only calculate if mouse is in viewport
+            if mouse_pos.x < viewport_width {
+                // Manual raycast calculation
+                // The viewport is the full height but only 70% of the width
+                let screen_width = 1280.0;
+                let screen_height = 720.0;
 
-        let mut manual_move = false;
+                // Normalize to -1 to 1 range, but consider the full screen width for proper aspect ratio
+                let ndc_x = (2.0 * mouse_pos.x / screen_width) - 1.0;
+                let ndc_y = 1.0 - (2.0 * mouse_pos.y / screen_height);
 
-        // Arrow keys for XZ movement
-        if rl.is_key_down(KeyboardKey::KEY_LEFT) {
-            self.preview_position.x -= move_speed;
-            manual_move = true;
-        }
-        if rl.is_key_down(KeyboardKey::KEY_RIGHT) {
-            self.preview_position.x += move_speed;
-            manual_move = true;
-        }
-        if rl.is_key_down(KeyboardKey::KEY_UP) {
-            self.preview_position.z -= move_speed;
-            manual_move = true;
-        }
-        if rl.is_key_down(KeyboardKey::KEY_DOWN) {
-            self.preview_position.z += move_speed;
-            manual_move = true;
-        }
+                // Calculate ray direction from camera
+                let camera_pos = self.camera.position;
+                let camera_target = self.camera.target;
+                let camera_up = self.camera.up;
 
-        // Page Up/Down for Y movement
-        if rl.is_key_down(KeyboardKey::KEY_PAGE_UP) {
-            self.preview_position.y += move_speed;
-            manual_move = true;
-        }
-        if rl.is_key_down(KeyboardKey::KEY_PAGE_DOWN) {
-            self.preview_position.y -= move_speed;
-            manual_move = true;
-        }
+                // Camera forward vector
+                let forward = Vector3::new(
+                    camera_target.x - camera_pos.x,
+                    camera_target.y - camera_pos.y,
+                    camera_target.z - camera_pos.z,
+                ).normalized();
 
-        // Also support NumPad
-        if rl.is_key_down(KeyboardKey::KEY_KP_4) {
-            self.preview_position.x -= move_speed;
-            manual_move = true;
-        }
-        if rl.is_key_down(KeyboardKey::KEY_KP_6) {
-            self.preview_position.x += move_speed;
-            manual_move = true;
-        }
-        if rl.is_key_down(KeyboardKey::KEY_KP_8) {
-            self.preview_position.z -= move_speed;
-            manual_move = true;
-        }
-        if rl.is_key_down(KeyboardKey::KEY_KP_2) {
-            self.preview_position.z += move_speed;
-            manual_move = true;
-        }
-        if rl.is_key_down(KeyboardKey::KEY_KP_ADD) {
-            self.preview_position.y += move_speed;
-            manual_move = true;
-        }
-        if rl.is_key_down(KeyboardKey::KEY_KP_SUBTRACT) {
-            self.preview_position.y -= move_speed;
-            manual_move = true;
-        }
+                // Camera right vector (cross product: forward x up)
+                let right = Vector3::new(
+                    forward.y * camera_up.z - forward.z * camera_up.y,
+                    forward.z * camera_up.x - forward.x * camera_up.z,
+                    forward.x * camera_up.y - forward.y * camera_up.x,
+                ).normalized();
 
-        // Clamp preview position to world bounds
-        self.preview_position = self.clamp_to_world(self.preview_position);
+                // Camera actual up vector (cross product: right x forward)
+                let up = Vector3::new(
+                    right.y * forward.z - right.z * forward.y,
+                    right.z * forward.x - right.x * forward.z,
+                    right.x * forward.y - right.y * forward.x,
+                ).normalized();
+
+                // FOV and aspect ratio
+                let fov_rad = 60.0_f32.to_radians();
+                let aspect = screen_width / screen_height;
+                let half_height = (fov_rad / 2.0).tan();
+                let half_width = half_height * aspect;
+
+                // Calculate ray direction
+                let ray_dir = Vector3::new(
+                    forward.x + right.x * ndc_x * half_width + up.x * ndc_y * half_height,
+                    forward.y + right.y * ndc_x * half_width + up.y * ndc_y * half_height,
+                    forward.z + right.z * ndc_x * half_width + up.z * ndc_y * half_height,
+                ).normalized();
+
+                // Raycast to ground plane (y = 0)
+                if ray_dir.y != 0.0 {
+                    let t = (0.0 - camera_pos.y) / ray_dir.y;
+                    if t > 0.0 {
+                        let hit_point = Vector3::new(
+                            camera_pos.x + ray_dir.x * t,
+                            0.5, // Place slightly above ground
+                            camera_pos.z + ray_dir.z * t,
+                        );
+
+                        // Clamp to world bounds
+                        self.preview_position = self.clamp_to_world(hit_point);
+                    }
+                }
+            }
+        }
 
         // Ensure objects don't go below ground
         if self.preview_position.y < 0.1 {
             self.preview_position.y = 0.5;
         }
 
-        // Place object at preview position
-        if rl.is_mouse_button_pressed(MouseButton::MOUSE_BUTTON_LEFT) || rl.is_key_pressed(KeyboardKey::KEY_SPACE) {
+        // Place object at preview position (only if not over UI)
+        if !mouse_over_ui && rl.is_mouse_button_pressed(MouseButton::MOUSE_BUTTON_LEFT) {
             let mut obj = MapObject::new(self.current_model_type);
             obj.set_position(self.snap_to_grid(self.preview_position));
             obj.set_color(self.current_color);
@@ -361,6 +380,22 @@ impl MapBuilder {
 
     /// Handle selecting mode
     fn handle_selecting_mode(&mut self, rl: &RaylibHandle) {
+        // Quick select with number keys (0-9)
+        let number_keys = [
+            KeyboardKey::KEY_ZERO, KeyboardKey::KEY_ONE, KeyboardKey::KEY_TWO,
+            KeyboardKey::KEY_THREE, KeyboardKey::KEY_FOUR, KeyboardKey::KEY_FIVE,
+            KeyboardKey::KEY_SIX, KeyboardKey::KEY_SEVEN, KeyboardKey::KEY_EIGHT,
+            KeyboardKey::KEY_NINE,
+        ];
+
+        for (i, key) in number_keys.iter().enumerate() {
+            if rl.is_key_pressed(*key) && i < self.map.objects.len() {
+                self.selected_object = Some(i);
+                self.set_status(&format!("Selected object {}: {:?}", i, self.map.objects[i].model_type));
+                return;
+            }
+        }
+
         // Cycle through objects with < and >
         if rl.is_key_pressed(KeyboardKey::KEY_COMMA) {
             if !self.map.objects.is_empty() {
@@ -399,24 +434,24 @@ impl MapBuilder {
 
                 match self.current_axis {
                     Axis::X => {
-                        if rl.is_key_down(KeyboardKey::KEY_KP_4) { pos.x -= move_speed; }
-                        if rl.is_key_down(KeyboardKey::KEY_KP_6) { pos.x += move_speed; }
+                        if rl.is_key_down(KeyboardKey::KEY_LEFT) { pos.x -= move_speed; }
+                        if rl.is_key_down(KeyboardKey::KEY_RIGHT) { pos.x += move_speed; }
                     }
                     Axis::Y => {
-                        if rl.is_key_down(KeyboardKey::KEY_KP_2) { pos.y -= move_speed; }
-                        if rl.is_key_down(KeyboardKey::KEY_KP_8) { pos.y += move_speed; }
+                        if rl.is_key_down(KeyboardKey::KEY_DOWN) { pos.y -= move_speed; }
+                        if rl.is_key_down(KeyboardKey::KEY_UP) { pos.y += move_speed; }
                     }
                     Axis::Z => {
-                        if rl.is_key_down(KeyboardKey::KEY_KP_2) { pos.z -= move_speed; }
-                        if rl.is_key_down(KeyboardKey::KEY_KP_8) { pos.z += move_speed; }
+                        if rl.is_key_down(KeyboardKey::KEY_DOWN) { pos.z -= move_speed; }
+                        if rl.is_key_down(KeyboardKey::KEY_UP) { pos.z += move_speed; }
                     }
                     Axis::All => {
-                        if rl.is_key_down(KeyboardKey::KEY_KP_4) { pos.x -= move_speed; }
-                        if rl.is_key_down(KeyboardKey::KEY_KP_6) { pos.x += move_speed; }
-                        if rl.is_key_down(KeyboardKey::KEY_KP_8) { pos.z -= move_speed; }
-                        if rl.is_key_down(KeyboardKey::KEY_KP_2) { pos.z += move_speed; }
-                        if rl.is_key_down(KeyboardKey::KEY_KP_ADD) { pos.y += move_speed; }
-                        if rl.is_key_down(KeyboardKey::KEY_KP_SUBTRACT) { pos.y -= move_speed; }
+                        if rl.is_key_down(KeyboardKey::KEY_LEFT) { pos.x -= move_speed; }
+                        if rl.is_key_down(KeyboardKey::KEY_RIGHT) { pos.x += move_speed; }
+                        if rl.is_key_down(KeyboardKey::KEY_UP) { pos.z -= move_speed; }
+                        if rl.is_key_down(KeyboardKey::KEY_DOWN) { pos.z += move_speed; }
+                        if rl.is_key_down(KeyboardKey::KEY_PAGE_UP) { pos.y += move_speed; }
+                        if rl.is_key_down(KeyboardKey::KEY_PAGE_DOWN) { pos.y -= move_speed; }
                     }
                 }
 
@@ -435,20 +470,20 @@ impl MapBuilder {
 
                 match self.current_axis {
                     Axis::X => {
-                        if rl.is_key_down(KeyboardKey::KEY_KP_4) { rot.x -= rot_speed; }
-                        if rl.is_key_down(KeyboardKey::KEY_KP_6) { rot.x += rot_speed; }
+                        if rl.is_key_down(KeyboardKey::KEY_LEFT) { rot.x -= rot_speed; }
+                        if rl.is_key_down(KeyboardKey::KEY_RIGHT) { rot.x += rot_speed; }
                     }
                     Axis::Y => {
-                        if rl.is_key_down(KeyboardKey::KEY_KP_4) { rot.y -= rot_speed; }
-                        if rl.is_key_down(KeyboardKey::KEY_KP_6) { rot.y += rot_speed; }
+                        if rl.is_key_down(KeyboardKey::KEY_LEFT) { rot.y -= rot_speed; }
+                        if rl.is_key_down(KeyboardKey::KEY_RIGHT) { rot.y += rot_speed; }
                     }
                     Axis::Z => {
-                        if rl.is_key_down(KeyboardKey::KEY_KP_4) { rot.z -= rot_speed; }
-                        if rl.is_key_down(KeyboardKey::KEY_KP_6) { rot.z += rot_speed; }
+                        if rl.is_key_down(KeyboardKey::KEY_LEFT) { rot.z -= rot_speed; }
+                        if rl.is_key_down(KeyboardKey::KEY_RIGHT) { rot.z += rot_speed; }
                     }
                     Axis::All => {
-                        if rl.is_key_down(KeyboardKey::KEY_KP_4) { rot.y -= rot_speed; }
-                        if rl.is_key_down(KeyboardKey::KEY_KP_6) { rot.y += rot_speed; }
+                        if rl.is_key_down(KeyboardKey::KEY_LEFT) { rot.y -= rot_speed; }
+                        if rl.is_key_down(KeyboardKey::KEY_RIGHT) { rot.y += rot_speed; }
                     }
                 }
 
@@ -466,21 +501,21 @@ impl MapBuilder {
 
                 match self.current_axis {
                     Axis::X => {
-                        if rl.is_key_down(KeyboardKey::KEY_KP_4) { scale.x -= scale_speed; }
-                        if rl.is_key_down(KeyboardKey::KEY_KP_6) { scale.x += scale_speed; }
+                        if rl.is_key_down(KeyboardKey::KEY_LEFT) { scale.x -= scale_speed; }
+                        if rl.is_key_down(KeyboardKey::KEY_RIGHT) { scale.x += scale_speed; }
                     }
                     Axis::Y => {
-                        if rl.is_key_down(KeyboardKey::KEY_KP_2) { scale.y -= scale_speed; }
-                        if rl.is_key_down(KeyboardKey::KEY_KP_8) { scale.y += scale_speed; }
+                        if rl.is_key_down(KeyboardKey::KEY_DOWN) { scale.y -= scale_speed; }
+                        if rl.is_key_down(KeyboardKey::KEY_UP) { scale.y += scale_speed; }
                     }
                     Axis::Z => {
-                        if rl.is_key_down(KeyboardKey::KEY_KP_2) { scale.z -= scale_speed; }
-                        if rl.is_key_down(KeyboardKey::KEY_KP_8) { scale.z += scale_speed; }
+                        if rl.is_key_down(KeyboardKey::KEY_DOWN) { scale.z -= scale_speed; }
+                        if rl.is_key_down(KeyboardKey::KEY_UP) { scale.z += scale_speed; }
                     }
                     Axis::All => {
                         let mut uniform_scale = (scale.x + scale.y + scale.z) / 3.0;
-                        if rl.is_key_down(KeyboardKey::KEY_KP_ADD) { uniform_scale += scale_speed; }
-                        if rl.is_key_down(KeyboardKey::KEY_KP_SUBTRACT) { uniform_scale -= scale_speed; }
+                        if rl.is_key_down(KeyboardKey::KEY_UP) { uniform_scale += scale_speed; }
+                        if rl.is_key_down(KeyboardKey::KEY_DOWN) { uniform_scale -= scale_speed; }
                         scale = Vector3::new(uniform_scale, uniform_scale, uniform_scale);
                     }
                 }
@@ -491,7 +526,7 @@ impl MapBuilder {
     }
 
     /// Render the map builder
-    pub fn render(&self, d: &mut RaylibDrawHandle, _thread: &RaylibThread) {
+    pub fn render(&self, d: &mut RaylibDrawHandle, _thread: &RaylibThread, viewport_width: i32) {
         let mut d3d = d.begin_mode3D(self.camera);
 
         // Draw world environment (ground, walls, grid)
@@ -517,8 +552,8 @@ impl MapBuilder {
 
         drop(d3d);
 
-        // Draw UI
-        self.draw_ui(d);
+        // Draw minimal UI
+        self.draw_ui(d, viewport_width);
     }
 
     /// Draw world environment (ground, walls, grid)
@@ -534,9 +569,9 @@ impl MapBuilder {
             Color::DARKGRAY,
         );
 
-        // Draw grid on top of ground
+        // Draw grid on top of ground (50x50 units)
         if self.show_grid {
-            d.draw_grid(200, 1.0);
+            d.draw_grid(50, 1.0);
         }
 
         // Draw four walls around the perimeter (semi-transparent)
@@ -593,12 +628,53 @@ impl MapBuilder {
         d.draw_sphere(preview_pos, 0.2, Color::YELLOW);
     }
 
-    /// Draw selection highlight
+    /// Draw selection highlight and transform gizmos
     fn draw_selection_highlight(&self, d: &mut RaylibMode3D<RaylibDrawHandle>, obj: &MapObject) {
         let pos = obj.get_position();
         let scale = obj.get_scale();
         let max_dim = scale.x.max(scale.y).max(scale.z);
+
+        // Draw selection outline
         d.draw_sphere_wires(pos, max_dim * 0.7, 8, 8, Color::YELLOW);
+
+        // Draw transform gizmos (arrows)
+        let gizmo_length = 2.0;
+        let arrow_size = 0.3;
+
+        match self.mode {
+            EditorMode::Moving => {
+                // X axis (red)
+                d.draw_line_3D(pos, Vector3::new(pos.x + gizmo_length, pos.y, pos.z), Color::RED);
+                d.draw_cube(Vector3::new(pos.x + gizmo_length, pos.y, pos.z), arrow_size, arrow_size, arrow_size, Color::RED);
+
+                // Y axis (green)
+                d.draw_line_3D(pos, Vector3::new(pos.x, pos.y + gizmo_length, pos.z), Color::GREEN);
+                d.draw_cube(Vector3::new(pos.x, pos.y + gizmo_length, pos.z), arrow_size, arrow_size, arrow_size, Color::GREEN);
+
+                // Z axis (blue)
+                d.draw_line_3D(pos, Vector3::new(pos.x, pos.y, pos.z + gizmo_length), Color::BLUE);
+                d.draw_cube(Vector3::new(pos.x, pos.y, pos.z + gizmo_length), arrow_size, arrow_size, arrow_size, Color::BLUE);
+            }
+            EditorMode::Rotating => {
+                // Draw rotation rings (using circles)
+                d.draw_circle_3D(pos, gizmo_length, Vector3::new(1.0, 0.0, 0.0), 90.0, Color::RED);
+                d.draw_circle_3D(pos, gizmo_length, Vector3::new(0.0, 1.0, 0.0), 90.0, Color::GREEN);
+                d.draw_circle_3D(pos, gizmo_length, Vector3::new(0.0, 0.0, 1.0), 90.0, Color::BLUE);
+            }
+            EditorMode::Scaling => {
+                // Draw scale handles (cubes at the end of each axis)
+                let handle_size = 0.4;
+                d.draw_line_3D(pos, Vector3::new(pos.x + gizmo_length, pos.y, pos.z), Color::RED);
+                d.draw_cube(Vector3::new(pos.x + gizmo_length, pos.y, pos.z), handle_size, handle_size, handle_size, Color::RED);
+
+                d.draw_line_3D(pos, Vector3::new(pos.x, pos.y + gizmo_length, pos.z), Color::GREEN);
+                d.draw_cube(Vector3::new(pos.x, pos.y + gizmo_length, pos.z), handle_size, handle_size, handle_size, Color::GREEN);
+
+                d.draw_line_3D(pos, Vector3::new(pos.x, pos.y, pos.z + gizmo_length), Color::BLUE);
+                d.draw_cube(Vector3::new(pos.x, pos.y, pos.z + gizmo_length), handle_size, handle_size, handle_size, Color::BLUE);
+            }
+            _ => {}
+        }
     }
 
     /// Draw spawn point
@@ -612,35 +688,83 @@ impl MapBuilder {
         );
     }
 
-    /// Draw UI overlay
-    fn draw_ui(&self, d: &mut RaylibDrawHandle) {
-        let y_offset = 10;
-        let line_height = 20;
+    /// Draw UI overlay (minimal - just viewport border)
+    fn draw_ui(&self, d: &mut RaylibDrawHandle, viewport_width: i32) {
+        // Draw viewport border
+        d.draw_line(viewport_width, 0, viewport_width, 720, Color::DARKGRAY);
+    }
 
-        // Mode and info
-        d.draw_text(&format!("Mode: {:?}", self.mode), 10, y_offset, 20, Color::BLACK);
-        d.draw_text(&format!("Objects: {}/{}", self.map.objects.len(), 400), 10, y_offset + line_height, 20, Color::BLACK);
-        d.draw_text(&format!("Size: ~{} bytes", self.map.estimated_size()), 10, y_offset + line_height * 2, 20, Color::BLACK);
-        d.draw_text(&format!("Preview: ({:.1}, {:.1}, {:.1})", self.preview_position.x, self.preview_position.y, self.preview_position.z),
-            10, y_offset + line_height * 3, 20, Color::BLACK);
-        d.draw_text(&format!("Model: {:?}", self.current_model_type), 10, y_offset + line_height * 4, 20, Color::BLACK);
+    /// Draw hierarchy panel
+    fn draw_hierarchy(&self, d: &mut RaylibDrawHandle) {
+        let panel_x = 900;
+        let panel_y = 20;
+        let panel_width = 360;
+        let panel_height = 680;
+        let line_height = 18;
 
-        // Current axis
-        if matches!(self.mode, EditorMode::Moving | EditorMode::Rotating | EditorMode::Scaling) {
-            d.draw_text(&format!("Axis: {:?}", self.current_axis), 10, y_offset + line_height * 3, 20, Color::BLACK);
-        }
+        // Background
+        d.draw_rectangle(panel_x, panel_y, panel_width, panel_height, Color::new(0, 0, 0, 200));
+        d.draw_rectangle_lines(panel_x, panel_y, panel_width, panel_height, Color::WHITE);
 
-        // Status message
-        if self.status_timer > 0.0 {
-            d.draw_text(&self.status_message, 10, y_offset + line_height * 4, 20, Color::DARKGREEN);
-        }
+        // Title
+        d.draw_text("=== OBJECT HIERARCHY ===", panel_x + 10, panel_y + 10, 18, Color::WHITE);
+        d.draw_text("Press number keys to select:", panel_x + 10, panel_y + 30, 14, Color::LIGHTGRAY);
 
-        // Help
-        if self.show_help {
-            self.draw_help(d);
+        // List objects
+        let start_y = panel_y + 55;
+        let visible_objects = 30;
+
+        if self.map.objects.is_empty() {
+            d.draw_text("(No objects yet)", panel_x + 10, start_y, 16, Color::GRAY);
         } else {
-            d.draw_text("Press H for help", 10, 580, 20, Color::GRAY);
+            for (i, obj) in self.map.objects.iter().enumerate().take(visible_objects) {
+                let y = start_y + i as i32 * line_height;
+                let is_selected = self.selected_object == Some(i);
+
+                // Highlight selected
+                if is_selected {
+                    d.draw_rectangle(panel_x + 5, y - 2, panel_width - 10, line_height, Color::new(255, 255, 0, 100));
+                }
+
+                // Object info
+                let pos = obj.get_position();
+                let scale = obj.get_scale();
+                let color = obj.get_color();
+
+                let text = format!(
+                    "{}: {:?} @ ({:.1},{:.1},{:.1}) S:{:.1}",
+                    i,
+                    obj.model_type,
+                    pos.x,
+                    pos.y,
+                    pos.z,
+                    (scale.x + scale.y + scale.z) / 3.0
+                );
+
+                d.draw_text(&text, panel_x + 10, y, 14, if is_selected { Color::YELLOW } else { Color::WHITE });
+
+                // Color indicator
+                d.draw_rectangle(panel_x + panel_width - 25, y, 15, 15, color);
+            }
+
+            if self.map.objects.len() > visible_objects {
+                d.draw_text(
+                    &format!("... and {} more", self.map.objects.len() - visible_objects),
+                    panel_x + 10,
+                    start_y + visible_objects as i32 * line_height,
+                    14,
+                    Color::GRAY,
+                );
+            }
         }
+
+        // Instructions
+        let instructions_y = panel_y + panel_height - 80;
+        d.draw_text("--- SELECTION ---", panel_x + 10, instructions_y, 14, Color::LIGHTGRAY);
+        d.draw_text("0-9: Quick select (0-9)", panel_x + 10, instructions_y + 18, 13, Color::WHITE);
+        d.draw_text(",/. : Prev/Next", panel_x + 10, instructions_y + 34, 13, Color::WHITE);
+        d.draw_text("ESC: Deselect", panel_x + 10, instructions_y + 50, 13, Color::WHITE);
+        d.draw_text("DEL: Delete selected", panel_x + 10, instructions_y + 66, 13, Color::WHITE);
     }
 
     /// Draw help overlay
@@ -676,13 +800,15 @@ impl MapBuilder {
             "=== MANIPULATION ===",
             "X/Y/Z: Lock to axis",
             "A: All axes",
-            "NumPad: Adjust values",
+            "Arrow Keys: Adjust values",
+            "PgUp/PgDn: Y-axis adjust",
             "",
             "=== OTHER ===",
             "G: Toggle grid",
             "N: Toggle grid snap",
             "F5: Save map",
             "F9: Load map",
+            "U: Toggle hierarchy",
             "H/F1: Toggle help",
         ];
 
@@ -721,5 +847,372 @@ impl MapBuilder {
     fn set_status(&mut self, message: &str) {
         self.status_message = message.to_string();
         self.status_timer = 3.0; // Show for 3 seconds
+    }
+
+    /// Draw all imgui panels (Unity-style layout)
+    /// Returns true if mouse is over any UI element
+    pub fn draw_imgui_ui(&mut self, ui: &mut imgui::Ui, viewport_width: f32) -> bool {
+        let mut mouse_over_ui = ui.is_any_item_hovered() || ui.is_window_hovered();
+
+        // Menu Bar
+        ui.main_menu_bar(|| {
+            ui.menu("File", || {
+                if ui.menu_item("Create New Map") {
+                    self.map = Map::new("Untitled Map".to_string());
+                    self.selected_object = None;
+                    self.set_status("Created new map");
+                }
+
+                ui.separator();
+
+                if ui.menu_item("Save Current Map (Base64)") {
+                    match self.map.to_json_bytes() {
+                        Ok(bytes) => {
+                            use base64::{Engine as _, engine::general_purpose};
+                            let base64_string = general_purpose::STANDARD.encode(&bytes);
+                            // Copy to clipboard (would need clipboard crate)
+                            self.set_status(&format!("Map saved as Base64 ({} bytes)", bytes.len()));
+                            println!("Base64 Map Data:\n{}", base64_string);
+                        }
+                        Err(e) => {
+                            self.set_status(&format!("Failed to save: {}", e));
+                        }
+                    }
+                }
+
+                if ui.menu_item("Import from Base64") {
+                    self.set_status("Import from Base64 - paste in console");
+                    // This would need a text input dialog
+                }
+
+                ui.separator();
+
+                if ui.menu_item("Load Map from Address") {
+                    self.set_status("Load from Address - feature coming soon");
+                }
+
+                if ui.menu_item("Upload Map to Solana") {
+                    self.set_status("Upload to Solana - feature coming soon");
+                }
+
+                ui.separator();
+
+                if ui.menu_item("Exit Map Editor") {
+                    self.set_status("Use ESC or close window to exit");
+                }
+            });
+
+            ui.menu("Help", || {
+                ui.text_colored([1.0, 1.0, 0.0, 1.0], "CONTROLS");
+                ui.separator();
+
+                ui.text("Camera:");
+                ui.text("  WASD - Move camera");
+                ui.text("  Arrow Keys - Rotate camera");
+                ui.text("  Q/E - Move up/down");
+
+                ui.separator();
+                ui.text("Modes:");
+                ui.text("  1 - Placing Mode");
+                ui.text("  2 - Selecting Mode");
+                ui.text("  3 - Moving Mode");
+                ui.text("  4 - Rotating Mode");
+                ui.text("  5 - Scaling Mode");
+
+                ui.separator();
+                ui.text("Models (Placing Mode):");
+                ui.text("  C - Cube");
+                ui.text("  R - Rectangle");
+                ui.text("  T - Triangle");
+                ui.text("  S - Sphere");
+                ui.text("  L - Cylinder");
+                ui.text("  P - Plane");
+
+                ui.separator();
+                ui.text("Actions:");
+                ui.text("  Click - Place/Select object");
+                ui.text("  Delete/Backspace - Remove object");
+                ui.text("  N - Toggle grid snap");
+                ui.text("  G - Toggle grid");
+
+                ui.separator();
+                ui.text("Save/Load:");
+                ui.text("  F5 - Quick save");
+                ui.text("  F9 - Quick load");
+            });
+        });
+
+        let menu_bar_height = 25.0; // Approximate menu bar height
+
+        // Inspector Panel (right side, top)
+        ui.window("Inspector")
+            .position([viewport_width + 10.0, menu_bar_height + 5.0], imgui::Condition::Always)
+            .size([390.0, 330.0], imgui::Condition::Always)
+            .build(|| {
+                ui.text_colored([0.3, 0.8, 1.0, 1.0], "INSPECTOR");
+                ui.separator();
+
+                ui.text(format!("Mode: {:?}", self.mode));
+                ui.text(format!("Objects: {}/400", self.map.objects.len()));
+
+                // Calculate actual size
+                let actual_size = match self.map.to_json_bytes() {
+                    Ok(bytes) => bytes.len(),
+                    Err(_) => 0,
+                };
+                let max_size = 10240; // 10 KB in bytes
+                let size_percent = (actual_size as f32 / max_size as f32 * 100.0) as u32;
+
+                let size_color = if actual_size > max_size {
+                    [1.0, 0.0, 0.0, 1.0] // Red if over limit
+                } else if size_percent > 80 {
+                    [1.0, 0.8, 0.0, 1.0] // Orange/yellow if getting close
+                } else {
+                    [0.0, 1.0, 0.0, 1.0] // Green if within limit
+                };
+
+                ui.text_colored(
+                    size_color,
+                    format!("Size: {} / {} bytes ({}%)", actual_size, max_size, size_percent)
+                );
+
+                ui.separator();
+
+                if let Some(index) = self.selected_object {
+                    if index < self.map.objects.len() {
+                        ui.text_colored([1.0, 1.0, 0.0, 1.0], format!("Selected: Object {}", index));
+                        ui.text(format!("Type: {:?}", self.map.objects[index].model_type));
+
+                        ui.separator();
+
+                        // Position controls
+                        ui.text("Position:");
+                        let mut pos = self.map.objects[index].get_position();
+                        let mut pos_changed = false;
+
+                        ui.set_next_item_width(120.0);
+                        pos_changed |= ui
+                            .input_float("X##pos", &mut pos.x)
+                            .step(0.1)
+                            .step_fast(1.0)
+                            .build();
+                        ui.set_next_item_width(120.0);
+                        pos_changed |= ui
+                            .input_float("Y##pos", &mut pos.y)
+                            .step(0.1)
+                            .step_fast(1.0)
+                            .build();
+                        ui.set_next_item_width(120.0);
+                        pos_changed |= ui
+                            .input_float("Z##pos", &mut pos.z)
+                            .step(0.1)
+                            .step_fast(1.0)
+                            .build();
+
+                        if pos_changed {
+                            // Clamp position to world bounds (50x50 units = -25 to 25)
+                            pos.x = pos.x.clamp(-25.0, 25.0);
+                            pos.y = pos.y.clamp(-25.0, 25.0);
+                            pos.z = pos.z.clamp(-25.0, 25.0);
+                            self.map.objects[index].set_position(pos);
+                        }
+
+                        ui.separator();
+
+                        // Rotation controls
+                        ui.text("Rotation:");
+                        let mut rot = self.map.objects[index].get_rotation();
+                        let mut rot_changed = false;
+
+                        ui.set_next_item_width(120.0);
+                        rot_changed |= ui
+                            .input_float("X##rot", &mut rot.x)
+                            .step(1.0)
+                            .step_fast(15.0)
+                            .build();
+                        ui.set_next_item_width(120.0);
+                        rot_changed |= ui
+                            .input_float("Y##rot", &mut rot.y)
+                            .step(1.0)
+                            .step_fast(15.0)
+                            .build();
+                        ui.set_next_item_width(120.0);
+                        rot_changed |= ui
+                            .input_float("Z##rot", &mut rot.z)
+                            .step(1.0)
+                            .step_fast(15.0)
+                            .build();
+
+                        if rot_changed {
+                            // Wrap rotation to 0-360 range
+                            rot.x = rot.x.rem_euclid(360.0);
+                            rot.y = rot.y.rem_euclid(360.0);
+                            rot.z = rot.z.rem_euclid(360.0);
+                            self.map.objects[index].set_rotation(rot);
+                        }
+
+                        ui.separator();
+
+                        // Scale controls
+                        ui.text("Scale:");
+                        let mut scale = self.map.objects[index].get_scale();
+                        let mut scale_changed = false;
+
+                        ui.set_next_item_width(120.0);
+                        scale_changed |= ui
+                            .input_float("X##scale", &mut scale.x)
+                            .step(0.1)
+                            .step_fast(0.5)
+                            .build();
+                        ui.set_next_item_width(120.0);
+                        scale_changed |= ui
+                            .input_float("Y##scale", &mut scale.y)
+                            .step(0.1)
+                            .step_fast(0.5)
+                            .build();
+                        ui.set_next_item_width(120.0);
+                        scale_changed |= ui
+                            .input_float("Z##scale", &mut scale.z)
+                            .step(0.1)
+                            .step_fast(0.5)
+                            .build();
+
+                        if scale_changed {
+                            // Clamp scale to reasonable values (0.1 to 25.0)
+                            scale.x = scale.x.clamp(0.1, 25.0);
+                            scale.y = scale.y.clamp(0.1, 25.0);
+                            scale.z = scale.z.clamp(0.1, 25.0);
+                            self.map.objects[index].set_scale(scale);
+                        }
+
+                        ui.separator();
+
+                        // Delete button
+                        if ui.button("Delete Object") {
+                            self.map.remove_object(index);
+                            self.selected_object = None;
+                            self.set_status("Object deleted");
+                        }
+                    }
+                } else {
+                    ui.text_colored([0.5, 0.5, 0.5, 1.0], "No object selected");
+                }
+            });
+
+        // Hierarchy Panel (right side, bottom - no gap with Inspector)
+        ui.window("Hierarchy")
+            .position([viewport_width + 10.0, menu_bar_height + 5.0 + 330.0], imgui::Condition::Always)
+            .size([390.0, 365.0], imgui::Condition::Always)
+            .build(|| {
+                ui.text_colored([0.3, 0.8, 1.0, 1.0], "HIERARCHY");
+                ui.separator();
+
+                if self.map.objects.is_empty() {
+                    ui.text_colored([0.5, 0.5, 0.5, 1.0], "(No objects yet)");
+                    ui.text("Press Space/Click to place objects");
+                } else {
+                    let mut new_selection = None;
+
+                    for (i, obj) in self.map.objects.iter().enumerate() {
+                        let is_selected = self.selected_object == Some(i);
+
+                        let _header_token = if is_selected {
+                            Some(ui.push_style_color(imgui::StyleColor::Header, [0.3, 0.6, 0.8, 0.6]))
+                        } else {
+                            None
+                        };
+
+                        let label = format!("[{}] {:?}##obj{}", i, obj.model_type, i);
+
+                        if ui.selectable_config(&label)
+                            .selected(is_selected)
+                            .build()
+                        {
+                            new_selection = Some(i);
+                        }
+                    }
+
+                    if let Some(i) = new_selection {
+                        self.selected_object = Some(i);
+                        self.mode = EditorMode::Selecting;
+                        self.set_status(&format!("Selected object {}", i));
+                    }
+                }
+            });
+
+        // Tools Panel (left side, full height below menu bar)
+        ui.window("Tools")
+            .position([10.0, menu_bar_height + 5.0], imgui::Condition::Always)
+            .size([200.0, 690.0], imgui::Condition::Always)
+            .bg_alpha(0.9)
+            .build(|| {
+                ui.text_colored([0.3, 0.8, 1.0, 1.0], "TOOLS");
+                ui.separator();
+
+                if ui.button("1. Placing Mode") {
+                    self.mode = EditorMode::Placing;
+                }
+                if ui.button("2. Selecting Mode") {
+                    self.mode = EditorMode::Selecting;
+                }
+
+                ui.separator();
+                ui.text("Place Model:");
+
+                if ui.button("C - Cube") {
+                    self.current_model_type = ModelType::Cube;
+                }
+                if ui.button("R - Rectangle") {
+                    self.current_model_type = ModelType::Rectangle;
+                }
+                if ui.button("T - Triangle") {
+                    self.current_model_type = ModelType::Triangle;
+                }
+                if ui.button("S - Sphere") {
+                    self.current_model_type = ModelType::Sphere;
+                }
+                if ui.button("L - Cylinder") {
+                    self.current_model_type = ModelType::Cylinder;
+                }
+                if ui.button("P - Plane") {
+                    self.current_model_type = ModelType::Plane;
+                }
+
+                ui.separator();
+                if self.selected_object.is_some() {
+                    if ui.button("3. Move (G)") {
+                        self.mode = EditorMode::Moving;
+                    }
+                    if ui.button("4. Rotate (R)") {
+                        self.mode = EditorMode::Rotating;
+                    }
+                    if ui.button("5. Scale (S)") {
+                        self.mode = EditorMode::Scaling;
+                    }
+                }
+            });
+
+        // Status bar at bottom
+        if self.status_timer > 0.0 {
+            ui.window("Status")
+                .position([10.0, 690.0], imgui::Condition::Always)
+                .size([viewport_width - 20.0, 20.0], imgui::Condition::Always)
+                .no_decoration()
+                .bg_alpha(0.7)
+                .build(|| {
+                    ui.text(&self.status_message);
+                });
+        }
+
+        // Update mouse_over_ui after drawing all UI
+        mouse_over_ui = mouse_over_ui || ui.is_any_item_hovered() || ui.is_window_hovered();
+
+        // Also check if mouse is in the right panel area (viewport ends at viewport_width)
+        let mouse_pos = ui.io().mouse_pos;
+        if mouse_pos[0] > viewport_width {
+            mouse_over_ui = true;
+        }
+
+        mouse_over_ui
     }
 }
