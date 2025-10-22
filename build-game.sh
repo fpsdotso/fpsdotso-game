@@ -19,8 +19,8 @@ export EMCC_CFLAGS="-O3 -sUSE_GLFW=3 -sASSERTIONS=1 -sWASM=1 -sASYNCIFY -sGL_ENA
 cargo build --release --target wasm32-unknown-emscripten
 
 # Copy the output files (note: wasm file uses underscores)
-cp target/wasm32-unknown-emscripten/release/fpsdotso-game.js public/rust-raylib.js
-cp target/wasm32-unknown-emscripten/release/fpsdotso_game.wasm public/rust-raylib.wasm
+cp target/wasm32-unknown-emscripten/release/fpsdotso-game.js app/public/fpsdotso-game.js
+cp target/wasm32-unknown-emscripten/release/fpsdotso_game.wasm app/public/fpsdotso_game.wasm
 
 echo "Build complete! Open index.html in a web server to run the app."
 echo "You can use: python3 -m http.server 8000"
