@@ -15,10 +15,16 @@
     "@testing-library/react": "^16.3.0",
     "@testing-library/user-event": "^13.5.0",
     "buffer": "^6.0.3",
+    "cra-template-pwa-typescript": "^2.0.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-scripts": "5.0.1",
-    "web-vitals": "^2.1.4"
+    "web-vitals": "^2.1.4",
+    "workbox-core": "^7.3.0",
+    "workbox-expiration": "^7.3.0",
+    "workbox-precaching": "^7.3.0",
+    "workbox-routing": "^7.3.0",
+    "workbox-strategies": "^7.3.0"
   },
   "scripts": {
     "start": "craco start",
@@ -43,5 +49,14 @@
       "last 1 firefox version",
       "last 1 safari version"
     ]
+  },
+  "packageManager": "pnpm@9.15.4+sha512.b2dc20e2fc72b3e18848459b37359a32064663e5627a51e4c74b2c29dd8e8e0491483c3abb40789cfd578bf362fb6ba8261b05f0387d76792ed6e23ea3b1b6a0",
+  "devDependencies": {
+    "@types/node": "^24.9.1",
+    "@vitejs/plugin-react": "^5.0.4",
+    "vite": "^7.1.12",
+    "vite-plugin-pwa": "^1.1.0",
+    "workbox-build": "^7.3.0",
+    "workbox-window": "^7.3.0"
   }
 }
