@@ -15,11 +15,17 @@ pub fn apply_solana_ui_colors(_ui: &imgui::Ui) {
 }
 
 /// Draw the main menu UI with Valorant-style tabs
-fn draw_menu_ui(ui: &imgui::Ui, menu_state: &mut MenuState) {
+fn draw_menu_ui(
+    ui: &imgui::Ui,
+    menu_state: &mut MenuState,
+    map_builder: &mut MapBuilder,
+    viewport_width: f32,
+    style_applied: &mut bool
+) -> bool {
     let [window_width, window_height] = ui.io().display_size;
 
     // Create fullscreen window
-    ui.window("Main Menu")
+    let window_token = ui.window("Main Menu")
         .position([0.0, 0.0], imgui::Condition::Always)
         .size([window_width, window_height], imgui::Condition::Always)
         .title_bar(false)
@@ -28,22 +34,34 @@ fn draw_menu_ui(ui: &imgui::Ui, menu_state: &mut MenuState) {
         .scrollable(false)
         .bring_to_front_on_focus(false)
         .focus_on_appearing(false)
-        .build(|| {
-            // Top bar with game title and tabs
-            draw_top_bar(ui, menu_state);
+        .begin();
 
-            ui.dummy([0.0, 10.0]);
+    if let Some(_token) = window_token {
+        // Top bar with game title and tabs
+        draw_top_bar(ui, menu_state);
 
-            // Content area based on selected tab
-            match menu_state.current_tab {
-                MenuTab::Lobby => LobbyTab::draw(menu_state, ui),
-                MenuTab::Weapons => WeaponsTab::draw(menu_state, ui),
-                MenuTab::MapEditor => {
-                    // This shouldn't be reached, but just in case
-                    ui.text("Map Editor - Switch via tab");
-                }
+        ui.dummy([0.0, 10.0]);
+
+        // Content area based on selected tab
+        let mouse_over_ui = match menu_state.current_tab {
+            MenuTab::Lobby => {
+                LobbyTab::draw(menu_state, ui);
+                true // Menu tabs are fullscreen
+            },
+            MenuTab::Weapons => {
+                WeaponsTab::draw(menu_state, ui);
+                true // Menu tabs are fullscreen
+            },
+            MenuTab::MapEditor => {
+                // Draw map editor UI below the tab bar
+                map_builder.draw_imgui_ui(ui, viewport_width, style_applied)
             }
-        });
+        };
+
+        return mouse_over_ui;
+    }
+
+    true // If window somehow didn't open, assume UI is covering
 }
 
 /// Draw the Valorant-style top navigation bar
@@ -209,15 +227,8 @@ fn main() {
         // Start imgui frame
         let ui = gui.begin(&mut rl);
 
-        // Determine what to draw based on current tab
-        if menu_state.current_tab == MenuTab::MapEditor {
-            // Draw map editor UI
-            mouse_over_ui = map_builder.draw_imgui_ui(ui, viewport_width as f32, &mut style_applied);
-        } else {
-            // Draw main menu with tabs
-            draw_menu_ui(ui, &mut menu_state);
-            mouse_over_ui = true; // Menu is fullscreen
-        }
+        // Always draw the menu UI with tabs - content changes based on selected tab
+        mouse_over_ui = draw_menu_ui(ui, &mut menu_state, &mut map_builder, viewport_width as f32, &mut style_applied);
 
         // Update map builder (after imgui, so we know if mouse is over UI)
         if menu_state.current_tab == MenuTab::MapEditor {

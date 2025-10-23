@@ -918,7 +918,7 @@ impl MapBuilder {
 
     /// Draw all imgui panels (Unity-style layout)
     /// Returns true if mouse is over any UI element
-    pub fn draw_imgui_ui(&mut self, ui: &mut imgui::Ui, viewport_width: f32, style_applied: &mut bool) -> bool {
+    pub fn draw_imgui_ui(&mut self, ui: &imgui::Ui, viewport_width: f32, style_applied: &mut bool) -> bool {
         // Apply Solana-themed styling once
         if !*style_applied {
             crate::apply_solana_ui_colors(ui);
@@ -927,18 +927,39 @@ impl MapBuilder {
 
         let mut mouse_over_ui = ui.is_any_item_hovered() || ui.is_window_hovered();
 
-        // Menu Bar
-        ui.main_menu_bar(|| {
-            ui.menu("File", || {
-                if ui.menu_item("Create New Map") {
+        // Top menu tab bar height (defined in main.rs)
+        let top_bar_height = 80.0;
+
+        // Y offset for all panels (top bar + spacing)
+        let y_offset = top_bar_height + 10.0;
+
+        // Tools Panel (left side) - now includes File and Help menus
+        // Calculate height to fit from top offset to near bottom of screen
+        let tools_height = 720.0 - y_offset - 20.0;  // Screen height - offset - bottom margin
+        ui.window("Tools")
+            .position([10.0, y_offset], imgui::Condition::Always)
+            .size([220.0, tools_height], imgui::Condition::Always)
+            .bg_alpha(0.9)
+            .scroll_bar(true)
+            .build(|| {
+                // Solana teal header color
+                let _header_color = ui.push_style_color(imgui::StyleColor::Text, [0.08, 0.95, 0.58, 1.0]);
+                ui.text("MAP EDITOR TOOLS");
+                drop(_header_color);
+                ui.separator();
+
+                // FILE MENU SECTION
+                ui.text_colored([0.60, 0.27, 1.0, 1.0], "File");
+                ui.separator();
+                ui.dummy([0.0, 5.0]);
+
+                if ui.button_with_size("New Map", [180.0, 25.0]) {
                     self.map = Map::new("Untitled Map".to_string());
                     self.selected_object = None;
                     self.set_status("Created new map");
                 }
 
-                ui.separator();
-
-                if ui.menu_item("Save Current Map (.fpssomap)") {
+                if ui.button_with_size("Save Map", [180.0, 25.0]) {
                     match self.map.to_json_bytes() {
                         Ok(bytes) => {
                             use base64::{Engine as _, engine::general_purpose};
@@ -1007,7 +1028,7 @@ impl MapBuilder {
                     }
                 }
 
-                if ui.menu_item("Import from .fpssomap") {
+                if ui.button_with_size("Import Map", [180.0, 25.0]) {
                     // Trigger file picker via Emscripten JavaScript interop
                     #[cfg(target_os = "emscripten")]
                     {
@@ -1061,29 +1082,92 @@ impl MapBuilder {
                     }
                 }
 
-                ui.separator();
+                ui.dummy([0.0, 10.0]);
 
-                if ui.menu_item("My Maps") {
+                if ui.button_with_size("My Maps", [180.0, 25.0]) {
                     self.show_my_maps = !self.show_my_maps;
                 }
 
-                if ui.menu_item("Upload Map to Solana") {
+                if ui.button_with_size("Upload to Solana", [180.0, 25.0]) {
                     self.show_upload_popup = true;
                     self.upload_map_id = String::new();
                     self.upload_map_name = self.map.name.clone();
                     self.upload_map_description = String::new();
                 }
 
+                ui.dummy([0.0, 15.0]);
                 ui.separator();
+                ui.dummy([0.0, 10.0]);
 
-                if ui.menu_item("Exit Map Editor") {
-                    self.set_status("Use ESC or close window to exit");
+                // TOOLS SECTION
+                ui.text_colored([0.60, 0.27, 1.0, 1.0], "Tools");
+                ui.separator();
+                ui.dummy([0.0, 5.0]);
+
+                if ui.button_with_size("1. Placing Mode", [180.0, 25.0]) {
+                    self.mode = EditorMode::Placing;
                 }
-            });
+                if ui.button_with_size("2. Selecting Mode", [180.0, 25.0]) {
+                    self.mode = EditorMode::Selecting;
+                }
 
-            ui.menu("Help", || {
-                ui.text_colored([1.0, 1.0, 0.0, 1.0], "CONTROLS");
+                ui.dummy([0.0, 10.0]);
+                ui.text("Place Model:");
+                ui.dummy([0.0, 5.0]);
+
+                if ui.button_with_size("C - Cube", [180.0, 22.0]) {
+                    self.current_model_type = ModelType::Cube;
+                }
+                if ui.button_with_size("R - Rectangle", [180.0, 22.0]) {
+                    self.current_model_type = ModelType::Rectangle;
+                }
+                if ui.button_with_size("T - Triangle", [180.0, 22.0]) {
+                    self.current_model_type = ModelType::Triangle;
+                }
+                if ui.button_with_size("S - Sphere", [180.0, 22.0]) {
+                    self.current_model_type = ModelType::Sphere;
+                }
+                if ui.button_with_size("L - Cylinder", [180.0, 22.0]) {
+                    self.current_model_type = ModelType::Cylinder;
+                }
+                if ui.button_with_size("P - Plane", [180.0, 22.0]) {
+                    self.current_model_type = ModelType::Plane;
+                }
+
+                ui.dummy([0.0, 10.0]);
+                ui.text("Spawn Points:");
+                ui.dummy([0.0, 5.0]);
+
+                if ui.button_with_size("B - Blue Spawn", [180.0, 22.0]) {
+                    self.current_model_type = ModelType::SpawnPointBlue;
+                }
+                if ui.button_with_size("D - Red Spawn", [180.0, 22.0]) {
+                    self.current_model_type = ModelType::SpawnPointRed;
+                }
+
+                if self.selected_object.is_some() {
+                    ui.dummy([0.0, 10.0]);
+                    ui.text("Transform:");
+                    ui.dummy([0.0, 5.0]);
+                    if ui.button_with_size("3. Move (G)", [180.0, 22.0]) {
+                        self.mode = EditorMode::Moving;
+                    }
+                    if ui.button_with_size("4. Rotate (R)", [180.0, 22.0]) {
+                        self.mode = EditorMode::Rotating;
+                    }
+                    if ui.button_with_size("5. Scale (S)", [180.0, 22.0]) {
+                        self.mode = EditorMode::Scaling;
+                    }
+                }
+
+                ui.dummy([0.0, 15.0]);
                 ui.separator();
+                ui.dummy([0.0, 10.0]);
+
+                // HELP SECTION
+                ui.text_colored([0.60, 0.27, 1.0, 1.0], "Controls");
+                ui.separator();
+                ui.dummy([0.0, 5.0]);
 
                 ui.text("Camera:");
                 ui.text("  WASD - Move camera");
@@ -1121,15 +1205,13 @@ impl MapBuilder {
                 ui.text("  F5 - Quick save");
                 ui.text("  F9 - Quick load");
             });
-        });
-
-        let menu_bar_height = 25.0; // Approximate menu bar height
 
         // Inspector Panel (right side, top)
         ui.window("Inspector")
-            .position([viewport_width + 10.0, menu_bar_height + 5.0], imgui::Condition::Always)
+            .position([viewport_width + 10.0, y_offset], imgui::Condition::Always)
             .size([390.0, 330.0], imgui::Condition::Always)
             .collapsible(false)
+            .bg_alpha(0.85)
             .build(|| {
                 // Solana teal header color
                 ui.text_colored([0.08, 0.95, 0.58, 1.0], "INSPECTOR");
@@ -1284,9 +1366,10 @@ impl MapBuilder {
 
         // Hierarchy Panel (right side, bottom - no gap with Inspector)
         ui.window("Hierarchy")
-            .position([viewport_width + 10.0, menu_bar_height + 5.0 + 330.0], imgui::Condition::Always)
+            .position([viewport_width + 10.0, y_offset + 330.0], imgui::Condition::Always)
             .size([390.0, 365.0], imgui::Condition::Always)
             .collapsible(false)
+            .bg_alpha(0.85)
             .build(|| {
                 // Solana teal header color
                 ui.text_colored([0.08, 0.95, 0.58, 1.0], "HIERARCHY");
@@ -1321,69 +1404,6 @@ impl MapBuilder {
                         self.selected_object = Some(i);
                         self.mode = EditorMode::Selecting;
                         self.set_status(&format!("Selected object {}", i));
-                    }
-                }
-            });
-
-        // Tools Panel (left side, full height below menu bar)
-        ui.window("Tools")
-            .position([10.0, menu_bar_height + 5.0], imgui::Condition::Always)
-            .size([200.0, 690.0], imgui::Condition::Always)
-            .bg_alpha(0.9)
-            .build(|| {
-                // Solana teal header color
-                ui.text_colored([0.08, 0.95, 0.58, 1.0], "TOOLS");
-                ui.separator();
-
-                if ui.button("1. Placing Mode") {
-                    self.mode = EditorMode::Placing;
-                }
-                if ui.button("2. Selecting Mode") {
-                    self.mode = EditorMode::Selecting;
-                }
-
-                ui.separator();
-                ui.text("Place Model:");
-
-                if ui.button("C - Cube") {
-                    self.current_model_type = ModelType::Cube;
-                }
-                if ui.button("R - Rectangle") {
-                    self.current_model_type = ModelType::Rectangle;
-                }
-                if ui.button("T - Triangle") {
-                    self.current_model_type = ModelType::Triangle;
-                }
-                if ui.button("S - Sphere") {
-                    self.current_model_type = ModelType::Sphere;
-                }
-                if ui.button("L - Cylinder") {
-                    self.current_model_type = ModelType::Cylinder;
-                }
-                if ui.button("P - Plane") {
-                    self.current_model_type = ModelType::Plane;
-                }
-
-                ui.separator();
-                ui.text("Spawn Points:");
-
-                if ui.button("B - Blue Spawn") {
-                    self.current_model_type = ModelType::SpawnPointBlue;
-                }
-                if ui.button("D - Red Spawn") {
-                    self.current_model_type = ModelType::SpawnPointRed;
-                }
-
-                ui.separator();
-                if self.selected_object.is_some() {
-                    if ui.button("3. Move (G)") {
-                        self.mode = EditorMode::Moving;
-                    }
-                    if ui.button("4. Rotate (R)") {
-                        self.mode = EditorMode::Rotating;
-                    }
-                    if ui.button("5. Scale (S)") {
-                        self.mode = EditorMode::Scaling;
                     }
                 }
             });
