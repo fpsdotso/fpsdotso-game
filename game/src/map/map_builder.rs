@@ -73,6 +73,10 @@ pub struct MapBuilder {
     /// My Maps view state
     pub show_my_maps: bool,
     pub user_map_ids: Vec<String>,
+
+    /// Drag-and-drop state
+    pub is_dragging_model: bool,
+    pub dragged_model_type: Option<ModelType>,
 }
 
 impl MapBuilder {
@@ -108,6 +112,8 @@ impl MapBuilder {
             upload_map_description: String::new(),
             show_my_maps: false,
             user_map_ids: Vec::new(),
+            is_dragging_model: false,
+            dragged_model_type: None,
         }
     }
 
@@ -149,6 +155,24 @@ impl MapBuilder {
         // Check for loaded map data from Solana (Emscripten only)
         #[cfg(target_os = "emscripten")]
         self.check_loaded_map_from_solana();
+
+        // Handle drag-and-drop completion
+        if self.is_dragging_model {
+            // If mouse is released, complete the drag
+            if !rl.is_mouse_button_down(MouseButton::MOUSE_BUTTON_LEFT) {
+                if let Some(dragged_type) = self.dragged_model_type {
+                    // Only place if mouse is over viewport (not UI)
+                    if !mouse_over_ui {
+                        self.current_model_type = dragged_type;
+                        // The placing mode will handle actual placement
+                        self.set_status(&format!("Dropped {:?} - click to place", dragged_type));
+                    }
+                }
+                // Clear drag state
+                self.is_dragging_model = false;
+                self.dragged_model_type = None;
+            }
+        }
 
         // Camera controls
         self.update_camera(rl, delta);
@@ -322,12 +346,16 @@ impl MapBuilder {
     /// Handle placing mode
     fn handle_placing_mode(&mut self, rl: &RaylibHandle, mouse_over_ui: bool) {
         // Use mouse raycast to determine placement position
-        if !mouse_over_ui {
+        // Always update preview when dragging, or when not over UI
+        if !mouse_over_ui || self.is_dragging_model {
             let mouse_pos = rl.get_mouse_position();
             let viewport_width = 1280.0 * 0.7; // 70% of screen for viewport
 
-            // Only calculate if mouse is in viewport
-            if mouse_pos.x < viewport_width {
+            // When dragging, always calculate preview position (ignore viewport bounds)
+            // When not dragging, only calculate if mouse is in viewport
+            let should_calculate = self.is_dragging_model || mouse_pos.x < viewport_width;
+
+            if should_calculate {
                 // Manual raycast calculation
                 // The viewport is the full height but only 70% of the width
                 let screen_width = 1280.0;
@@ -565,8 +593,8 @@ impl MapBuilder {
         // Render map objects
         self.map.render(&mut d3d);
 
-        // Draw preview in placing mode
-        if self.mode == EditorMode::Placing {
+        // Draw preview in placing mode or when dragging
+        if self.mode == EditorMode::Placing || self.is_dragging_model {
             self.draw_preview(&mut d3d);
         }
 
@@ -610,16 +638,33 @@ impl MapBuilder {
 
     /// Draw preview object
     fn draw_preview(&self, d: &mut RaylibMode3D<RaylibDrawHandle>) {
-        let mut preview_obj = MapObject::new(self.current_model_type);
+        // Use dragged model type if dragging, otherwise use current model type
+        let model_type = if self.is_dragging_model {
+            self.dragged_model_type.unwrap_or(self.current_model_type)
+        } else {
+            self.current_model_type
+        };
+
+        let mut preview_obj = MapObject::new(model_type);
         let preview_pos = self.snap_to_grid(self.preview_position);
         preview_obj.set_position(preview_pos);
 
-        // Make preview semi-transparent yellow
-        preview_obj.set_color(Color::new(255, 255, 0, 200));
+        // Make preview semi-transparent - brighter cyan/teal when dragging
+        let preview_color = if self.is_dragging_model {
+            Color::new(0, 242, 148, 220) // Solana teal, semi-transparent
+        } else {
+            Color::new(255, 255, 0, 200) // Yellow
+        };
+        preview_obj.set_color(preview_color);
         preview_obj.draw(d);
 
         // Draw a marker at preview position
-        d.draw_sphere(preview_pos, 0.2, Color::YELLOW);
+        let marker_color = if self.is_dragging_model {
+            Color::new(0, 242, 148, 255) // Solana teal
+        } else {
+            Color::YELLOW
+        };
+        d.draw_sphere(preview_pos, 0.2, marker_color);
     }
 
     /// Draw selection highlight and transform gizmos
@@ -686,6 +731,23 @@ impl MapBuilder {
     fn draw_ui(&self, d: &mut RaylibDrawHandle, viewport_width: i32) {
         // Draw viewport border
         d.draw_line(viewport_width, 0, viewport_width, 720, Color::DARKGRAY);
+
+        // Show drag indicator when dragging
+        if self.is_dragging_model {
+            if let Some(model_type) = self.dragged_model_type {
+                let text = format!("Dragging: {:?}", model_type);
+                let text_width = text.len() as i32 * 10;
+                let x = (viewport_width - text_width) / 2;
+                let y = 100;
+
+                // Background box
+                d.draw_rectangle(x - 10, y - 5, text_width + 20, 30, Color::new(0, 242, 148, 200));
+                d.draw_rectangle_lines(x - 10, y - 5, text_width + 20, 30, Color::new(0, 242, 148, 255));
+
+                // Text
+                d.draw_text(&text, x, y, 20, Color::BLACK);
+            }
+        }
     }
 
     /// Draw hierarchy panel
@@ -1113,37 +1175,24 @@ impl MapBuilder {
 
                 ui.dummy([0.0, 10.0]);
                 ui.text("Place Model:");
+                ui.text_colored([0.7, 0.7, 0.7, 1.0], "(Click or drag to viewport)");
                 ui.dummy([0.0, 5.0]);
 
-                if ui.button_with_size("C - Cube", [180.0, 22.0]) {
-                    self.current_model_type = ModelType::Cube;
-                }
-                if ui.button_with_size("R - Rectangle", [180.0, 22.0]) {
-                    self.current_model_type = ModelType::Rectangle;
-                }
-                if ui.button_with_size("T - Triangle", [180.0, 22.0]) {
-                    self.current_model_type = ModelType::Triangle;
-                }
-                if ui.button_with_size("S - Sphere", [180.0, 22.0]) {
-                    self.current_model_type = ModelType::Sphere;
-                }
-                if ui.button_with_size("L - Cylinder", [180.0, 22.0]) {
-                    self.current_model_type = ModelType::Cylinder;
-                }
-                if ui.button_with_size("P - Plane", [180.0, 22.0]) {
-                    self.current_model_type = ModelType::Plane;
-                }
+                // Draggable model buttons with visual representation
+                self.draw_draggable_model_button(ui, ModelType::Cube, "🟦 Cube (C)", "##cube");
+                self.draw_draggable_model_button(ui, ModelType::Rectangle, "▬ Rectangle (R)", "##rect");
+                self.draw_draggable_model_button(ui, ModelType::Triangle, "🔺 Triangle (T)", "##tri");
+                self.draw_draggable_model_button(ui, ModelType::Sphere, "⚫ Sphere (S)", "##sphere");
+                self.draw_draggable_model_button(ui, ModelType::Cylinder, "🛢 Cylinder (L)", "##cyl");
+                self.draw_draggable_model_button(ui, ModelType::Plane, "▭ Plane (P)", "##plane");
 
                 ui.dummy([0.0, 10.0]);
                 ui.text("Spawn Points:");
+                ui.text_colored([0.7, 0.7, 0.7, 1.0], "(Click or drag to viewport)");
                 ui.dummy([0.0, 5.0]);
 
-                if ui.button_with_size("B - Blue Spawn", [180.0, 22.0]) {
-                    self.current_model_type = ModelType::SpawnPointBlue;
-                }
-                if ui.button_with_size("D - Red Spawn", [180.0, 22.0]) {
-                    self.current_model_type = ModelType::SpawnPointRed;
-                }
+                self.draw_draggable_model_button(ui, ModelType::SpawnPointBlue, "🔵 Blue Spawn (B)", "##bluespawn");
+                self.draw_draggable_model_button(ui, ModelType::SpawnPointRed, "🔴 Red Spawn (D)", "##redspawn");
 
                 if self.selected_object.is_some() {
                     ui.dummy([0.0, 10.0]);
@@ -1535,6 +1584,49 @@ impl MapBuilder {
         }
 
         mouse_over_ui
+    }
+
+    /// Draw a draggable model button with visual representation
+    fn draw_draggable_model_button(&mut self, ui: &imgui::Ui, model_type: ModelType, label: &str, id: &str) {
+        let button_size = [200.0, 35.0];
+        let is_selected = self.current_model_type == model_type;
+
+        // Highlight selected model
+        let _bg_color = if is_selected {
+            Some(ui.push_style_color(imgui::StyleColor::Button, [0.38, 0.17, 0.60, 1.0]))
+        } else {
+            None
+        };
+
+        // Draw button
+        let button_clicked = ui.button_with_size(label, button_size);
+
+        // Drag source: start dragging when button is being held
+        if ui.is_item_active() && !self.is_dragging_model {
+            if ui.is_mouse_dragging(imgui::MouseButton::Left) {
+                self.is_dragging_model = true;
+                self.dragged_model_type = Some(model_type);
+                self.current_model_type = model_type; // Update immediately for preview
+                self.mode = EditorMode::Placing;
+            }
+        }
+
+        // Regular click: select the model
+        if button_clicked {
+            self.current_model_type = model_type;
+            self.mode = EditorMode::Placing;
+            self.set_status(&format!("Selected {:?} for placing", model_type));
+        }
+
+        // Show tooltip on hover
+        if ui.is_item_hovered() {
+            ui.tooltip(|| {
+                ui.text(format!("Click to select or drag to viewport"));
+                ui.text(format!("Model: {:?}", model_type));
+            });
+        }
+
+        drop(_bg_color);
     }
 
     /// Upload current map to Solana
