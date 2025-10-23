@@ -1,23 +1,35 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+# Dependencies
+node_modules/
+pnpm-lock.yaml
 
-# dependencies
-/node_modules
-/.pnp
-.pnp.js
+# Build outputs
+build/
+dist/
 
-# testing
-/coverage
+# Android/TWA generated files
+android.keystore
+*.apk
+*.aab
+*.idsig
+gradlew
+gradlew.bat
+build.gradle
+gradle.properties
+settings.gradle
+twa-manifest.json
+manifest-checksum.txt
+store_icon.png
+assetlinks.json
+.well-known/
 
-# production
-/build
+# IDE
+.vscode/
+.idea/
 
-# misc
+# OS
 .DS_Store
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
+Thumbs.db
 
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
+# Deployment
+.vercel/
+.netlify/
