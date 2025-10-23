@@ -24,7 +24,28 @@ fn draw_menu_ui(
 ) -> bool {
     let [window_width, window_height] = ui.io().display_size;
 
-    // Create fullscreen window
+    // For Map Editor, draw top bar separately without fullscreen background
+    if menu_state.current_tab == MenuTab::MapEditor {
+        // Draw top bar in a transparent window
+        let top_bar_token = ui.window("Top Bar")
+            .position([0.0, 0.0], imgui::Condition::Always)
+            .size([window_width, 90.0], imgui::Condition::Always)
+            .title_bar(false)
+            .resizable(false)
+            .movable(false)
+            .scrollable(false)
+            .bg_alpha(0.95)
+            .begin();
+
+        if let Some(_token) = top_bar_token {
+            draw_top_bar(ui, menu_state);
+        }
+
+        // Draw map editor UI below the tab bar
+        return map_builder.draw_imgui_ui(ui, viewport_width, style_applied);
+    }
+
+    // For other tabs (Lobby, Weapons), use fullscreen window with background
     let window_token = ui.window("Main Menu")
         .position([0.0, 0.0], imgui::Condition::Always)
         .size([window_width, window_height], imgui::Condition::Always)
@@ -43,22 +64,19 @@ fn draw_menu_ui(
         ui.dummy([0.0, 10.0]);
 
         // Content area based on selected tab
-        let mouse_over_ui = match menu_state.current_tab {
+        match menu_state.current_tab {
             MenuTab::Lobby => {
                 LobbyTab::draw(menu_state, ui);
-                true // Menu tabs are fullscreen
             },
             MenuTab::Weapons => {
                 WeaponsTab::draw(menu_state, ui);
-                true // Menu tabs are fullscreen
             },
             MenuTab::MapEditor => {
-                // Draw map editor UI below the tab bar
-                map_builder.draw_imgui_ui(ui, viewport_width, style_applied)
+                // Should not reach here since we handle it above
             }
         };
 
-        return mouse_over_ui;
+        return true; // Menu tabs are fullscreen
     }
 
     true // If window somehow didn't open, assume UI is covering
