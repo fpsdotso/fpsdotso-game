@@ -918,7 +918,13 @@ impl MapBuilder {
 
     /// Draw all imgui panels (Unity-style layout)
     /// Returns true if mouse is over any UI element
-    pub fn draw_imgui_ui(&mut self, ui: &mut imgui::Ui, viewport_width: f32) -> bool {
+    pub fn draw_imgui_ui(&mut self, ui: &mut imgui::Ui, viewport_width: f32, style_applied: &mut bool) -> bool {
+        // Apply Solana-themed styling once
+        if !*style_applied {
+            crate::apply_solana_ui_colors(ui);
+            *style_applied = true;
+        }
+
         let mut mouse_over_ui = ui.is_any_item_hovered() || ui.is_window_hovered();
 
         // Menu Bar
@@ -1125,7 +1131,8 @@ impl MapBuilder {
             .size([390.0, 330.0], imgui::Condition::Always)
             .collapsible(false)
             .build(|| {
-                ui.text_colored([0.3, 0.8, 1.0, 1.0], "INSPECTOR");
+                // Solana teal header color
+                ui.text_colored([0.08, 0.95, 0.58, 1.0], "INSPECTOR");
                 ui.separator();
 
                 ui.text(format!("Mode: {:?}", self.mode));
@@ -1281,7 +1288,8 @@ impl MapBuilder {
             .size([390.0, 365.0], imgui::Condition::Always)
             .collapsible(false)
             .build(|| {
-                ui.text_colored([0.3, 0.8, 1.0, 1.0], "HIERARCHY");
+                // Solana teal header color
+                ui.text_colored([0.08, 0.95, 0.58, 1.0], "HIERARCHY");
                 ui.separator();
 
                 if self.map.objects.is_empty() {
@@ -1323,7 +1331,8 @@ impl MapBuilder {
             .size([200.0, 690.0], imgui::Condition::Always)
             .bg_alpha(0.9)
             .build(|| {
-                ui.text_colored([0.3, 0.8, 1.0, 1.0], "TOOLS");
+                // Solana teal header color
+                ui.text_colored([0.08, 0.95, 0.58, 1.0], "TOOLS");
                 ui.separator();
 
                 if ui.button("1. Placing Mode") {
@@ -1436,7 +1445,8 @@ impl MapBuilder {
                 .position([400.0, 100.0], imgui::Condition::FirstUseEver)
                 .size([500.0, 400.0], imgui::Condition::FirstUseEver)
                 .build(|| {
-                    ui.text_colored([0.3, 0.8, 1.0, 1.0], "MY MAPS");
+                    // Solana teal header color
+                    ui.text_colored([0.08, 0.95, 0.58, 1.0], "MY MAPS");
                     ui.separator();
 
                     ui.text("Your maps stored on Solana:");

@@ -5,6 +5,13 @@ mod map;
 
 use map::MapBuilder;
 
+/// Apply Solana-themed modern colors to ImGui
+pub fn apply_solana_ui_colors(_ui: &imgui::Ui) {
+    // Note: Due to imgui 0.12 API limitations, we can't easily mutate the global style
+    // Instead, we'll use inline styling with push_style_color calls where needed
+    // The dark purple background is set via the Raylib clear_background call
+}
+
 fn main() {
     // Initialize the Raylib window
     let (mut rl, thread) = raylib::init()
@@ -25,6 +32,9 @@ fn main() {
 
     // Track if mouse is over UI
     let mut mouse_over_ui = false;
+
+    // Track if style has been applied
+    let mut style_applied = false;
 
     // Main game loop
     while !rl.window_should_close() {
@@ -51,14 +61,14 @@ fn main() {
         let ui = gui.begin(&mut rl);
 
         // Draw imgui UI (Unity-style panels) and check if mouse is over UI
-        mouse_over_ui = map_builder.draw_imgui_ui(ui, viewport_width as f32);
+        mouse_over_ui = map_builder.draw_imgui_ui(ui, viewport_width as f32, &mut style_applied);
 
         // Update map builder (after imgui, so we know if mouse is over UI)
         map_builder.update(&rl, delta, mouse_over_ui);
 
         // Render 3D scene
         let mut d = rl.begin_drawing(&thread);
-        d.clear_background(Color::new(40, 40, 45, 255)); // Dark gray like Unity
+        d.clear_background(Color::new(13, 13, 17, 255)); // Dark purple-tinted background to match Solana theme
 
         // Render 3D viewport
         map_builder.render(&mut d, &thread, viewport_width);
