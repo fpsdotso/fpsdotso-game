@@ -24,7 +24,7 @@
         "* `name` - Display name of the map",
         "* `description` - Description of the map",
         "* `is_default` - Whether this is a default/official map or user-created",
-        "* `map_data` - The actual map data as a byte array (level layout, objects, etc.)",
+        "* `map_data` - The actual map data as a vector of MapObject (level layout, objects, etc.)",
         "",
         "# Accounts",
         "* `map_metadata` - New PDA to store map metadata",
@@ -90,7 +90,8 @@
           "docs": [
             "New PDA account to store the actual map data (level layout, objects, etc.)",
             "Derived from [MAP_DATA_SEED, map_id]",
-            "Space is calculated dynamically based on the size of map_data"
+            "Space is calculated dynamically based on the size of map_data",
+            "Each MapObject is 19 bytes: 1 (enum) + 6 (pos) + 6 (rot) + 3 (scale) + 3 (color)"
           ],
           "writable": true,
           "pda": {
@@ -206,7 +207,13 @@
         },
         {
           "name": "map_data",
-          "type": "bytes"
+          "type": {
+            "vec": {
+              "defined": {
+                "name": "MapObject"
+              }
+            }
+          }
         }
       ]
     },
@@ -552,7 +559,8 @@
           "name": "map_data_account",
           "docs": [
             "The map's data account to update",
-            "Uses realloc to resize the account if the new data is a different size"
+            "Uses realloc to resize the account if the new data is a different size",
+            "Each MapObject is 19 bytes: 1 (enum) + 6 (pos) + 6 (rot) + 3 (scale) + 3 (color)"
           ],
           "writable": true,
           "pda": {
@@ -604,7 +612,13 @@
       "args": [
         {
           "name": "map_data",
-          "type": "bytes"
+          "type": {
+            "vec": {
+              "defined": {
+                "name": "MapObject"
+              }
+            }
+          }
         }
       ]
     },
@@ -753,12 +767,17 @@
         "kind": "struct",
         "fields": [
           {
-            "name": "data",
+            "name": "objects",
             "docs": [
-              "Raw byte data representing the map",
-              "Format is application-specific (could be JSON, binary format, etc.)"
+              "Vector of map objects representing the 3D scene"
             ],
-            "type": "bytes"
+            "type": {
+              "vec": {
+                "defined": {
+                  "name": "MapObject"
+                }
+              }
+            }
           }
         ]
       }
@@ -824,6 +843,92 @@
       }
     },
     {
+      "name": "MapObject",
+      "docs": [
+        "Compact representation of a 3D object in the map",
+        "Uses 16-bit integers for positions and rotations to save space",
+        "Borsh-serialized for Solana/Anchor compatibility"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "model_type",
+            "docs": [
+              "Model type"
+            ],
+            "type": {
+              "defined": {
+                "name": "ModelType"
+              }
+            }
+          },
+          {
+            "name": "pos_x",
+            "docs": [
+              "Position (stored as i16, converted to/from f32)",
+              "Range: -100.0 to 100.0 (scaled from i16 range)"
+            ],
+            "type": "i16"
+          },
+          {
+            "name": "pos_y",
+            "type": "i16"
+          },
+          {
+            "name": "pos_z",
+            "type": "i16"
+          },
+          {
+            "name": "rot_x",
+            "docs": [
+              "Rotation in degrees (0-360, stored as u16)"
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "rot_y",
+            "type": "u16"
+          },
+          {
+            "name": "rot_z",
+            "type": "u16"
+          },
+          {
+            "name": "scale_x",
+            "docs": [
+              "Scale (stored as u8, divided by 10 to get actual scale)",
+              "Range: 0.1 to 25.5"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "scale_y",
+            "type": "u8"
+          },
+          {
+            "name": "scale_z",
+            "type": "u8"
+          },
+          {
+            "name": "color_r",
+            "docs": [
+              "Color (RGB)"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "color_g",
+            "type": "u8"
+          },
+          {
+            "name": "color_b",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
       "name": "MapRegistry",
       "docs": [
         "Global registry that tracks statistics about all maps"
@@ -844,6 +949,41 @@
               "Number of user-created maps"
             ],
             "type": "u32"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ModelType",
+      "docs": [
+        "Model types available for map objects"
+      ],
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "Cube"
+          },
+          {
+            "name": "Rectangle"
+          },
+          {
+            "name": "Triangle"
+          },
+          {
+            "name": "Sphere"
+          },
+          {
+            "name": "Cylinder"
+          },
+          {
+            "name": "Plane"
+          },
+          {
+            "name": "SpawnPointBlue"
+          },
+          {
+            "name": "SpawnPointRed"
           }
         ]
       }

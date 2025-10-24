@@ -1829,16 +1829,16 @@ impl MapBuilder {
                     const mapId = '{}';
                     console.log('Loading map:', mapId);
 
-                    // Get map data from Solana
-                    const mapData = await window.solanaMapBridge.getMapData(mapId);
+                    // Get map data from Solana in Borsh format (for Rust compatibility)
+                    const mapData = await window.solanaMapBridge.getMapData(mapId, 'borsh');
 
                     if (!mapData) {{
                         throw new Error('Map data not found');
                     }}
 
-                    // Convert Uint8Array to base64
-                    // getMapData returns the byte array directly, not wrapped in an object
-                    const bytes = new Uint8Array(mapData);
+                    // mapData is already a Uint8Array in Borsh format
+                    // Convert to base64 for passing to Rust
+                    const bytes = mapData;
                     let binary = '';
                     for (let i = 0; i < bytes.length; i++) {{
                         binary += String.fromCharCode(bytes[i]);
