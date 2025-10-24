@@ -125,7 +125,7 @@ fn draw_top_bar(ui: &imgui::Ui, menu_state: &mut MenuState) {
                 new_tab = Some(MenuTab::Weapons);
             }
             ui.same_line();
-            if draw_tab_button(ui, current_tab, MenuTab::MapEditor, "MAP EDITOR", tab_width, tab_height) {
+            if draw_tab_button(ui, current_tab, MenuTab::MapEditor, "MAP EDITORS", tab_width, tab_height) {
                 new_tab = Some(MenuTab::MapEditor);
             }
 
@@ -244,6 +244,13 @@ fn main() {
 
         // Start imgui frame
         let ui = gui.begin(&mut rl);
+
+        // Note: Games are loaded manually via the REFRESH button in the lobby
+        // This ensures the wallet is connected before attempting to load games
+
+        // Check for async responses from blockchain
+        menu_state.check_load_games_response();
+        menu_state.check_create_game_response();
 
         // Always draw the menu UI with tabs - content changes based on selected tab
         mouse_over_ui = draw_menu_ui(ui, &mut menu_state, &mut map_builder, viewport_width as f32, &mut style_applied);

@@ -1,0 +1,373 @@
+{
+  "address": "CJktcWcnEcszuCW6UFLzvN2KLwiXMqxEri5o5Rd3b8Yh",
+  "metadata": {
+    "name": "matchmaking",
+    "version": "0.1.0",
+    "spec": "0.1.0",
+    "description": "Created with Anchor"
+  },
+  "instructions": [
+    {
+      "name": "init_game",
+      "discriminator": [251, 46, 12, 208, 184, 148, 157, 73],
+      "accounts": [
+        {
+          "name": "game",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [103, 97, 109, 101]
+              },
+              {
+                "kind": "account",
+                "path": "authority"
+              },
+              {
+                "kind": "account",
+                "path": "player.game_counter",
+                "account": "Player"
+              }
+            ]
+          }
+        },
+        {
+          "name": "player",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [112, 108, 97, 121, 101, 114]
+              },
+              {
+                "kind": "account",
+                "path": "authority"
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "init_player",
+      "discriminator": [114, 27, 219, 144, 50, 15, 228, 66],
+      "accounts": [
+        {
+          "name": "player",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [112, 108, 97, 121, 101, 114]
+              },
+              {
+                "kind": "account",
+                "path": "authority"
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "args",
+          "type": "bytes"
+        }
+      ]
+    },
+    {
+      "name": "join_game",
+      "discriminator": [107, 112, 18, 38, 56, 173, 60, 128],
+      "accounts": [
+        {
+          "name": "game",
+          "writable": true
+        },
+        {
+          "name": "player",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [112, 108, 97, 121, 101, 114]
+              },
+              {
+                "kind": "account",
+                "path": "authority"
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "signer": true
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "leave_game",
+      "discriminator": [218, 226, 6, 0, 243, 34, 125, 201],
+      "accounts": [
+        {
+          "name": "game",
+          "writable": true
+        },
+        {
+          "name": "player",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [112, 108, 97, 121, 101, 114]
+              },
+              {
+                "kind": "account",
+                "path": "authority"
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "signer": true
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "start_game",
+      "discriminator": [249, 47, 252, 172, 184, 162, 245, 14],
+      "accounts": [
+        {
+          "name": "game",
+          "writable": true
+        },
+        {
+          "name": "player",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [112, 108, 97, 121, 101, 114]
+              },
+              {
+                "kind": "account",
+                "path": "authority"
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "signer": true
+        }
+      ],
+      "args": []
+    }
+  ],
+  "accounts": [
+    {
+      "name": "Game",
+      "discriminator": [27, 90, 166, 125, 74, 100, 121, 18]
+    },
+    {
+      "name": "Player",
+      "discriminator": [205, 222, 112, 7, 165, 155, 206, 218]
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "PlayerNotRegistered",
+      "msg": "Player not registered"
+    },
+    {
+      "code": 6001,
+      "name": "PlayerAlreadyInGame",
+      "msg": "Player already in a game"
+    },
+    {
+      "code": 6002,
+      "name": "GameAlreadyStarted",
+      "msg": "Game has already started"
+    },
+    {
+      "code": 6003,
+      "name": "GameFull",
+      "msg": "Game is full"
+    },
+    {
+      "code": 6004,
+      "name": "InvalidGameState",
+      "msg": "Invalid game state"
+    }
+  ],
+  "types": [
+    {
+      "name": "Game",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "team_a_score",
+            "type": "u32"
+          },
+          {
+            "name": "team_b_score",
+            "type": "u32"
+          },
+          {
+            "name": "match_duration",
+            "type": "u32"
+          },
+          {
+            "name": "match_start_timestamp",
+            "type": "i64"
+          },
+          {
+            "name": "match_end_timestamp",
+            "type": {
+              "option": "i64"
+            }
+          },
+          {
+            "name": "game_state",
+            "type": "u8"
+          },
+          {
+            "name": "max_players_per_team",
+            "type": "u8"
+          },
+          {
+            "name": "current_players_team_a",
+            "type": "u8"
+          },
+          {
+            "name": "current_players_team_b",
+            "type": "u8"
+          },
+          {
+            "name": "winning_team",
+            "type": {
+              "option": "u8"
+            }
+          },
+          {
+            "name": "match_type",
+            "type": "u8"
+          },
+          {
+            "name": "map_name",
+            "type": "string"
+          },
+          {
+            "name": "lobby_name",
+            "type": "string"
+          },
+          {
+            "name": "created_by",
+            "type": "pubkey"
+          },
+          {
+            "name": "is_private",
+            "type": "bool"
+          },
+          {
+            "name": "ready_players",
+            "type": "u8"
+          },
+          {
+            "name": "map_selection",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Player",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "authority",
+            "type": "pubkey"
+          },
+          {
+            "name": "username",
+            "type": "string"
+          },
+          {
+            "name": "has_logged_in",
+            "type": "bool"
+          },
+          {
+            "name": "team",
+            "type": "u8"
+          },
+          {
+            "name": "current_game",
+            "type": {
+              "option": "pubkey"
+            }
+          },
+          {
+            "name": "is_alive",
+            "type": "bool"
+          },
+          {
+            "name": "last_login_timestamp",
+            "type": "i64"
+          },
+          {
+            "name": "total_matches_played",
+            "type": "u32"
+          },
+          {
+            "name": "level",
+            "type": "u32"
+          },
+          {
+            "name": "is_ready",
+            "type": "bool"
+          },
+          {
+            "name": "game_counter",
+            "type": "u32"
+          }
+        ]
+      }
+    }
+  ],
+  "constants": [
+    {
+      "name": "SEED",
+      "type": "string",
+      "value": "\"anchor\""
+    }
+  ]
+}

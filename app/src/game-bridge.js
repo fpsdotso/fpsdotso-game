@@ -4,7 +4,7 @@
  * the Emscripten Module interface.
  */
 
-import * as solanaBridge from './solana-bridge';
+import * as solanaBridge from "./solana-bridge";
 
 /**
  * Initialize the game bridge
@@ -13,11 +13,11 @@ import * as solanaBridge from './solana-bridge';
 export function initGameBridge() {
   // Make sure Module is available
   if (!window.Module) {
-    console.warn('Module not available yet, game bridge will be set up later');
+    console.warn("Module not available yet, game bridge will be set up later");
     return;
   }
 
-  console.log('Setting up game bridge functions...');
+  console.log("Setting up game bridge functions...");
 
   // Expose functions to the game through window.gameBridge
   window.gameBridge = {
@@ -33,13 +33,71 @@ export function initGameBridge() {
     },
 
     connectWallet: async () => {
-      console.log('[Game Bridge] connectWallet called');
+      console.log("[Game Bridge] connectWallet called");
       return await solanaBridge.connectWallet();
     },
 
     getBalance: async () => {
-      console.log('[Game Bridge] getBalance called');
+      console.log("[Game Bridge] getBalance called");
       return await solanaBridge.getBalance();
+    },
+
+    createGame: async (lobbyName, mapName) => {
+      console.log(
+        `[Game Bridge] createGame called: ${lobbyName} on ${mapName}`
+      );
+      const result = await solanaBridge.createGame(lobbyName, mapName);
+      console.log("[Game Bridge] createGame result:", result);
+      return result;
+    },
+
+    testInitPlayer: async () => {
+      console.log("[Game Bridge] testInitPlayer called");
+      const result = await solanaBridge.testInitPlayer();
+      console.log("[Game Bridge] testInitPlayer result:", result);
+      return result;
+    },
+
+    testMatchmakingProgram: async () => {
+      console.log("[Game Bridge] testMatchmakingProgram called");
+      const result = await solanaBridge.testMatchmakingProgram();
+      console.log("[Game Bridge] testMatchmakingProgram result:", result);
+      return result;
+    },
+
+    testCreateAndFetchGame: async () => {
+      console.log("[Game Bridge] testCreateAndFetchGame called");
+      const result = await solanaBridge.testCreateAndFetchGame();
+      console.log("[Game Bridge] testCreateAndFetchGame result:", result);
+      return result;
+    },
+
+    testAllProgramAccounts: async () => {
+      console.log("[Game Bridge] testAllProgramAccounts called");
+      const result = await solanaBridge.testAllProgramAccounts();
+      console.log("[Game Bridge] testAllProgramAccounts result:", result);
+      return result;
+    },
+
+    getAvailableGames: async () => {
+      console.log("[Game Bridge] getAvailableGames called");
+      const result = await solanaBridge.getAvailableGames();
+      console.log("[Game Bridge] getAvailableGames result:", result);
+      return result;
+    },
+
+    getPlayerCurrentGame: async () => {
+      console.log("[Game Bridge] getPlayerCurrentGame called");
+      const result = await solanaBridge.getPlayerCurrentGame();
+      console.log("[Game Bridge] getPlayerCurrentGame result:", result);
+      return result;
+    },
+
+    leaveCurrentGame: async () => {
+      console.log("[Game Bridge] leaveCurrentGame called");
+      const result = await solanaBridge.leaveCurrentGame();
+      console.log("[Game Bridge] leaveCurrentGame result:", result);
+      return result;
     },
 
     // Utility functions
@@ -51,11 +109,11 @@ export function initGameBridge() {
     sendMessage: (message) => {
       console.log(`[Game Message]: ${message}`);
       // Dispatch custom event that React can listen to
-      window.dispatchEvent(new CustomEvent('gameMessage', { detail: message }));
+      window.dispatchEvent(new CustomEvent("gameMessage", { detail: message }));
     },
   };
 
-  console.log('✅ Game bridge initialized');
+  console.log("✅ Game bridge initialized");
 }
 
 /**
@@ -65,14 +123,16 @@ export function initGameBridge() {
 export function callGameFunction(functionName, ...args) {
   if (window.Module && window.Module.cwrap) {
     try {
-      const gameFunction = window.Module.cwrap(functionName, 'number', ['number']);
+      const gameFunction = window.Module.cwrap(functionName, "number", [
+        "number",
+      ]);
       return gameFunction(...args);
     } catch (error) {
       console.error(`Failed to call game function ${functionName}:`, error);
       return null;
     }
   }
-  console.warn('Module.cwrap not available');
+  console.warn("Module.cwrap not available");
   return null;
 }
 
@@ -103,7 +163,7 @@ export function freeStringPointer(ptr) {
  * Listen for messages from the game
  */
 export function onGameMessage(callback) {
-  window.addEventListener('gameMessage', (event) => {
+  window.addEventListener("gameMessage", (event) => {
     callback(event.detail);
   });
 }

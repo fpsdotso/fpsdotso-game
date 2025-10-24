@@ -4,6 +4,9 @@ pub struct LobbyTab;
 
 impl LobbyTab {
     pub fn draw(menu_state: &mut MenuState, ui: &imgui::Ui) {
+        // Check for async create game response
+        menu_state.check_create_game_response();
+
         // Main container with padding
         ui.dummy([0.0, 20.0]); // Top padding
 
@@ -35,7 +38,25 @@ impl LobbyTab {
 
         // Refresh button
         if ui.button_with_size("REFRESH", [120.0, 40.0]) {
-            // TODO: Fetch rooms from server
+            menu_state.load_games_from_blockchain();
+        }
+
+        ui.same_line();
+        ui.dummy([20.0, 0.0]);
+        ui.same_line();
+
+        // Test button
+        if ui.button_with_size("TEST", [80.0, 40.0]) {
+            menu_state.test_blockchain_connection();
+        }
+
+        ui.same_line();
+        ui.dummy([20.0, 0.0]);
+        ui.same_line();
+
+        // Leave Game button
+        if ui.button_with_size("LEAVE GAME", [120.0, 40.0]) {
+            menu_state.leave_current_game();
         }
 
         ui.dummy([0.0, 20.0]);
@@ -52,9 +73,12 @@ impl LobbyTab {
             .border(true)
             .build(|| {
                 if menu_state.available_rooms.is_empty() {
-                    ui.dummy([0.0, 100.0]);
-                    ui.text_colored([0.5, 0.5, 0.5, 1.0], "No rooms available");
-                    ui.text_colored([0.5, 0.5, 0.5, 1.0], "Create your own room to get started!");
+                    ui.dummy([0.0, 50.0]);
+                    ui.text_colored([0.8, 0.8, 0.8, 1.0], "No games loaded from blockchain");
+                    ui.dummy([0.0, 10.0]);
+                    ui.text_colored([0.6, 0.6, 0.6, 1.0], "1. Connect your wallet in the web interface");
+                    ui.text_colored([0.6, 0.6, 0.6, 1.0], "2. Click 'REFRESH' button to load games");
+                    ui.text_colored([0.6, 0.6, 0.6, 1.0], "3. Or create your own room to get started!");
                 } else {
                     for (i, room) in menu_state.available_rooms.iter().enumerate() {
                         let is_selected = menu_state.selected_room == Some(i);
@@ -174,6 +198,7 @@ impl LobbyTab {
                 } else {
                     let _create_btn = ui.push_style_color(imgui::StyleColor::Button, [0.08, 0.95, 0.58, 0.8]);
                     if ui.button("CREATE") {
+                        println!("🔘 CREATE button clicked!");
                         menu_state.create_room();
                         ui.close_current_popup();
                     }
