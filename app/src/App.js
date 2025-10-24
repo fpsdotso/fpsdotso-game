@@ -12,6 +12,7 @@ import {
   createGame,
 } from "./solana-bridge";
 import { initGameBridge, onGameMessage } from "./game-bridge";
+import EphemeralWalletPanel from "./components/EphemeralWalletPanel";
 
 // NOTE: This app is configured to connect to Solana LOCALNET only
 // RPC URL is hardcoded to http://127.0.0.1:8899 in solana-bridge.js
@@ -322,6 +323,11 @@ function App() {
               )}
             </div>
           </div>
+
+          {/* Ephemeral Wallet Panel - shown when wallet is connected */}
+          {walletConnected && window.gameBridge && (
+            <EphemeralWalletPanel gameBridge={window.gameBridge} />
+          )}
 
           <div>
             <strong>Player:</strong>

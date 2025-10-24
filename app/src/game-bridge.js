@@ -154,6 +154,23 @@ export function initGameBridge() {
       console.log("[Game Bridge] getMapDataById result:", result ? `${result.length} bytes` : 'null');
       return result;
     },
+
+    // Ephemeral wallet functions
+    getEphemeralWalletInfo: async () => {
+      return await solanaBridge.getEphemeralWalletInfo();
+    },
+
+    fundEphemeralWallet: async (amountSol) => {
+      return await solanaBridge.fundEphemeralWallet(amountSol);
+    },
+
+    getEphemeralBalance: async () => {
+      return await solanaBridge.getEphemeralBalance();
+    },
+
+    getEphemeralPublicKey: () => {
+      return solanaBridge.getEphemeralPublicKey();
+    },
   };
 
   console.log("✅ Game bridge initialized");

@@ -7,6 +7,7 @@ import { AnchorProvider, Program, web3 } from "@coral-xyz/anchor";
 import { Connection, PublicKey } from "@solana/web3.js";
 import mapRegistryIdl from "./idl/map_registry.json";
 import matchmakingIdl from "./idl/matchmaking.json";
+import * as EphemeralWallet from "./ephemeral-wallet.js";
 
 // Program IDs from the IDLs
 const PROGRAM_ID = new PublicKey(mapRegistryIdl.address);
@@ -395,9 +396,15 @@ export async function connectWallet() {
 
     console.log("✅ Wallet connected:", response.publicKey.toString());
 
+    // Initialize ephemeral wallet for Magicblock transactions
+    const ephemeralInfo = await EphemeralWallet.initializeEphemeralWallet(wallet);
+    console.log("✅ Ephemeral wallet initialized:", ephemeralInfo.publicKey);
+
     return {
       publicKey: response.publicKey.toString(),
       connected: true,
+      ephemeralWallet: ephemeralInfo.publicKey,
+      ephemeralWalletIsNew: ephemeralInfo.isNew,
     };
   } catch (error) {
     console.error("❌ Failed to connect wallet:", error);
@@ -1864,4 +1871,55 @@ export async function getAllPlayersInGame(gamePubkey) {
     console.error("❌ Failed to get players in game:", error);
     return { error: error.message };
   }
+}
+
+/**
+ * Get ephemeral wallet information
+ * @returns {Object} Ephemeral wallet info including balance
+ */
+export async function getEphemeralWalletInfo() {
+  if (!connection) {
+    console.error("Connection not initialized");
+    return null;
+  }
+
+  try {
+    return await EphemeralWallet.getWalletInfo(connection);
+  } catch (error) {
+    console.error("❌ Failed to get ephemeral wallet info:", error);
+    return null;
+  }
+}
+
+/**
+ * Fund the ephemeral wallet from the main wallet
+ * @param {number} amountSol - Amount in SOL to transfer
+ * @returns {string} Transaction signature
+ */
+export async function fundEphemeralWallet(amountSol) {
+  if (!connection) {
+    throw new Error("Connection not initialized");
+  }
+
+  return await EphemeralWallet.fundEphemeralWallet(connection, amountSol);
+}
+
+/**
+ * Get ephemeral wallet balance
+ * @returns {number} Balance in SOL
+ */
+export async function getEphemeralBalance() {
+  if (!connection) {
+    throw new Error("Connection not initialized");
+  }
+
+  return await EphemeralWallet.getEphemeralBalance(connection);
+}
+
+/**
+ * Get ephemeral wallet public key
+ * @returns {string|null} Public key string
+ */
+export function getEphemeralPublicKey() {
+  return EphemeralWallet.getEphemeralPublicKey();
 }
