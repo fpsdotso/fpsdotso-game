@@ -3,9 +3,11 @@ use raylib_imgui::RaylibGui;
 
 mod map;
 mod menu;
+mod game;
 
 use map::MapBuilder;
 use menu::{MenuState, MenuTab, LobbyTab, LobbyView, WeaponsTab};
+use game::GameState;
 
 /// Apply Solana-themed modern colors to ImGui
 pub fn apply_solana_ui_colors(_ui: &imgui::Ui) {
@@ -215,6 +217,9 @@ fn main() {
     // Create menu state
     let mut menu_state = MenuState::new();
 
+    // Create game state
+    let mut game_state = GameState::new();
+
     // Create a new map builder
     let mut map_builder = MapBuilder::new("My Map".to_string());
 
@@ -257,13 +262,28 @@ fn main() {
         // Check for async responses from blockchain
         menu_state.check_load_games_response();
         menu_state.check_create_game_response();
-        
+
         // Check for lobby responses
         menu_state.check_join_game_response();
         menu_state.check_start_game_response();
         menu_state.check_lobby_data_response();
         menu_state.check_team_players_response();
-        
+        menu_state.check_player_current_game_response();
+
+        // Periodically check if player is in a game (every 1 second) - for auto-reconnect
+        if !menu_state.in_lobby {
+            static mut LAST_PLAYER_CHECK: f32 = 0.0;
+            unsafe {
+                if delta > 0.0 {
+                    LAST_PLAYER_CHECK += delta;
+                    if LAST_PLAYER_CHECK >= 1.0 {
+                        menu_state.check_player_current_game();
+                        LAST_PLAYER_CHECK = 0.0;
+                    }
+                }
+            }
+        }
+
         // Periodically fetch lobby data when in lobby (every 2-3 seconds)
         if menu_state.in_lobby {
             static mut LAST_LOBBY_UPDATE: f32 = 0.0;
@@ -278,8 +298,40 @@ fn main() {
             }
         }
 
+        // Check if game should start (when game state changes to 1)
+        if menu_state.game_should_start {
+            println!("🎮 Starting game - transitioning from menu to game!");
+
+            // Load a default map for now (you can customize this to load the actual map from the lobby)
+            // For now, we'll create a simple default map
+            use crate::map::Map;
+            let default_map = Map {
+                name: "Lobby Map".to_string(),
+                version: 1,
+                objects: vec![], // Empty map for now, will be populated from blockchain
+                spawn_x: 0,
+                spawn_y: 0,
+                spawn_z: 0,
+            };
+
+            game_state.load_map(default_map);
+            game_state.start_playing(&mut rl);
+
+            // Reset the flag
+            menu_state.game_should_start = false;
+
+            // Exit lobby UI
+            menu_state.in_lobby = false;
+        }
+
+        // Update game state if playing
+        game_state.update(&mut rl, delta);
+
         // Always draw the menu UI with tabs - content changes based on selected tab
-        mouse_over_ui = draw_menu_ui(ui, &mut menu_state, &mut map_builder, viewport_width as f32, &mut style_applied);
+        // Only show menu if not in playing mode
+        if game_state.mode != game::GameMode::Playing {
+            mouse_over_ui = draw_menu_ui(ui, &mut menu_state, &mut map_builder, viewport_width as f32, &mut style_applied);
+        }
 
         // Update map builder (after imgui, so we know if mouse is over UI)
         if menu_state.current_tab == MenuTab::MapEditor {
@@ -290,8 +342,12 @@ fn main() {
         let mut d = rl.begin_drawing(&thread);
         d.clear_background(Color::new(13, 13, 17, 255)); // Dark purple-tinted background to match Solana theme
 
-        // Only render 3D viewport in map editor mode
-        if menu_state.current_tab == MenuTab::MapEditor {
+        // Render game if in playing mode
+        if game_state.mode == game::GameMode::Playing {
+            game_state.render(&mut d, &thread);
+        }
+        // Otherwise render map editor if in that tab
+        else if menu_state.current_tab == MenuTab::MapEditor {
             map_builder.render(&mut d, &thread, viewport_width);
         }
 

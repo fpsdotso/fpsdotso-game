@@ -62,6 +62,13 @@ pub struct MenuState {
     pub is_lobby_leader: bool,
     pub joining_lobby_pending: bool,
     pub starting_game_pending: bool,
+
+    /// Game state tracking
+    pub current_game_state: u8, // 0=waiting, 1=active, 2=ended, 3=paused
+    pub game_should_start: bool, // Flag to signal game should transition to playing
+
+    /// Player state polling
+    pub check_player_game_pending: bool, // Flag to indicate we're checking player's current game
 }
 
 impl MenuState {
@@ -91,6 +98,9 @@ impl MenuState {
             is_lobby_leader: false,
             joining_lobby_pending: false,
             starting_game_pending: false,
+            current_game_state: 0,
+            game_should_start: false,
+            check_player_game_pending: false,
         };
         
         // Games will be loaded manually via the REFRESH button
@@ -608,7 +618,24 @@ impl MenuState {
                     };
                     self.available_rooms.push(new_room);
                     println!("✅ Game created successfully on-chain!");
-                    
+
+                    // Automatically join the created lobby (open lobby view)
+                    println!("🚪 Automatically entering the created lobby...");
+                    self.in_lobby = true;
+                    self.current_lobby_id = Some(pda_str.to_string());
+                    self.is_lobby_leader = true; // Creator is always the leader
+
+                    // Initialize team rosters with creator on Team A
+                    self.lobby_team_a.clear();
+                    self.lobby_team_b.clear();
+                    self.lobby_team_a.push("You".to_string());
+
+                    // Set lobby leader
+                    self.lobby_leader = Some("You".to_string());
+
+                    // Fetch full lobby data from blockchain
+                    self.fetch_lobby_data();
+
                     // Clear pending data
                     self.pending_room_name.clear();
                     self.pending_room_map.clear();
@@ -963,7 +990,7 @@ impl MenuState {
         // Clear existing rosters
         self.lobby_team_a.clear();
         self.lobby_team_b.clear();
-        
+
         // Get team counts from game data
         let team_a_count = game.get("currentPlayersTeamA")
             .and_then(|v| v.as_u64())
@@ -971,30 +998,87 @@ impl MenuState {
         let team_b_count = game.get("currentPlayersTeamB")
             .and_then(|v| v.as_u64())
             .unwrap_or(0) as usize;
-        
+
+        // Get and check game state
+        let game_state = game.get("gameState")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0) as u8;
+
+        let old_game_state = self.current_game_state;
+        self.current_game_state = game_state;
+
+        // If game state changed from 0 (waiting) to 1 (active), signal game should start
+        if old_game_state == 0 && game_state == 1 {
+            println!("🎮 GAME STATE CHANGED TO ACTIVE! Signaling game start...");
+            self.game_should_start = true;
+        }
+
         // Get lobby leader info
         if let Some(created_by) = game.get("createdBy") {
             if let Some(leader_pubkey) = created_by.as_str() {
                 self.lobby_leader = Some(leader_pubkey.to_string());
-                
+
                 // Check if current player is the leader
                 // We'll need to get the current wallet public key from JavaScript
                 self.check_if_current_player_is_leader(leader_pubkey);
             }
         }
-        
+
         // Populate Team A with placeholder players
         for i in 1..=team_a_count {
             self.lobby_team_a.push(format!("Player {}", i));
         }
-        
+
         // Populate Team B with placeholder players
         for i in 1..=team_b_count {
             self.lobby_team_b.push(format!("Player {}", i));
         }
-        
-        println!("📊 Updated team rosters - Team A: {} players, Team B: {} players", 
-                 team_a_count, team_b_count);
+
+        println!("📊 Updated team rosters - Team A: {} players, Team B: {} players, Game State: {}",
+                 team_a_count, team_b_count, game_state);
+
+        // After populating with placeholder players, fetch real player data
+        self.fetch_team_players();
+    }
+
+    /// Fetch actual player usernames from the blockchain
+    #[cfg(target_os = "emscripten")]
+    fn fetch_team_players(&mut self) {
+        if let Some(lobby_id) = &self.current_lobby_id {
+            extern "C" {
+                pub fn emscripten_run_script(script: *const i8);
+            }
+            use std::ffi::CString;
+
+            let js_code = format!(
+                r#"
+                (async function() {{
+                    try {{
+                        console.log('👥 Fetching team players for lobby: {}');
+                        const players = await window.gameBridge.getAllPlayersInGame('{}');
+                        if (players) {{
+                            Module.teamPlayersResult = JSON.stringify({{ success: true, players: players }});
+                        }} else {{
+                            Module.teamPlayersResult = JSON.stringify({{ error: 'Failed to fetch players' }});
+                        }}
+                    }} catch (error) {{
+                        Module.teamPlayersResult = JSON.stringify({{ error: error.message }});
+                    }}
+                }})();
+                "#,
+                lobby_id, lobby_id
+            );
+
+            let c_str = CString::new(js_code).unwrap();
+            unsafe {
+                emscripten_run_script(c_str.as_ptr());
+            }
+        }
+    }
+
+    #[cfg(not(target_os = "emscripten"))]
+    fn fetch_team_players(&mut self) {
+        // Not available outside of browser
     }
 
     /// Check if current player is the lobby leader
@@ -1211,7 +1295,113 @@ impl MenuState {
             }
         }
         
-        println!("📊 Updated rosters with real usernames - Team A: {:?}, Team B: {:?}", 
+        println!("📊 Updated rosters with real usernames - Team A: {:?}, Team B: {:?}",
                  self.lobby_team_a, self.lobby_team_b);
+    }
+
+    /// Check if player is currently in a game (for auto-reconnect)
+    #[cfg(target_os = "emscripten")]
+    pub fn check_player_current_game(&mut self) {
+        // Don't check if already in a lobby or if a check is pending
+        if self.in_lobby || self.check_player_game_pending {
+            return;
+        }
+
+        self.check_player_game_pending = true;
+
+        extern "C" {
+            pub fn emscripten_run_script(script: *const i8);
+        }
+        use std::ffi::CString;
+
+        let js_code = r#"
+            (async function() {
+                try {
+                    console.log('🔍 Checking if player is in a game...');
+                    const currentGame = await window.gameBridge.getPlayerCurrentGame();
+                    if (currentGame) {
+                        Module.playerCurrentGameResult = JSON.stringify({ success: true, gameId: currentGame });
+                    } else {
+                        Module.playerCurrentGameResult = JSON.stringify({ success: true, gameId: null });
+                    }
+                } catch (error) {
+                    Module.playerCurrentGameResult = JSON.stringify({ error: error.message });
+                }
+            })();
+        "#;
+
+        let c_str = CString::new(js_code).unwrap();
+        unsafe {
+            emscripten_run_script(c_str.as_ptr());
+        }
+    }
+
+    #[cfg(not(target_os = "emscripten"))]
+    pub fn check_player_current_game(&mut self) {
+        // Not available outside of browser
+    }
+
+    /// Check for player current game response and auto-enter lobby if in game
+    #[cfg(target_os = "emscripten")]
+    pub fn check_player_current_game_response(&mut self) {
+        if !self.check_player_game_pending {
+            return;
+        }
+
+        extern "C" {
+            pub fn emscripten_run_script(script: *const i8);
+            pub fn emscripten_run_script_string(script: *const i8) -> *const i8;
+        }
+        use std::ffi::CString;
+
+        let check_js = CString::new("Module.playerCurrentGameResult || null").unwrap();
+        let result_ptr = unsafe { emscripten_run_script_string(check_js.as_ptr()) };
+
+        if !result_ptr.is_null() {
+            let result_cstr = unsafe { std::ffi::CStr::from_ptr(result_ptr) };
+            let result_str = result_cstr.to_string_lossy();
+
+            if result_str != "null" && !result_str.is_empty() {
+                println!("🔍 Player current game result: {}", result_str);
+
+                if let Ok(result) = serde_json::from_str::<serde_json::Value>(&result_str) {
+                    if let Some(success) = result.get("success") {
+                        if success.as_bool().unwrap_or(false) {
+                            if let Some(game_id) = result.get("gameId") {
+                                if !game_id.is_null() {
+                                    if let Some(game_id_str) = game_id.as_str() {
+                                        println!("🎮 Player is already in game: {}", game_id_str);
+
+                                        // Auto-enter lobby
+                                        self.in_lobby = true;
+                                        self.current_lobby_id = Some(game_id_str.to_string());
+
+                                        // Fetch lobby data to populate teams and check if leader
+                                        self.fetch_lobby_data();
+
+                                        println!("✅ Auto-reconnected to lobby!");
+                                    }
+                                } else {
+                                    println!("✅ Player is not in any game");
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Clear the result
+                let clear_js = CString::new("Module.playerCurrentGameResult = null").unwrap();
+                unsafe {
+                    emscripten_run_script(clear_js.as_ptr());
+                }
+            }
+
+            self.check_player_game_pending = false;
+        }
+    }
+
+    #[cfg(not(target_os = "emscripten"))]
+    pub fn check_player_current_game_response(&mut self) {
+        // Not available outside of browser
     }
 }

@@ -1329,6 +1329,30 @@ export async function getGame(gamePubkey) {
 }
 
 /**
+ * Get only the game state from a game PDA
+ * @param {string} gamePubkey - The game's public key
+ * @returns {number|null} Game state (0=waiting, 1=active, 2=ended, 3=paused) or null on error
+ */
+export async function getGameState(gamePubkey) {
+  if (!matchmakingProgram) {
+    console.error("Matchmaking program not initialized");
+    return null;
+  }
+
+  try {
+    const gamePublicKey = new PublicKey(gamePubkey);
+    const gameAccount = await matchmakingProgram.account.game.fetch(
+      gamePublicKey
+    );
+    console.log("🎮 Game state:", gameAccount.gameState);
+    return gameAccount.gameState;
+  } catch (error) {
+    console.error("❌ Failed to fetch game state:", error);
+    return null;
+  }
+}
+
+/**
  * Get all games from the blockchain
  * @param {number} filterState - Optional game state filter (0=waiting, 1=active, 2=ended, 3=paused)
  */
@@ -1707,6 +1731,7 @@ export async function testCreateAndFetchGame() {
 
 /**
  * Get all players in a specific game with their usernames and team assignments
+ * Now uses the team_a_players and team_b_players arrays from the Game PDA
  */
 export async function getAllPlayersInGame(gamePubkey) {
   console.log("📊 Fetching all players in game:", gamePubkey);
@@ -1717,42 +1742,66 @@ export async function getAllPlayersInGame(gamePubkey) {
   }
 
   try {
-    // Get all Player accounts
-    const allPlayers = await matchmakingProgram.account.player.all();
-    console.log("📊 Found", allPlayers.length, "total players");
+    // Get the Game account which now contains player arrays
+    const gamePublicKey = new PublicKey(gamePubkey);
+    const gameAccount = await matchmakingProgram.account.game.fetch(gamePublicKey);
+
+    console.log("📊 Game has", gameAccount.teamAPlayers.length, "players in Team A");
+    console.log("📊 Game has", gameAccount.teamBPlayers.length, "players in Team B");
 
     const gamePlayers = [];
 
-    for (const { pubkey, account } of allPlayers) {
+    // Process Team A players
+    for (const playerPubkey of gameAccount.teamAPlayers) {
       try {
-        // Check if this player is in the specified game
-        if (
-          account.currentGame &&
-          account.currentGame.toString() === gamePubkey
-        ) {
-          console.log(
-            "📊 Found player in game:",
-            pubkey.toString(),
-            "Username:",
-            account.username
-          );
+        const playerAccount = await matchmakingProgram.account.player.fetch(playerPubkey);
 
-          // Determine team assignment based on player index or other logic
-          // For now, we'll use a simple alternating pattern
-          const team = gamePlayers.length % 2 === 0 ? "A" : "B";
+        console.log(
+          "📊 Team A player:",
+          playerPubkey.toString(),
+          "Username:",
+          playerAccount.username
+        );
 
-          gamePlayers.push({
-            publicKey: pubkey.toString(),
-            username: account.username,
-            team: team,
-            level: account.level,
-            matches: account.matches,
-          });
-        }
+        gamePlayers.push({
+          publicKey: playerPubkey.toString(),
+          username: playerAccount.username,
+          team: "A",
+          level: playerAccount.level,
+          matches: playerAccount.totalMatchesPlayed,
+        });
       } catch (error) {
         console.warn(
-          "⚠️ Failed to parse player account:",
-          pubkey.toString(),
+          "⚠️ Failed to fetch Team A player:",
+          playerPubkey.toString(),
+          error
+        );
+      }
+    }
+
+    // Process Team B players
+    for (const playerPubkey of gameAccount.teamBPlayers) {
+      try {
+        const playerAccount = await matchmakingProgram.account.player.fetch(playerPubkey);
+
+        console.log(
+          "📊 Team B player:",
+          playerPubkey.toString(),
+          "Username:",
+          playerAccount.username
+        );
+
+        gamePlayers.push({
+          publicKey: playerPubkey.toString(),
+          username: playerAccount.username,
+          team: "B",
+          level: playerAccount.level,
+          matches: playerAccount.totalMatchesPlayed,
+        });
+      } catch (error) {
+        console.warn(
+          "⚠️ Failed to fetch Team B player:",
+          playerPubkey.toString(),
           error
         );
       }

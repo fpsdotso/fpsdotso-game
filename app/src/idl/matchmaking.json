@@ -306,23 +306,13 @@
   "errors": [
     {
       "code": 6000,
-      "name": "GameAlreadyStarted",
-      "msg": "Game has already started"
+      "name": "PlayerNotInGame",
+      "msg": "Player not in a game"
     },
     {
       "code": 6001,
-      "name": "NotEnoughPlayers",
-      "msg": "Not enough players to start game"
-    },
-    {
-      "code": 6002,
-      "name": "CannotStartGame",
-      "msg": "Cannot start game - not lobby owner and not all players ready"
-    },
-    {
-      "code": 6003,
-      "name": "NotLobbyOwner",
-      "msg": "Only lobby owner can start the game"
+      "name": "PlayerNotInThisGame",
+      "msg": "Player not in this specific game"
     }
   ],
   "types": [
@@ -402,6 +392,18 @@
           {
             "name": "map_selection",
             "type": "u8"
+          },
+          {
+            "name": "team_a_players",
+            "type": {
+              "vec": "pubkey"
+            }
+          },
+          {
+            "name": "team_b_players",
+            "type": {
+              "vec": "pubkey"
+            }
           }
         ]
       }
