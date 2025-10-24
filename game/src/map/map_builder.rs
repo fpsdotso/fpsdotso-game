@@ -117,10 +117,14 @@ impl MapBuilder {
         }
     }
 
-    /// Load a map from file
+    /// Load a map from file (supports both Borsh and JSON formats)
     pub fn load_map(path: &str) -> Result<Self, String> {
         let bytes = fs::read(path).map_err(|e| format!("Failed to read file: {}", e))?;
-        let map = Map::from_json_bytes(&bytes).map_err(|e| format!("Failed to parse map: {}", e))?;
+
+        // Try Borsh first, fall back to JSON for backwards compatibility
+        let map = Map::from_borsh_bytes(&bytes)
+            .or_else(|_| Map::from_json_bytes(&bytes).map_err(|e| format!("{}", e)))
+            .map_err(|e| format!("Failed to parse map (tried both Borsh and JSON): {}", e))?;
 
         let mut builder = Self::new(map.name.clone());
         builder.map = map;
@@ -129,9 +133,9 @@ impl MapBuilder {
         Ok(builder)
     }
 
-    /// Save the map to file
+    /// Save the map to file (uses Borsh format for compactness)
     pub fn save_map(&self, path: &str) -> Result<(), String> {
-        let bytes = self.map.to_json_bytes().map_err(|e| format!("Failed to serialize map: {}", e))?;
+        let bytes = self.map.to_borsh_bytes().map_err(|e| format!("Failed to serialize map: {}", e))?;
 
         if bytes.len() > 10240 {
             return Err(format!("Map size ({} bytes) exceeds 10KB limit!", bytes.len()));
@@ -958,10 +962,14 @@ impl MapBuilder {
             return;
         }
 
-        // Decode base64 and load map
+        // Decode base64 and load map (supports both Borsh and JSON)
         match general_purpose::STANDARD.decode(base64_data) {
             Ok(bytes) => {
-                match Map::from_json_bytes(&bytes) {
+                // Try Borsh first, fall back to JSON for backwards compatibility
+                let map_result = Map::from_borsh_bytes(&bytes)
+                    .or_else(|_| Map::from_json_bytes(&bytes).map_err(|e| format!("{}", e)));
+
+                match map_result {
                     Ok(map) => {
                         self.map = map;
                         self.selected_object = None;
@@ -1022,7 +1030,7 @@ impl MapBuilder {
                 }
 
                 if ui.button_with_size("Save Map", [180.0, 25.0]) {
-                    match self.map.to_json_bytes() {
+                    match self.map.to_borsh_bytes() {
                         Ok(bytes) => {
                             use base64::{Engine as _, engine::general_purpose};
                             let base64_string = general_purpose::STANDARD.encode(&bytes);
@@ -1267,10 +1275,10 @@ impl MapBuilder {
                 ui.separator();
 
                 ui.text(format!("Mode: {:?}", self.mode));
-                ui.text(format!("Objects: {}/400", self.map.objects.len()));
+                ui.text(format!("Objects: {}/600", self.map.objects.len())); // Updated capacity with Borsh
 
-                // Calculate actual size
-                let actual_size = match self.map.to_json_bytes() {
+                // Calculate actual size using Borsh (more compact than JSON)
+                let actual_size = match self.map.to_borsh_bytes() {
                     Ok(bytes) => bytes.len(),
                     Err(_) => 0,
                 };
@@ -1639,7 +1647,7 @@ impl MapBuilder {
             pub fn emscripten_run_script(script: *const i8);
         }
 
-        match self.map.to_json_bytes() {
+        match self.map.to_borsh_bytes() {
             Ok(bytes) => {
                 let base64_string = general_purpose::STANDARD.encode(&bytes);
 
@@ -1889,8 +1897,11 @@ impl MapBuilder {
                 if !base64_str.is_empty() {
                     // Decode base64
                     if let Ok(bytes) = general_purpose::STANDARD.decode(base64_str) {
-                        // Parse map from bytes
-                        match Map::from_json_bytes(&bytes) {
+                        // Parse map from bytes (try Borsh first, fall back to JSON)
+                        let map_result = Map::from_borsh_bytes(&bytes)
+                            .or_else(|_| Map::from_json_bytes(&bytes).map_err(|e| format!("{}", e)));
+
+                        match map_result {
                             Ok(loaded_map) => {
                                 // Get the map ID for status message
                                 let js_get_id = CString::new("typeof Module.loadedMapId !== 'undefined' ? Module.loadedMapId : 'unknown'").unwrap();

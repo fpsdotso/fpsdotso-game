@@ -1,12 +1,13 @@
 use raylib::prelude::*;
 use serde::{Deserialize, Serialize};
+use borsh::{BorshSerialize, BorshDeserialize};
 
 /// Maximum world size (50x50 units)
 pub const WORLD_SIZE: f32 = 50.0;
 pub const WORLD_HALF_SIZE: f32 = WORLD_SIZE / 2.0;
 
 /// Types of 3D models that can be placed in the map
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, BorshSerialize, BorshDeserialize, PartialEq, Eq)]
 pub enum ModelType {
     Cube,
     Rectangle,
@@ -20,44 +21,32 @@ pub enum ModelType {
 
 /// Compact representation of a 3D object in the map
 /// Uses 16-bit integers for positions and rotations to save space
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// Borsh-serialized for Solana/Anchor compatibility
+#[derive(Debug, Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 pub struct MapObject {
     /// Model type
-    #[serde(rename = "t")]
     pub model_type: ModelType,
 
     /// Position (stored as i16, converted to/from f32)
     /// Range: -100.0 to 100.0 (scaled from i16 range)
-    #[serde(rename = "px")]
     pub pos_x: i16,
-    #[serde(rename = "py")]
     pub pos_y: i16,
-    #[serde(rename = "pz")]
     pub pos_z: i16,
 
     /// Rotation in degrees (0-360, stored as u16)
-    #[serde(rename = "rx")]
     pub rot_x: u16,
-    #[serde(rename = "ry")]
     pub rot_y: u16,
-    #[serde(rename = "rz")]
     pub rot_z: u16,
 
     /// Scale (stored as u8, divided by 10 to get actual scale)
     /// Range: 0.1 to 25.5
-    #[serde(rename = "sx")]
     pub scale_x: u8,
-    #[serde(rename = "sy")]
     pub scale_y: u8,
-    #[serde(rename = "sz")]
     pub scale_z: u8,
 
     /// Color (RGB)
-    #[serde(rename = "cr")]
     pub color_r: u8,
-    #[serde(rename = "cg")]
     pub color_g: u8,
-    #[serde(rename = "cb")]
     pub color_b: u8,
 }
 
@@ -328,25 +317,20 @@ impl MapObject {
 }
 
 /// Map data structure - designed to fit in ~10KB
-/// At 24 bytes per object, we can store ~400 objects in 10KB
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// At ~16 bytes per object (Borsh-serialized), we can store ~600 objects in 10KB
+/// Borsh serialization is more compact than JSON and compatible with Solana/Anchor
+#[derive(Debug, Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 pub struct Map {
     /// Map metadata
-    #[serde(rename = "n")]
     pub name: String,
-    #[serde(rename = "v")]
     pub version: u8,
 
     /// Collection of map objects
-    #[serde(rename = "o")]
     pub objects: Vec<MapObject>,
 
     /// Spawn point for players
-    #[serde(rename = "sx")]
     pub spawn_x: i16,
-    #[serde(rename = "sy")]
     pub spawn_y: i16,
-    #[serde(rename = "sz")]
     pub spawn_z: i16,
 }
 
@@ -400,19 +384,45 @@ impl Map {
         }
     }
 
-    /// Save map to JSON bytes
+    /// Save map to Borsh bytes (compact binary format for Solana)
+    pub fn to_borsh_bytes(&self) -> Result<Vec<u8>, std::io::Error> {
+        borsh::to_vec(self)
+    }
+
+    /// Load map from Borsh bytes
+    pub fn from_borsh_bytes(bytes: &[u8]) -> Result<Self, std::io::Error> {
+        borsh::from_slice(bytes)
+    }
+
+    /// Save map to JSON bytes (legacy format, for backwards compatibility)
     pub fn to_json_bytes(&self) -> Result<Vec<u8>, serde_json::Error> {
         serde_json::to_vec(self)
     }
 
-    /// Load map from JSON bytes
+    /// Load map from JSON bytes (legacy format, for backwards compatibility)
     pub fn from_json_bytes(bytes: &[u8]) -> Result<Self, serde_json::Error> {
         serde_json::from_slice(bytes)
     }
 
-    /// Get estimated size in bytes
+    /// Get estimated size in bytes (Borsh format)
+    pub fn estimated_size_borsh(&self) -> usize {
+        // More accurate estimate for Borsh serialization:
+        // - String name: 4 bytes (length) + name.len()
+        // - version: 1 byte
+        // - Vec<MapObject>: 4 bytes (length) + (16 bytes per object)
+        //   - ModelType: 1 byte (enum discriminant)
+        //   - pos: 3 * 2 bytes = 6 bytes
+        //   - rot: 3 * 2 bytes = 6 bytes
+        //   - scale: 3 * 1 byte = 3 bytes
+        //   - color: 3 * 1 byte = 3 bytes
+        //   Total per object: ~16 bytes
+        // - spawn: 3 * 2 bytes = 6 bytes
+        4 + self.name.len() + 1 + 4 + (self.objects.len() * 16) + 6
+    }
+
+    /// Get estimated size in bytes (legacy, for backwards compatibility)
     pub fn estimated_size(&self) -> usize {
-        // Rough estimate: 24 bytes per object + metadata
+        // Rough estimate for JSON: 24 bytes per object + metadata
         self.objects.len() * 24 + 100
     }
 }
@@ -432,7 +442,7 @@ mod tests {
     }
 
     #[test]
-    fn test_map_serialization() {
+    fn test_map_json_serialization() {
         let mut map = Map::new("Test Map".to_string());
         map.add_object(MapObject::new(ModelType::Cube));
 
@@ -441,5 +451,46 @@ mod tests {
 
         assert_eq!(loaded_map.name, "Test Map");
         assert_eq!(loaded_map.objects.len(), 1);
+    }
+
+    #[test]
+    fn test_map_borsh_serialization() {
+        let mut map = Map::new("Test Map".to_string());
+        map.add_object(MapObject::new(ModelType::Cube));
+        map.add_object(MapObject::new(ModelType::Sphere));
+
+        // Serialize to Borsh
+        let bytes = map.to_borsh_bytes().unwrap();
+
+        // Borsh should be more compact than JSON
+        let json_bytes = map.to_json_bytes().unwrap();
+        assert!(bytes.len() < json_bytes.len(),
+            "Borsh ({} bytes) should be more compact than JSON ({} bytes)",
+            bytes.len(), json_bytes.len());
+
+        // Deserialize and verify
+        let loaded_map = Map::from_borsh_bytes(&bytes).unwrap();
+        assert_eq!(loaded_map.name, "Test Map");
+        assert_eq!(loaded_map.objects.len(), 2);
+        assert_eq!(loaded_map.objects[0].model_type, ModelType::Cube);
+        assert_eq!(loaded_map.objects[1].model_type, ModelType::Sphere);
+    }
+
+    #[test]
+    fn test_borsh_size_estimation() {
+        let mut map = Map::new("My Map".to_string());
+        for _ in 0..10 {
+            map.add_object(MapObject::new(ModelType::Cube));
+        }
+
+        let estimated = map.estimated_size_borsh();
+        let actual = map.to_borsh_bytes().unwrap().len();
+
+        // Estimation should be close to actual (within 20%)
+        let diff = (estimated as i32 - actual as i32).abs() as f32;
+        let percent_diff = (diff / actual as f32) * 100.0;
+        assert!(percent_diff < 20.0,
+            "Estimation ({} bytes) should be close to actual ({} bytes), diff: {:.1}%",
+            estimated, actual, percent_diff);
     }
 }
