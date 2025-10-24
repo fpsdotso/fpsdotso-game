@@ -946,9 +946,13 @@ export async function initPlayer(username) {
  * @param {string} mapName - Map name (not used in smart contract)
  */
 export async function createGame(lobbyName, mapName) {
-  console.log(`📝 Creating game: ${lobbyName} on ${mapName}`);
-  // The smart contract initGame doesn't take parameters, but we log them for debugging
-  return await initGame();
+  console.log(`📝 Creating game: ${lobbyName} on map: ${mapName}`);
+
+  // map_id is now a string in the contract
+  const mapId = String(mapName);
+  console.log(`📝 Using map_id: ${mapId}`);
+
+  return await initGame(mapId);
 }
 
 /**
@@ -991,8 +995,9 @@ export async function getPlayerCurrentGame() {
 /**
  * Initialize a new game
  * This requires the player to be initialized first
+ * @param {string} mapId - The map ID (string) to use for the game
  */
-export async function initGame() {
+export async function initGame(mapId) {
   if (!matchmakingProgram || !wallet) {
     console.error(
       "Matchmaking program not initialized or wallet not connected"
@@ -1001,7 +1006,7 @@ export async function initGame() {
   }
 
   try {
-    console.log("📝 Initializing game...");
+    console.log(`📝 Initializing game with map_id: ${mapId}...`);
 
     // First, check if player is already in a game
     const currentGame = await getPlayerCurrentGame();
@@ -1036,7 +1041,7 @@ export async function initGame() {
     );
 
     const tx = await matchmakingProgram.methods
-      .initGame()
+      .initGame(mapId)
       .accounts({
         game: gamePda,
         player: playerPda,

@@ -147,6 +147,13 @@ export function initGameBridge() {
       console.log("[Game Bridge] setReadyState result:", result);
       return result;
     },
+
+    getMapDataById: async (mapId) => {
+      console.log("[Game Bridge] getMapDataById called:", mapId);
+      const result = await solanaBridge.getMapData(mapId, "borsh");
+      console.log("[Game Bridge] getMapDataById result:", result ? `${result.length} bytes` : 'null');
+      return result;
+    },
   };
 
   console.log("✅ Game bridge initialized");

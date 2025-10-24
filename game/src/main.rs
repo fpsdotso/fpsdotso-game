@@ -301,28 +301,29 @@ fn main() {
 
         // Check if game should start (when game state changes to 1)
         if menu_state.game_should_start {
+            println!("═══════════════════════════════════════════════");
+            println!("🎮 GAME_SHOULD_START FLAG IS TRUE!");
             println!("🎮 Starting game - transitioning from menu to game!");
+            println!("🔍 Current map ID from blockchain: {:?}", menu_state.current_map_name);
+            println!("═══════════════════════════════════════════════");
 
-            // Load a default map for now (you can customize this to load the actual map from the lobby)
-            // For now, we'll create a simple default map
-            use crate::map::Map;
-            let default_map = Map {
-                name: "Lobby Map".to_string(),
-                version: 1,
-                objects: vec![], // Empty map for now, will be populated from blockchain
-                spawn_x: 0,
-                spawn_y: 0,
-                spawn_z: 0,
-            };
+            // Fetch the map from blockchain using JavaScript
+            if let Some(map_id) = menu_state.current_map_name.clone() {
+                println!("🗺️ Fetching map data for ID: '{}'", map_id);
+                menu_state.fetch_map_data(&map_id);
 
-            game_state.load_map(default_map);
-            game_state.start_playing(&mut rl);
+                // Set a flag to indicate we're waiting for map data
+                menu_state.game_should_start = false;
+                menu_state.waiting_for_map_data = true;
+            } else {
+                println!("⚠️ No map ID in game data, cannot start game");
+                menu_state.game_should_start = false;
+            }
+        }
 
-            // Reset the flag
-            menu_state.game_should_start = false;
-
-            // Exit lobby UI
-            menu_state.in_lobby = false;
+        // Check if map data has been loaded and start the game
+        if menu_state.waiting_for_map_data {
+            menu_state.check_map_data_response(&mut game_state, &mut rl);
         }
 
         // Update game state if playing

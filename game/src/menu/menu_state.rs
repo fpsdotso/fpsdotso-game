@@ -70,6 +70,8 @@ pub struct MenuState {
     /// Game state tracking
     pub current_game_state: u8, // 0=waiting, 1=active, 2=ended, 3=paused
     pub game_should_start: bool, // Flag to signal game should transition to playing
+    pub current_map_name: Option<String>, // Map ID for the current game
+    pub waiting_for_map_data: bool, // Flag to indicate we're waiting for map data from blockchain
 
     /// Player state polling
     pub check_player_game_pending: bool, // Flag to indicate we're checking player's current game
@@ -108,6 +110,8 @@ impl MenuState {
             set_ready_pending: false,
             current_game_state: 0,
             game_should_start: false,
+            current_map_name: None,
+            waiting_for_map_data: false,
             check_player_game_pending: false,
         };
         
@@ -961,24 +965,34 @@ impl MenuState {
 
         let check_js = CString::new("Module.lobbyDataResult || null").unwrap();
         let result_ptr = unsafe { emscripten_run_script_string(check_js.as_ptr()) };
-        
+
         if !result_ptr.is_null() {
             let result_cstr = unsafe { std::ffi::CStr::from_ptr(result_ptr) };
             let result_str = result_cstr.to_string_lossy();
-            
+
             if result_str != "null" && !result_str.is_empty() {
-                println!("🔍 Lobby data result: {}", result_str);
-                
+                println!("🔍 Lobby data result received: {}", &result_str[..result_str.len().min(200)]);
+
                 if let Ok(result) = serde_json::from_str::<serde_json::Value>(&result_str) {
                     if let Some(success) = result.get("success") {
                         if success.as_bool().unwrap_or(false) {
                             if let Some(game) = result.get("game") {
+                                println!("📦 Processing game data from blockchain");
+                                println!("📦 Game data keys: {:?}", game.as_object().map(|o| o.keys().collect::<Vec<_>>()));
                                 self.populate_team_rosters(game);
+                            } else {
+                                println!("⚠️ No game data in response");
                             }
+                        } else {
+                            println!("⚠️ Response success was false");
                         }
+                    } else {
+                        println!("⚠️ No success field in response");
                     }
+                } else {
+                    println!("⚠️ Failed to parse JSON response");
                 }
-                
+
                 // Clear the result
                 let clear_js = CString::new("Module.lobbyDataResult = null").unwrap();
                 unsafe {
@@ -995,6 +1009,8 @@ impl MenuState {
 
     /// Populate team rosters from game data
     fn populate_team_rosters(&mut self, game: &serde_json::Value) {
+        println!("📋 populate_team_rosters called");
+
         // Clear existing rosters
         self.lobby_team_a.clear();
         self.lobby_team_b.clear();
@@ -1015,10 +1031,27 @@ impl MenuState {
         let old_game_state = self.current_game_state;
         self.current_game_state = game_state;
 
+        println!("🎲 Game state: old={}, new={}", old_game_state, game_state);
+
+        // Get map ID from game data (it's a string)
+        if let Some(map_id) = game.get("mapId").and_then(|v| v.as_str()) {
+            self.current_map_name = Some(map_id.to_string());
+            println!("🗺️ Current map ID from blockchain: {}", map_id);
+        } else {
+            println!("⚠️ No map ID found in game data");
+            // Debug: print all keys in game data
+            if let Some(obj) = game.as_object() {
+                println!("📋 Available keys in game data: {:?}", obj.keys().collect::<Vec<_>>());
+            }
+        }
+
         // If game state changed from 0 (waiting) to 1 (active), signal game should start
         if old_game_state == 0 && game_state == 1 {
             println!("🎮 GAME STATE CHANGED TO ACTIVE! Signaling game start...");
+            println!("🚀 Setting game_should_start = true");
             self.game_should_start = true;
+        } else if game_state == 1 {
+            println!("ℹ️ Game state is already active (state=1), but not transitioning from waiting");
         }
 
         // Get lobby leader info
@@ -1546,6 +1579,129 @@ impl MenuState {
 
     #[cfg(not(target_os = "emscripten"))]
     pub fn check_set_ready_response(&mut self) {
+        // Not available outside of browser
+    }
+
+    /// Fetch map data from blockchain by map ID
+    #[cfg(target_os = "emscripten")]
+    pub fn fetch_map_data(&mut self, map_id: &str) {
+        extern "C" {
+            pub fn emscripten_run_script(script: *const i8);
+        }
+        use std::ffi::CString;
+
+        let js_code = format!(
+            r#"
+            (async function() {{
+                try {{
+                    console.log('🗺️ Fetching map data for ID: {}');
+                    const mapData = await window.gameBridge.getMapDataById('{}');
+                    if (mapData) {{
+                        // Store as base64 since we're passing binary data
+                        const base64 = btoa(String.fromCharCode(...new Uint8Array(mapData)));
+                        Module.mapDataResult = JSON.stringify({{ success: true, data: base64 }});
+                    }} else {{
+                        Module.mapDataResult = JSON.stringify({{ error: 'Failed to fetch map data' }});
+                    }}
+                }} catch (error) {{
+                    console.error('❌ Error fetching map data:', error);
+                    Module.mapDataResult = JSON.stringify({{ error: error.message }});
+                }}
+            }})();
+            "#,
+            map_id, map_id
+        );
+
+        let c_str = CString::new(js_code).unwrap();
+        unsafe {
+            emscripten_run_script(c_str.as_ptr());
+        }
+    }
+
+    #[cfg(not(target_os = "emscripten"))]
+    pub fn fetch_map_data(&mut self, _map_id: &str) {
+        // Not available outside of browser
+    }
+
+    /// Check for map data response and start the game
+    #[cfg(target_os = "emscripten")]
+    pub fn check_map_data_response(&mut self, game_state: &mut crate::game::GameState, rl: &mut crate::RaylibHandle) {
+        extern "C" {
+            pub fn emscripten_run_script_string(script: *const i8) -> *const i8;
+            pub fn emscripten_run_script(script: *const i8);
+        }
+        use std::ffi::CString;
+
+        let check_js = CString::new("Module.mapDataResult || null").unwrap();
+        let result_ptr = unsafe { emscripten_run_script_string(check_js.as_ptr()) };
+
+        if !result_ptr.is_null() {
+            let result_cstr = unsafe { std::ffi::CStr::from_ptr(result_ptr) };
+            let result_str = result_cstr.to_string_lossy();
+
+            if result_str != "null" && !result_str.is_empty() {
+                println!("🗺️ Map data result received");
+
+                if let Ok(result) = serde_json::from_str::<serde_json::Value>(&result_str) {
+                    if let Some(success) = result.get("success") {
+                        if success.as_bool().unwrap_or(false) {
+                            if let Some(base64_data) = result.get("data").and_then(|v| v.as_str()) {
+                                println!("📦 Processing map data from blockchain");
+
+                                // Decode base64 to bytes
+                                use base64::{Engine as _, engine::general_purpose};
+                                match general_purpose::STANDARD.decode(base64_data) {
+                                    Ok(bytes) => {
+                                        println!("🗺️ Decoded {} bytes of map data", bytes.len());
+
+                                        // Deserialize map from Borsh bytes
+                                        use crate::map::Map;
+                                        match Map::from_borsh_bytes(&bytes) {
+                                            Ok(map) => {
+                                                println!("✅ Successfully loaded map: '{}' with {} objects", map.name, map.objects.len());
+                                                game_state.load_map(map);
+                                                game_state.start_playing(rl);
+
+                                                // Reset flags
+                                                self.waiting_for_map_data = false;
+                                                self.in_lobby = false;
+                                            },
+                                            Err(e) => {
+                                                println!("❌ Failed to deserialize map data: {}", e);
+                                                self.waiting_for_map_data = false;
+                                            }
+                                        }
+                                    },
+                                    Err(e) => {
+                                        println!("❌ Failed to decode base64 map data: {}", e);
+                                        self.waiting_for_map_data = false;
+                                    }
+                                }
+                            } else {
+                                println!("⚠️ No data in map response");
+                                self.waiting_for_map_data = false;
+                            }
+                        } else {
+                            println!("⚠️ Map fetch was not successful");
+                            self.waiting_for_map_data = false;
+                        }
+                    } else if let Some(error) = result.get("error") {
+                        println!("❌ Error fetching map: {}", error.as_str().unwrap_or("unknown"));
+                        self.waiting_for_map_data = false;
+                    }
+                }
+
+                // Clear the result
+                let clear_js = CString::new("Module.mapDataResult = null").unwrap();
+                unsafe {
+                    emscripten_run_script(clear_js.as_ptr());
+                }
+            }
+        }
+    }
+
+    #[cfg(not(target_os = "emscripten"))]
+    pub fn check_map_data_response(&mut self, _game_state: &mut crate::game::GameState, _rl: &mut crate::RaylibHandle) {
         // Not available outside of browser
     }
 }
