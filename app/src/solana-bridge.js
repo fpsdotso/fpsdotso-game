@@ -4,27 +4,59 @@
  */
 
 import { AnchorProvider, Program, web3 } from "@coral-xyz/anchor";
-import { Connection, PublicKey } from "@solana/web3.js";
+import { Connection, PublicKey, Transaction } from "@solana/web3.js";
 import mapRegistryIdl from "./idl/map_registry.json";
 import matchmakingIdl from "./idl/matchmaking.json";
+import gameIdl from "./idl/game.json";
 import * as EphemeralWallet from "./ephemeral-wallet.js";
 
 // Program IDs from the IDLs
 const PROGRAM_ID = new PublicKey(mapRegistryIdl.address);
 const MATCHMAKING_PROGRAM_ID = new PublicKey(matchmakingIdl.address);
+const GAME_PROGRAM_ID = new PublicKey(gameIdl.address);
+
+/**
+ * Simple wallet wrapper for Keypair to work with Anchor
+ */
+class NodeWallet {
+  constructor(keypair) {
+    this.keypair = keypair;
+  }
+
+  async signTransaction(tx) {
+    tx.partialSign(this.keypair);
+    return tx;
+  }
+
+  async signAllTransactions(txs) {
+    return txs.map((tx) => {
+      tx.partialSign(this.keypair);
+      return tx;
+    });
+  }
+
+  get publicKey() {
+    return this.keypair.publicKey;
+  }
+}
+
+// Magicblock Delegation Program (as defined in IDL)
+const DELEGATION_PROGRAM_ID = new PublicKey("DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh");
 
 // Cluster/Network configuration
-//const NETWORK = process.env.REACT_APP_SOLANA_NETWORK || 'devnet';
-//const RPC_URL = process.env.REACT_APP_RPC_URL || web3.clusterApiUrl(NETWORK) || "http://0.0.0.0:8899";
-
 const RPC_URL = process.env.REACT_APP_SOLANA_RPC_URL || "http://127.0.0.1:8899";
+const EPHEMERAL_RPC_URL = process.env.REACT_APP_EPHEMERAL_RPC_URL || "http://127.0.0.1:8899";
 console.log(`🌐 Using Solana RPC URL: ${RPC_URL}`);
+console.log(`⚡ Using Ephemeral RPC URL: ${EPHEMERAL_RPC_URL}`);
 
 // Global state
 let connection = null;
+let ephemeralConnection = null;
 let provider = null;
+let ephemeralProvider = null;
 let program = null;
 let matchmakingProgram = null;
+let gameProgram = null;
 let wallet = null;
 
 /**
@@ -350,8 +382,12 @@ export async function initSolanaClient() {
     console.log("🚀 Initializing Solana client...");
     console.log(`📡 Connecting to Solana Network: ${RPC_URL}`);
 
-    // Create connection
+    // Create main connection
     connection = new Connection(RPC_URL, "confirmed");
+
+    // Create ephemeral connection for Magicblock
+    ephemeralConnection = new Connection(EPHEMERAL_RPC_URL, "confirmed");
+    console.log(`⚡ Ephemeral RPC initialized: ${EPHEMERAL_RPC_URL}`);
 
     // Test connection
     const version = await connection.getVersion();
@@ -399,6 +435,18 @@ export async function connectWallet() {
     // Initialize ephemeral wallet for Magicblock transactions
     const ephemeralInfo = await EphemeralWallet.initializeEphemeralWallet(wallet);
     console.log("✅ Ephemeral wallet initialized:", ephemeralInfo.publicKey);
+
+    // Create ephemeral provider with ephemeral wallet for game transactions
+    const ephemeralKeypair = EphemeralWallet.getEphemeralKeypair();
+    if (ephemeralKeypair) {
+      ephemeralProvider = new AnchorProvider(
+        ephemeralConnection,
+        new NodeWallet(ephemeralKeypair),
+        { commitment: "confirmed" }
+      );
+      gameProgram = new Program(gameIdl, ephemeralProvider);
+      console.log("✅ Game program initialized with ephemeral wallet");
+    }
 
     return {
       publicKey: response.publicKey.toString(),
@@ -1302,24 +1350,71 @@ export async function setReadyState(gamePubkey, isReady) {
   try {
     console.log(`📝 Setting ready state to: ${isReady} for game: ${gamePubkey}`);
 
+    // Get ephemeral wallet keypair - now required as signer
+    const ephemeralKeypair = EphemeralWallet.getEphemeralKeypair();
+    if (!ephemeralKeypair) {
+      throw new Error("Ephemeral wallet not initialized");
+    }
+
     // Derive player PDA
     const [playerPda] = PublicKey.findProgramAddressSync(
       [Buffer.from("player"), wallet.publicKey.toBuffer()],
       matchmakingProgram.programId
     );
 
+    // Derive buffer_pda (used by Magicblock for delegation)
+    const [bufferPda] = PublicKey.findProgramAddressSync(
+      [Buffer.from("buffer"), playerPda.toBuffer()],
+      DELEGATION_PROGRAM_ID
+    );
+
+    // Derive delegation_record_pda
+    const [delegationRecordPda] = PublicKey.findProgramAddressSync(
+      [Buffer.from("delegation"), playerPda.toBuffer()],
+      DELEGATION_PROGRAM_ID
+    );
+
+    // Derive delegation_metadata_pda
+    const [delegationMetadataPda] = PublicKey.findProgramAddressSync(
+      [Buffer.from("delegation-metadata"), playerPda.toBuffer()],
+      DELEGATION_PROGRAM_ID
+    );
+
     const gamePublicKey = new PublicKey(gamePubkey);
 
+    // Add local validator identity to remaining accounts if running on localnet
+    const remainingAccounts =
+      connection.rpcEndpoint.includes("localhost") ||
+      connection.rpcEndpoint.includes("127.0.0.1")
+        ? [
+            {
+              pubkey: new PublicKey("mAGicPQYBMvcYveUZA5F5UNNwyHvfYh5xkLS2Fr1mev"),
+              isSigner: false,
+              isWritable: false,
+            },
+          ]
+        : [];
+
+    // Build transaction with both main wallet and ephemeral wallet as signers
     const tx = await matchmakingProgram.methods
       .setReadyState(isReady)
       .accounts({
         game: gamePublicKey,
-        player: playerPda,
+        pda: playerPda,
         authority: wallet.publicKey,
+        signer: ephemeralKeypair.publicKey,
       })
+      .remainingAccounts(remainingAccounts)
+      .signers([ephemeralKeypair])
       .rpc();
 
-    console.log("✅ Ready state updated! Transaction:", tx);
+    if (isReady) {
+      console.log("✅ Ready state set to true! Player PDA delegated via Magicblock:", ephemeralKeypair.publicKey.toString());
+    } else {
+      console.log("✅ Ready state set to false!");
+    }
+    console.log("Transaction:", tx);
+
     return {
       transaction: tx,
       isReady: isReady,
@@ -1922,4 +2017,49 @@ export async function getEphemeralBalance() {
  */
 export function getEphemeralPublicKey() {
   return EphemeralWallet.getEphemeralPublicKey();
+}
+
+/**
+ * Send player input to game program (movement and rotation)
+ * This uses the ephemeral wallet and ephemeral RPC for high-speed transactions
+ * @param {Object} input - Player input {forward, backward, left, right, rotationY}
+ * @returns {string} Transaction signature
+ */
+export async function sendPlayerInput(input) {
+  if (!gameProgram) {
+    throw new Error("Game program not initialized");
+  }
+
+  const ephemeralKeypair = EphemeralWallet.getEphemeralKeypair();
+  if (!ephemeralKeypair) {
+    throw new Error("Ephemeral wallet not initialized");
+  }
+
+  try {
+    // Derive Player PDA (using main wallet's public key since that's the authority)
+    const mainWalletPubkey = wallet.publicKey;
+    const [playerPda] = PublicKey.findProgramAddressSync(
+      [Buffer.from("player"), mainWalletPubkey.toBuffer()],
+      MATCHMAKING_PROGRAM_ID
+    );
+
+    // Send input to game program on ephemeral rollup
+    const tx = await gameProgram.methods
+      .processInput(
+        input.forward || false,
+        input.backward || false,
+        input.left || false,
+        input.right || false,
+        input.rotationY || 0
+      )
+      .accounts({
+        player: playerPda,
+      })
+      .rpc();
+
+    return tx;
+  } catch (error) {
+    console.error("❌ Failed to send player input:", error);
+    throw error;
+  }
 }

@@ -1,0 +1,283 @@
+{
+  "address": "FZFQ2izwmvWzES3Ajn1BtMd5UBbt8UZ7EXgR63hK6sSE",
+  "metadata": {
+    "name": "game",
+    "version": "0.1.0",
+    "spec": "0.1.0",
+    "description": "Created with Anchor"
+  },
+  "instructions": [
+    {
+      "name": "commit_player_state",
+      "docs": [
+        "Manual commit player state back to mainnet"
+      ],
+      "discriminator": [
+        135,
+        5,
+        73,
+        196,
+        206,
+        115,
+        138,
+        141
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "player",
+          "writable": true
+        },
+        {
+          "name": "magic_program",
+          "address": "Magic11111111111111111111111111111111111111"
+        },
+        {
+          "name": "magic_context",
+          "writable": true,
+          "address": "MagicContext1111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "get_player_state",
+      "docs": [
+        "Get player state for debugging"
+      ],
+      "discriminator": [
+        58,
+        89,
+        181,
+        151,
+        226,
+        15,
+        148,
+        59
+      ],
+      "accounts": [
+        {
+          "name": "player"
+        }
+      ],
+      "args": [],
+      "returns": {
+        "defined": {
+          "name": "PlayerStateData"
+        }
+      }
+    },
+    {
+      "name": "process_input",
+      "docs": [
+        "Combined input processing - movement and rotation in one call",
+        "This is the main function for real-time gameplay"
+      ],
+      "discriminator": [
+        55,
+        185,
+        174,
+        43,
+        240,
+        173,
+        64,
+        144
+      ],
+      "accounts": [
+        {
+          "name": "player",
+          "writable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "forward",
+          "type": "bool"
+        },
+        {
+          "name": "backward",
+          "type": "bool"
+        },
+        {
+          "name": "left",
+          "type": "bool"
+        },
+        {
+          "name": "right",
+          "type": "bool"
+        },
+        {
+          "name": "delta_x",
+          "type": "f32"
+        },
+        {
+          "name": "delta_y",
+          "type": "f32"
+        },
+        {
+          "name": "delta_time",
+          "type": "f32"
+        },
+        {
+          "name": "sensitivity",
+          "type": "f32"
+        }
+      ]
+    },
+    {
+      "name": "process_movement",
+      "docs": [
+        "Separate movement processing for when you only need to update position"
+      ],
+      "discriminator": [
+        65,
+        198,
+        73,
+        223,
+        45,
+        208,
+        185,
+        176
+      ],
+      "accounts": [
+        {
+          "name": "player",
+          "writable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "forward",
+          "type": "bool"
+        },
+        {
+          "name": "backward",
+          "type": "bool"
+        },
+        {
+          "name": "left",
+          "type": "bool"
+        },
+        {
+          "name": "right",
+          "type": "bool"
+        },
+        {
+          "name": "delta_time",
+          "type": "f32"
+        }
+      ]
+    },
+    {
+      "name": "process_rotation",
+      "docs": [
+        "Separate rotation processing for camera updates"
+      ],
+      "discriminator": [
+        30,
+        108,
+        242,
+        104,
+        27,
+        65,
+        1,
+        121
+      ],
+      "accounts": [
+        {
+          "name": "player",
+          "writable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "delta_x",
+          "type": "f32"
+        },
+        {
+          "name": "delta_y",
+          "type": "f32"
+        },
+        {
+          "name": "sensitivity",
+          "type": "f32"
+        }
+      ]
+    },
+    {
+      "name": "process_undelegation",
+      "discriminator": [
+        196,
+        28,
+        41,
+        206,
+        48,
+        37,
+        51,
+        167
+      ],
+      "accounts": [
+        {
+          "name": "base_account",
+          "writable": true
+        },
+        {
+          "name": "buffer"
+        },
+        {
+          "name": "payer",
+          "writable": true
+        },
+        {
+          "name": "system_program"
+        }
+      ],
+      "args": [
+        {
+          "name": "account_seeds",
+          "type": {
+            "vec": "bytes"
+          }
+        }
+      ]
+    }
+  ],
+  "types": [
+    {
+      "name": "PlayerStateData",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "position_x",
+            "type": "f32"
+          },
+          {
+            "name": "position_y",
+            "type": "f32"
+          },
+          {
+            "name": "position_z",
+            "type": "f32"
+          },
+          {
+            "name": "rotation_x",
+            "type": "f32"
+          },
+          {
+            "name": "rotation_y",
+            "type": "f32"
+          },
+          {
+            "name": "rotation_z",
+            "type": "f32"
+          }
+        ]
+      }
+    }
+  ]
+}

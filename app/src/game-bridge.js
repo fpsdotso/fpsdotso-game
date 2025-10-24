@@ -171,6 +171,11 @@ export function initGameBridge() {
     getEphemeralPublicKey: () => {
       return solanaBridge.getEphemeralPublicKey();
     },
+
+    // Game input function for ephemeral rollup
+    sendPlayerInput: async (input) => {
+      return await solanaBridge.sendPlayerInput(input);
+    },
   };
 
   console.log("✅ Game bridge initialized");

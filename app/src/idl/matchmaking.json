@@ -251,31 +251,164 @@
           "writable": true
         },
         {
-          "name": "player",
+          "name": "buffer_pda",
           "writable": true,
           "pda": {
             "seeds": [
               {
                 "kind": "const",
                 "value": [
-                  112,
-                  108,
-                  97,
-                  121,
+                  98,
+                  117,
+                  102,
+                  102,
                   101,
                   114
                 ]
               },
               {
                 "kind": "account",
-                "path": "authority"
+                "path": "pda"
               }
-            ]
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                212,
+                163,
+                129,
+                74,
+                172,
+                231,
+                24,
+                75,
+                186,
+                80,
+                230,
+                229,
+                45,
+                107,
+                225,
+                195,
+                141,
+                91,
+                72,
+                174,
+                144,
+                185,
+                160,
+                241,
+                142,
+                230,
+                104,
+                50,
+                141,
+                252,
+                210,
+                7
+              ]
+            }
           }
         },
         {
+          "name": "delegation_record_pda",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  108,
+                  101,
+                  103,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pda"
+              }
+            ],
+            "program": {
+              "kind": "account",
+              "path": "delegation_program"
+            }
+          }
+        },
+        {
+          "name": "delegation_metadata_pda",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  108,
+                  101,
+                  103,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110,
+                  45,
+                  109,
+                  101,
+                  116,
+                  97,
+                  100,
+                  97,
+                  116,
+                  97
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pda"
+              }
+            ],
+            "program": {
+              "kind": "account",
+              "path": "delegation_program"
+            }
+          }
+        },
+        {
+          "name": "pda",
+          "docs": [
+            "It's validated by seeds and manually deserialized in the handler."
+          ],
+          "writable": true
+        },
+        {
           "name": "authority",
+          "writable": true,
           "signer": true
+        },
+        {
+          "name": "signer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "owner_program",
+          "address": "FK438BMUMqFqZj33Argueh89XGTwxEPXCEU7JgeMXLvA"
+        },
+        {
+          "name": "delegation_program",
+          "address": "DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
         }
       ],
       "args": [
@@ -330,6 +463,59 @@
         }
       ],
       "args": []
+    },
+    {
+      "name": "undelegate_player",
+      "discriminator": [
+        230,
+        242,
+        176,
+        199,
+        120,
+        26,
+        119,
+        243
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "player",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  108,
+                  97,
+                  121,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "payer"
+              }
+            ]
+          }
+        },
+        {
+          "name": "magic_program",
+          "address": "Magic11111111111111111111111111111111111111"
+        },
+        {
+          "name": "magic_context",
+          "writable": true,
+          "address": "MagicContext1111111111111111111111111111111"
+        }
+      ],
+      "args": []
     }
   ],
   "accounts": [
@@ -363,23 +549,8 @@
   "errors": [
     {
       "code": 6000,
-      "name": "GameAlreadyStarted",
-      "msg": "Game has already started"
-    },
-    {
-      "code": 6001,
-      "name": "NotEnoughPlayers",
-      "msg": "Not enough players to start game"
-    },
-    {
-      "code": 6002,
-      "name": "CannotStartGame",
-      "msg": "Cannot start game - not lobby owner and not all players ready"
-    },
-    {
-      "code": 6003,
-      "name": "NotLobbyOwner",
-      "msg": "Only lobby owner can start the game"
+      "name": "PlayerNotRegistered",
+      "msg": "Player not registered"
     }
   ],
   "types": [
@@ -525,6 +696,30 @@
           {
             "name": "game_counter",
             "type": "u32"
+          },
+          {
+            "name": "position_x",
+            "type": "f32"
+          },
+          {
+            "name": "position_y",
+            "type": "f32"
+          },
+          {
+            "name": "position_z",
+            "type": "f32"
+          },
+          {
+            "name": "rotation_x",
+            "type": "f32"
+          },
+          {
+            "name": "rotation_y",
+            "type": "f32"
+          },
+          {
+            "name": "rotation_z",
+            "type": "f32"
           }
         ]
       }
