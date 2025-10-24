@@ -16,7 +16,8 @@ const MATCHMAKING_PROGRAM_ID = new PublicKey(matchmakingIdl.address);
 //const NETWORK = process.env.REACT_APP_SOLANA_NETWORK || 'devnet';
 //const RPC_URL = process.env.REACT_APP_RPC_URL || web3.clusterApiUrl(NETWORK) || "http://0.0.0.0:8899";
 
-const RPC_URL = process.env.REACT_APP_RPC_URL || "http://127.0.0.1:8899";
+const RPC_URL = process.env.REACT_APP_SOLANA_RPC_URL || "http://127.0.0.1:8899";
+console.log(`🌐 Using Solana RPC URL: ${RPC_URL}`);
 
 // Global state
 let connection = null;
