@@ -1,5 +1,5 @@
 {
-  "address": "3a1k5qAbXzzvJL9HY47P4CMQ19rhvpyUdYXtq3jLzAa7",
+  "address": "FK438BMUMqFqZj33Argueh89XGTwxEPXCEU7JgeMXLvA",
   "metadata": {
     "name": "matchmaking",
     "version": "0.1.0",
@@ -9,7 +9,16 @@
   "instructions": [
     {
       "name": "init_game",
-      "discriminator": [251, 46, 12, 208, 184, 148, 157, 73],
+      "discriminator": [
+        251,
+        46,
+        12,
+        208,
+        184,
+        148,
+        157,
+        73
+      ],
       "accounts": [
         {
           "name": "game",
@@ -18,7 +27,12 @@
             "seeds": [
               {
                 "kind": "const",
-                "value": [103, 97, 109, 101]
+                "value": [
+                  103,
+                  97,
+                  109,
+                  101
+                ]
               },
               {
                 "kind": "account",
@@ -39,7 +53,14 @@
             "seeds": [
               {
                 "kind": "const",
-                "value": [112, 108, 97, 121, 101, 114]
+                "value": [
+                  112,
+                  108,
+                  97,
+                  121,
+                  101,
+                  114
+                ]
               },
               {
                 "kind": "account",
@@ -62,7 +83,16 @@
     },
     {
       "name": "init_player",
-      "discriminator": [114, 27, 219, 144, 50, 15, 228, 66],
+      "discriminator": [
+        114,
+        27,
+        219,
+        144,
+        50,
+        15,
+        228,
+        66
+      ],
       "accounts": [
         {
           "name": "player",
@@ -71,7 +101,14 @@
             "seeds": [
               {
                 "kind": "const",
-                "value": [112, 108, 97, 121, 101, 114]
+                "value": [
+                  112,
+                  108,
+                  97,
+                  121,
+                  101,
+                  114
+                ]
               },
               {
                 "kind": "account",
@@ -99,7 +136,16 @@
     },
     {
       "name": "join_game",
-      "discriminator": [107, 112, 18, 38, 56, 173, 60, 128],
+      "discriminator": [
+        107,
+        112,
+        18,
+        38,
+        56,
+        173,
+        60,
+        128
+      ],
       "accounts": [
         {
           "name": "game",
@@ -112,7 +158,14 @@
             "seeds": [
               {
                 "kind": "const",
-                "value": [112, 108, 97, 121, 101, 114]
+                "value": [
+                  112,
+                  108,
+                  97,
+                  121,
+                  101,
+                  114
+                ]
               },
               {
                 "kind": "account",
@@ -130,7 +183,16 @@
     },
     {
       "name": "leave_game",
-      "discriminator": [218, 226, 6, 0, 243, 34, 125, 201],
+      "discriminator": [
+        218,
+        226,
+        6,
+        0,
+        243,
+        34,
+        125,
+        201
+      ],
       "accounts": [
         {
           "name": "game",
@@ -143,7 +205,14 @@
             "seeds": [
               {
                 "kind": "const",
-                "value": [112, 108, 97, 121, 101, 114]
+                "value": [
+                  112,
+                  108,
+                  97,
+                  121,
+                  101,
+                  114
+                ]
               },
               {
                 "kind": "account",
@@ -161,7 +230,16 @@
     },
     {
       "name": "start_game",
-      "discriminator": [249, 47, 252, 172, 184, 162, 245, 14],
+      "discriminator": [
+        249,
+        47,
+        252,
+        172,
+        184,
+        162,
+        245,
+        14
+      ],
       "accounts": [
         {
           "name": "game",
@@ -173,7 +251,14 @@
             "seeds": [
               {
                 "kind": "const",
-                "value": [112, 108, 97, 121, 101, 114]
+                "value": [
+                  112,
+                  108,
+                  97,
+                  121,
+                  101,
+                  114
+                ]
               },
               {
                 "kind": "account",
@@ -193,11 +278,29 @@
   "accounts": [
     {
       "name": "Game",
-      "discriminator": [27, 90, 166, 125, 74, 100, 121, 18]
+      "discriminator": [
+        27,
+        90,
+        166,
+        125,
+        74,
+        100,
+        121,
+        18
+      ]
     },
     {
       "name": "Player",
-      "discriminator": [205, 222, 112, 7, 165, 155, 206, 218]
+      "discriminator": [
+        205,
+        222,
+        112,
+        7,
+        165,
+        155,
+        206,
+        218
+      ]
     }
   ],
   "errors": [
