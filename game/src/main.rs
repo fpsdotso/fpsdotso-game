@@ -3,9 +3,11 @@ use raylib_imgui::RaylibGui;
 
 mod map;
 mod menu;
+mod game;
 
 use map::MapBuilder;
 use menu::{MenuState, MenuTab, LobbyTab, WeaponsTab};
+use game::{GameState, GameMode, DebugMenu};
 
 /// Apply Solana-themed modern colors to ImGui
 pub fn apply_solana_ui_colors(_ui: &imgui::Ui) {
@@ -198,7 +200,7 @@ fn main() {
     // Initialize the Raylib window
     let (mut rl, thread) = raylib::init()
         .size(1280, 720)
-        .title("FPS.so Map Builder")
+        .title("FPS.so - First Person Shooter on Solana")
         .build();
 
     rl.set_target_fps(60);
@@ -206,61 +208,62 @@ fn main() {
     // Initialize imgui
     let mut gui = RaylibGui::new(&mut rl, &thread);
 
-    // Create menu state
-    let mut menu_state = MenuState::new();
+    // Create game state
+    let mut game_state = GameState::new();
+    let mut debug_menu = DebugMenu::new();
 
-    // Create a new map builder
-    let mut map_builder = MapBuilder::new("My Map".to_string());
-
-    // Viewport width (70% of screen)
-    let viewport_width = (1280.0 * 0.7) as i32;
-
-    // Track if mouse is over UI
-    let mut mouse_over_ui = false;
-
-    // Track if style has been applied
-    let mut style_applied = false;
+    // DISABLED: Menu and map editor
+    // let mut menu_state = MenuState::new();
+    // let mut map_builder = MapBuilder::new("My Map".to_string());
+    // let viewport_width = (1280.0 * 0.7) as i32;
+    // let mut mouse_over_ui = false;
+    // let mut style_applied = false;
 
     // Main game loop
     while !rl.window_should_close() {
         let delta = rl.get_frame_time();
 
-        // Handle save/load
-        if rl.is_key_pressed(KeyboardKey::KEY_F5) {
-            match map_builder.save_map("map.json") {
-                Ok(_) => println!("Map saved successfully!"),
-                Err(e) => eprintln!("Failed to save map: {}", e),
-            }
-        }
-        if rl.is_key_pressed(KeyboardKey::KEY_F9) {
-            match MapBuilder::load_map("map.json") {
-                Ok(loaded) => {
-                    map_builder = loaded;
-                    println!("Map loaded successfully!");
-                }
-                Err(e) => eprintln!("Failed to load map: {}", e),
-            }
-        }
+        // Update game state
+        game_state.update(&mut rl, delta);
 
         // Start imgui frame
         let ui = gui.begin(&mut rl);
 
-        // Always draw the menu UI with tabs - content changes based on selected tab
-        mouse_over_ui = draw_menu_ui(ui, &mut menu_state, &mut map_builder, viewport_width as f32, &mut style_applied);
-
-        // Update map builder (after imgui, so we know if mouse is over UI)
-        if menu_state.current_tab == MenuTab::MapEditor {
-            map_builder.update(&rl, delta, mouse_over_ui);
+        // Draw debug menu or game HUD based on game mode
+        if game_state.mode == GameMode::DebugMenu {
+            // Show debug menu
+            if let Some(map) = debug_menu.draw(&ui) {
+                game_state.load_map(map);
+                game_state.start_playing(&mut rl);
+            }
+        } else {
+            // Show minimal HUD when playing
+            ui.window("HUD")
+                .position([10.0, 10.0], imgui::Condition::Always)
+                .size([200.0, 100.0], imgui::Condition::Always)
+                .title_bar(false)
+                .resizable(false)
+                .movable(false)
+                .bg_alpha(0.3)
+                .build(|| {
+                    if let Some(ref player) = game_state.player {
+                        ui.text(format!("Pos: ({:.1}, {:.1}, {:.1})",
+                            player.position.x,
+                            player.position.y,
+                            player.position.z
+                        ));
+                    }
+                    ui.text_colored([0.7, 0.7, 0.7, 1.0], "ESC - Menu");
+                });
         }
 
         // Render 3D scene
         let mut d = rl.begin_drawing(&thread);
-        d.clear_background(Color::new(13, 13, 17, 255)); // Dark purple-tinted background to match Solana theme
+        // Lighter sky color for better visibility and ambient lighting
+        d.clear_background(Color::new(60, 70, 90, 255)); // Light blue-gray sky
 
-        // Only render 3D viewport in map editor mode
-        if menu_state.current_tab == MenuTab::MapEditor {
-            map_builder.render(&mut d, &thread, viewport_width);
-        }
+        // Render the game world
+        game_state.render(&mut d, &thread);
 
         // End imgui frame - this draws the imgui overlay
         gui.end();
