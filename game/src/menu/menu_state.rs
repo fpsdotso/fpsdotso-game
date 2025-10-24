@@ -71,6 +71,7 @@ pub struct MenuState {
     pub current_game_state: u8, // 0=waiting, 1=active, 2=ended, 3=paused
     pub game_should_start: bool, // Flag to signal game should transition to playing
     pub current_map_name: Option<String>, // Map ID for the current game
+    pub current_game_pubkey: Option<String>, // Game PDA public key for blockchain sync
     pub waiting_for_map_data: bool, // Flag to indicate we're waiting for map data from blockchain
 
     /// Player state polling
@@ -111,6 +112,7 @@ impl MenuState {
             current_game_state: 0,
             game_should_start: false,
             current_map_name: None,
+            current_game_pubkey: None,
             waiting_for_map_data: false,
             check_player_game_pending: false,
         };
@@ -635,6 +637,7 @@ impl MenuState {
                     println!("🚪 Automatically entering the created lobby...");
                     self.in_lobby = true;
                     self.current_lobby_id = Some(pda_str.to_string());
+                    self.current_game_pubkey = Some(pda_str.to_string()); // Store for blockchain sync
                     self.is_lobby_leader = true; // Creator is always the leader
 
                     // Initialize team rosters with creator on Team A
@@ -1428,6 +1431,7 @@ impl MenuState {
                                         // Auto-enter lobby
                                         self.in_lobby = true;
                                         self.current_lobby_id = Some(game_id_str.to_string());
+                                        self.current_game_pubkey = Some(game_id_str.to_string()); // Store for blockchain sync
 
                                         // Fetch lobby data to populate teams and check if leader
                                         self.fetch_lobby_data();
@@ -1660,6 +1664,15 @@ impl MenuState {
                                             Ok(map) => {
                                                 println!("✅ Successfully loaded map: '{}' with {} objects", map.name, map.objects.len());
                                                 game_state.load_map(map);
+
+                                                // Set the current game pubkey for blockchain sync
+                                                if let Some(game_pubkey) = &self.current_game_pubkey {
+                                                    println!("🎮 Setting current game pubkey for sync: {}", game_pubkey);
+                                                    game_state.set_current_game(game_pubkey.clone());
+                                                } else {
+                                                    println!("⚠️ No game pubkey available for blockchain sync");
+                                                }
+
                                                 game_state.start_playing(rl);
 
                                                 // Reset flags

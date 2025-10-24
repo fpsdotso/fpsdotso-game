@@ -105,6 +105,7 @@ impl LobbyView {
             menu_state.leave_lobby();
             menu_state.in_lobby = false;
             menu_state.current_lobby_id = None;
+            menu_state.current_game_pubkey = None; // Clear game pubkey
             menu_state.lobby_team_a.clear();
             menu_state.lobby_team_b.clear();
             menu_state.lobby_leader = None;

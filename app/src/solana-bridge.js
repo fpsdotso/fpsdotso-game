@@ -2020,9 +2020,73 @@ export function getEphemeralPublicKey() {
 }
 
 /**
+ * Get all players in a game for synchronization
+ * @param {string} gamePublicKey - The game's public key
+ * @returns {Array} Array of player data with positions
+ */
+export async function getGamePlayers(gamePublicKey) {
+  if (!matchmakingProgram) {
+    throw new Error("Matchmaking program not initialized");
+  }
+
+  try {
+    // Fetch the game account
+    const game = await matchmakingProgram.account.game.fetch(gamePublicKey);
+
+    // Get all player public keys from both teams
+    const allPlayerKeys = [
+      ...(game.teamAPlayers || []),
+      ...(game.teamBPlayers || [])
+    ];
+
+    // Fetch all player accounts
+    const players = await Promise.all(
+      allPlayerKeys.map(async (playerKey) => {
+        try {
+          const player = await matchmakingProgram.account.player.fetch(playerKey);
+          return {
+            publicKey: playerKey.toString(),
+            authority: player.authority.toString(),
+            username: player.username,
+            team: player.team,
+            positionX: player.positionX,
+            positionY: player.positionY,
+            positionZ: player.positionZ,
+            rotationX: player.rotationX,
+            rotationY: player.rotationY,
+            rotationZ: player.rotationZ,
+            isAlive: player.isAlive,
+          };
+        } catch (error) {
+          console.error(`Failed to fetch player ${playerKey.toString()}:`, error);
+          return null;
+        }
+      })
+    );
+
+    // Filter out null values (failed fetches)
+    return players.filter(p => p !== null);
+  } catch (error) {
+    console.error("❌ Failed to get game players:", error);
+    throw error;
+  }
+}
+
+/**
+ * Get current player's authority public key
+ * @returns {string} Current wallet's public key
+ */
+export function getCurrentPlayerAuthority() {
+  if (!wallet) {
+    throw new Error("Wallet not connected");
+  }
+  return wallet.publicKey.toString();
+}
+
+/**
  * Send player input to game program (movement and rotation)
  * This uses the ephemeral wallet and ephemeral RPC for high-speed transactions
- * @param {Object} input - Player input {forward, backward, left, right, rotationY}
+ * @param {Object} input - Player input {forward, backward, left, right, deltaX, deltaY, deltaTime, sensitivity}
  * @returns {string} Transaction signature
  */
 export async function sendPlayerInput(input) {
@@ -2035,6 +2099,18 @@ export async function sendPlayerInput(input) {
     throw new Error("Ephemeral wallet not initialized");
   }
 
+  console.log("🎮 Sending player input transaction:", {
+    forward: input.forward || false,
+    backward: input.backward || false,
+    left: input.left || false,
+    right: input.right || false,
+    deltaX: input.deltaX || 0.0,
+    deltaY: input.deltaY || 0.0,
+    deltaTime: input.deltaTime || 0.033,
+    sensitivity: input.sensitivity || 1.0,
+    timestamp: new Date().toISOString()
+  });
+
   try {
     // Derive Player PDA (using main wallet's public key since that's the authority)
     const mainWalletPubkey = wallet.publicKey;
@@ -2043,6 +2119,11 @@ export async function sendPlayerInput(input) {
       MATCHMAKING_PROGRAM_ID
     );
 
+    console.log("🎮 Player PDA:", playerPda.toString());
+    console.log("🎮 Ephemeral wallet:", ephemeralKeypair.publicKey.toString());
+
+    const startTime = Date.now();
+
     // Send input to game program on ephemeral rollup
     const tx = await gameProgram.methods
       .processInput(
@@ -2050,12 +2131,22 @@ export async function sendPlayerInput(input) {
         input.backward || false,
         input.left || false,
         input.right || false,
-        input.rotationY || 0
+        input.deltaX || 0.0,
+        input.deltaY || 0.0,
+        input.deltaTime || 0.033, // 33ms default
+        input.sensitivity || 1.0
       )
       .accounts({
         player: playerPda,
       })
       .rpc();
+
+    const duration = Date.now() - startTime;
+    console.log("✅ Player input transaction successful:", {
+      signature: tx,
+      duration: `${duration}ms`,
+      timestamp: new Date().toISOString()
+    });
 
     return tx;
   } catch (error) {

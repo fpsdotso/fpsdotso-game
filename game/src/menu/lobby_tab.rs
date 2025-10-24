@@ -154,6 +154,7 @@ impl LobbyTab {
                     // Handle join after the loop to avoid borrowing conflicts
                     if let Some(room_id) = join_room_id {
                         menu_state.current_lobby_id = Some(room_id.clone());
+                        menu_state.current_game_pubkey = Some(room_id.clone()); // Store for blockchain sync
                         menu_state.join_lobby(room_id);
                     }
                 }

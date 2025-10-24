@@ -176,6 +176,16 @@ export function initGameBridge() {
     sendPlayerInput: async (input) => {
       return await solanaBridge.sendPlayerInput(input);
     },
+
+    // Get all players in game for synchronization
+    getGamePlayers: async (gamePublicKey) => {
+      return await solanaBridge.getGamePlayers(gamePublicKey);
+    },
+
+    // Get current player's authority (wallet public key)
+    getCurrentPlayerAuthority: () => {
+      return solanaBridge.getCurrentPlayerAuthority();
+    },
   };
 
   console.log("✅ Game bridge initialized");

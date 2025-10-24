@@ -2,6 +2,12 @@ use raylib::prelude::*;
 use crate::map::Map;
 use super::Player;
 
+// Emscripten bindings for JavaScript interop
+extern "C" {
+    fn emscripten_run_script(script: *const std::os::raw::c_char);
+    fn emscripten_run_script_string(script: *const std::os::raw::c_char) -> *const std::os::raw::c_char;
+}
+
 /// Represents the current state of the game
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum GameMode {
@@ -24,6 +30,18 @@ pub struct GameState {
 
     /// Whether mouse is captured for FPS controls
     pub mouse_captured: bool,
+
+    /// Timer for blockchain synchronization (33ms = ~30 ticks per second)
+    sync_timer: f32,
+
+    /// Sync interval in seconds (0.033 = 33ms)
+    sync_interval: f32,
+
+    /// Current game public key (for fetching other players)
+    current_game_pubkey: Option<String>,
+
+    /// Current player authority (wallet public key)
+    current_player_authority: Option<String>,
 }
 
 impl GameState {
@@ -34,7 +52,23 @@ impl GameState {
             map: None,
             player: None,
             mouse_captured: false,
+            sync_timer: 0.0,
+            sync_interval: 0.033, // 33ms
+            current_game_pubkey: None,
+            current_player_authority: None,
         }
+    }
+
+    /// Set the current game for blockchain synchronization
+    pub fn set_current_game(&mut self, game_pubkey: String) {
+        self.current_game_pubkey = Some(game_pubkey);
+        println!("🎮 Set current game: {:?}", self.current_game_pubkey);
+    }
+
+    /// Set the current player authority for identifying the local player
+    pub fn set_player_authority(&mut self, authority: String) {
+        self.current_player_authority = Some(authority);
+        println!("👤 Set player authority: {:?}", self.current_player_authority);
     }
 
     /// Load a map and spawn the player
@@ -85,7 +119,146 @@ impl GameState {
             if let Some(ref mut player) = self.player {
                 player.update(rl, delta);
             }
+
+            // Blockchain synchronization timer
+            self.sync_timer += delta;
+            if self.sync_timer >= self.sync_interval {
+                self.sync_timer = 0.0;
+                self.sync_with_blockchain(rl);
+            }
         }
+    }
+
+    /// Synchronize game state with blockchain (send inputs and fetch player positions)
+    fn sync_with_blockchain(&mut self, rl: &RaylibHandle) {
+        println!("🔄 Syncing with blockchain...");
+        // Only sync if we have a game pubkey set
+        if self.current_game_pubkey.is_none() {
+            return;
+        }
+
+        // Get player input and send to contract
+        if let Some(ref player) = self.player {
+            self.send_player_input(rl, player);
+        }
+
+        // Fetch all players and update their positions
+        self.fetch_and_sync_players();
+    }
+
+    /// Send player input to the game contract
+    fn send_player_input(&self, rl: &RaylibHandle, player: &Player) {
+        use std::os::raw::c_char;
+        use std::ffi::CString;
+
+        // Get mouse delta for rotation
+        let mouse_delta = rl.get_mouse_delta();
+
+        // Prepare input data as JSON
+        let input_json = format!(
+            r#"{{
+                "forward": {},
+                "backward": {},
+                "left": {},
+                "right": {},
+                "deltaX": {},
+                "deltaY": {},
+                "deltaTime": {},
+                "sensitivity": {}
+            }}"#,
+            rl.is_key_down(KeyboardKey::KEY_W),
+            rl.is_key_down(KeyboardKey::KEY_S),
+            rl.is_key_down(KeyboardKey::KEY_A),
+            rl.is_key_down(KeyboardKey::KEY_D),
+            mouse_delta.x,
+            mouse_delta.y,
+            self.sync_interval,
+            player.mouse_sensitivity
+        );
+
+        // Call JavaScript function to send input
+        let js_code = format!(
+            r#"
+            (async () => {{
+                try {{
+                    if (window.gameBridge && window.gameBridge.sendPlayerInput) {{
+                        const input = {};
+                        await window.gameBridge.sendPlayerInput(input);
+                    }}
+                }} catch (error) {{
+                    console.error('Failed to send player input:', error);
+                }}
+            }})();
+            "#,
+            input_json
+        );
+
+        unsafe {
+            let c_str = CString::new(js_code).unwrap();
+            emscripten_run_script(c_str.as_ptr());
+        }
+    }
+
+    /// Fetch all players from blockchain and synchronize their positions
+    fn fetch_and_sync_players(&mut self) {
+        use std::os::raw::c_char;
+        use std::ffi::CString;
+
+        let game_pubkey = match &self.current_game_pubkey {
+            Some(pubkey) => pubkey.clone(),
+            None => return,
+        };
+
+        // Call JavaScript to fetch players
+        let js_code = format!(
+            r#"
+            (async () => {{
+                try {{
+                    if (window.gameBridge && window.gameBridge.getGamePlayers) {{
+                        const players = await window.gameBridge.getGamePlayers('{}');
+                        const currentAuthority = window.gameBridge.getCurrentPlayerAuthority();
+
+                        // Store players data for Rust to read
+                        window.___game_players_data = JSON.stringify({{
+                            players: players,
+                            currentAuthority: currentAuthority
+                        }});
+                    }}
+                }} catch (error) {{
+                    console.error('Failed to fetch game players:', error);
+                    window.___game_players_data = null;
+                }}
+            }})();
+            "#,
+            game_pubkey
+        );
+
+        unsafe {
+            let c_str = CString::new(js_code).unwrap();
+            emscripten_run_script(c_str.as_ptr());
+
+            // Read the result
+            let result_code = CString::new("window.___game_players_data").unwrap();
+            let result_ptr = emscripten_run_script_string(result_code.as_ptr());
+
+            if !result_ptr.is_null() {
+                let result_str = std::ffi::CStr::from_ptr(result_ptr)
+                    .to_string_lossy()
+                    .into_owned();
+
+                if result_str != "null" && !result_str.is_empty() {
+                    self.process_players_data(&result_str);
+                }
+            }
+        }
+    }
+
+    /// Process fetched players data and update game state
+    fn process_players_data(&mut self, json_str: &str) {
+        // Parse JSON and update player positions
+        // For now, just log that we received data
+        // TODO: Parse JSON and update other players' positions, differentiate current player
+        println!("🔄 Received players data: {} bytes", json_str.len());
     }
 
     /// Draw the Solana logo in the sky (visible when looking down)
