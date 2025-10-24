@@ -1703,3 +1703,64 @@ export async function testCreateAndFetchGame() {
     return { error: error.message };
   }
 }
+
+/**
+ * Get all players in a specific game with their usernames and team assignments
+ */
+export async function getAllPlayersInGame(gamePubkey) {
+  console.log("📊 Fetching all players in game:", gamePubkey);
+
+  if (!matchmakingProgram) {
+    console.error("❌ Matchmaking program not initialized");
+    return { error: "Matchmaking program not initialized" };
+  }
+
+  try {
+    // Get all Player accounts
+    const allPlayers = await matchmakingProgram.account.player.all();
+    console.log("📊 Found", allPlayers.length, "total players");
+
+    const gamePlayers = [];
+
+    for (const { pubkey, account } of allPlayers) {
+      try {
+        // Check if this player is in the specified game
+        if (
+          account.currentGame &&
+          account.currentGame.toString() === gamePubkey
+        ) {
+          console.log(
+            "📊 Found player in game:",
+            pubkey.toString(),
+            "Username:",
+            account.username
+          );
+
+          // Determine team assignment based on player index or other logic
+          // For now, we'll use a simple alternating pattern
+          const team = gamePlayers.length % 2 === 0 ? "A" : "B";
+
+          gamePlayers.push({
+            publicKey: pubkey.toString(),
+            username: account.username,
+            team: team,
+            level: account.level,
+            matches: account.matches,
+          });
+        }
+      } catch (error) {
+        console.warn(
+          "⚠️ Failed to parse player account:",
+          pubkey.toString(),
+          error
+        );
+      }
+    }
+
+    console.log("📊 Found", gamePlayers.length, "players in game");
+    return gamePlayers;
+  } catch (error) {
+    console.error("❌ Failed to get players in game:", error);
+    return { error: error.message };
+  }
+}

@@ -404,6 +404,16 @@ impl Map {
         serde_json::from_slice(bytes)
     }
 
+    /// Load map from file (supports both Borsh and JSON formats)
+    pub fn load(path: &str) -> Result<Self, String> {
+        let bytes = std::fs::read(path).map_err(|e| format!("Failed to read file: {}", e))?;
+
+        // Try Borsh first, fall back to JSON for backwards compatibility
+        Map::from_borsh_bytes(&bytes)
+            .or_else(|_| Map::from_json_bytes(&bytes).map_err(|e| format!("{}", e)))
+            .map_err(|e| format!("Failed to parse map (tried both Borsh and JSON): {}", e))
+    }
+
     /// Get estimated size in bytes (Borsh format)
     pub fn estimated_size_borsh(&self) -> usize {
         // More accurate estimate for Borsh serialization:

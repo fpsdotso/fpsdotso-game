@@ -80,6 +80,8 @@ impl LobbyTab {
                     ui.text_colored([0.6, 0.6, 0.6, 1.0], "2. Click 'REFRESH' button to load games");
                     ui.text_colored([0.6, 0.6, 0.6, 1.0], "3. Or create your own room to get started!");
                 } else {
+                    let mut join_room_id: Option<String> = None;
+                    
                     for (i, room) in menu_state.available_rooms.iter().enumerate() {
                         let is_selected = menu_state.selected_room == Some(i);
                         let is_full = room.current_players >= room.max_players;
@@ -136,8 +138,7 @@ impl LobbyTab {
                                     let _join_btn = ui.push_style_color(imgui::StyleColor::Button, [0.08, 0.95, 0.58, 0.8]);
                                     let _join_hover = ui.push_style_color(imgui::StyleColor::ButtonHovered, [0.10, 1.0, 0.65, 1.0]);
                                     if ui.button_with_size("JOIN##".to_string() + &i.to_string(), [80.0, 30.0]) {
-                                        menu_state.selected_room = Some(i);
-                                        // TODO: Join room logic
+                                        join_room_id = Some(room.id.clone());
                                     }
                                     drop(_join_btn);
                                     drop(_join_hover);
@@ -149,13 +150,27 @@ impl LobbyTab {
 
                         ui.dummy([0.0, 10.0]); // Space between cards
                     }
+                    
+                    // Handle join after the loop to avoid borrowing conflicts
+                    if let Some(room_id) = join_room_id {
+                        menu_state.current_lobby_id = Some(room_id.clone());
+                        menu_state.join_lobby(room_id);
+                    }
                 }
             });
 
         // Create Room Popup
         if menu_state.show_create_room_popup {
             ui.open_popup("Create Room");
+
+            // Fetch maps when popup opens (only once)
+            if !menu_state.maps_loaded && !menu_state.maps_loading {
+                menu_state.fetch_user_maps();
+            }
         }
+
+        // Check if maps have been loaded
+        menu_state.check_loaded_maps();
 
         ui.popup("Create Room", || {
                 ui.text("CREATE NEW ROOM");
@@ -174,16 +189,39 @@ impl LobbyTab {
                 ui.dummy([0.0, 10.0]);
 
                 ui.text("Select Map:");
-                // TODO: Fetch available maps from Solana
-                let maps = vec![
-                    ("test-map-1".to_string(), "Test Map 1"),
-                    ("test-map-2".to_string(), "Test Map 2"),
-                    ("dust-2".to_string(), "Dust 2"),
-                    ("mirage".to_string(), "Mirage"),
-                ];
-                for (id, name) in maps {
-                    if ui.radio_button(name, &mut &menu_state.selected_map_for_room, &id) {
-                        menu_state.selected_map_for_room = id;
+                ui.same_line();
+
+                // Refresh button
+                if menu_state.maps_loading {
+                    ui.text_disabled("⟳ Refresh");
+                } else {
+                    let _refresh_color = ui.push_style_color(imgui::StyleColor::Button, [0.3, 0.5, 0.8, 0.8]);
+                    let _refresh_hover = ui.push_style_color(imgui::StyleColor::ButtonHovered, [0.4, 0.6, 0.9, 1.0]);
+                    if ui.button("⟳ Refresh") {
+                        // Reset state and fetch again
+                        menu_state.maps_loaded = false;
+                        menu_state.maps_loading = false;
+                        menu_state.available_maps.clear();
+                        menu_state.fetch_user_maps();
+                    }
+                    drop(_refresh_color);
+                    drop(_refresh_hover);
+                }
+
+                ui.dummy([0.0, 5.0]);
+
+                // Display maps from Solana
+                if menu_state.maps_loading {
+                    ui.text_colored([0.7, 0.7, 0.0, 1.0], "Loading maps from Solana...");
+                } else if menu_state.available_maps.is_empty() {
+                    ui.text_colored([0.9, 0.5, 0.0, 1.0], "No maps found!");
+                    ui.text_colored([0.7, 0.7, 0.7, 1.0], "Create a map in the Map Editor first");
+                } else {
+                    for map in &menu_state.available_maps {
+                        let label = format!("{} - {}", map.name, map.description);
+                        if ui.radio_button(&label, &mut &menu_state.selected_map_for_room, &map.id) {
+                            menu_state.selected_map_for_room = map.id.clone();
+                        }
                     }
                 }
 
@@ -191,10 +229,17 @@ impl LobbyTab {
                 ui.separator();
                 ui.dummy([0.0, 10.0]);
 
-                let can_create = !menu_state.new_room_name.is_empty();
+                let can_create = !menu_state.new_room_name.is_empty() && !menu_state.selected_map_for_room.is_empty();
 
                 if !can_create {
                     ui.text_disabled("CREATE");
+                    if menu_state.new_room_name.is_empty() {
+                        ui.same_line();
+                        ui.text_colored([0.7, 0.3, 0.3, 1.0], "(Enter a room name)");
+                    } else if menu_state.selected_map_for_room.is_empty() {
+                        ui.same_line();
+                        ui.text_colored([0.7, 0.3, 0.3, 1.0], "(Select a map)");
+                    }
                 } else {
                     let _create_btn = ui.push_style_color(imgui::StyleColor::Button, [0.08, 0.95, 0.58, 0.8]);
                     if ui.button("CREATE") {

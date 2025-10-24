@@ -111,6 +111,35 @@ export function initGameBridge() {
       // Dispatch custom event that React can listen to
       window.dispatchEvent(new CustomEvent("gameMessage", { detail: message }));
     },
+
+    // Lobby functions
+    joinGame: async (gamePubkey) => {
+      console.log("[Game Bridge] joinGame called:", gamePubkey);
+      const result = await solanaBridge.joinGame(gamePubkey);
+      console.log("[Game Bridge] joinGame result:", result);
+      return result;
+    },
+
+    startGame: async (gamePubkey) => {
+      console.log("[Game Bridge] startGame called:", gamePubkey);
+      const result = await solanaBridge.startGame(gamePubkey);
+      console.log("[Game Bridge] startGame result:", result);
+      return result;
+    },
+
+    getGame: async (gamePubkey) => {
+      console.log("[Game Bridge] getGame called:", gamePubkey);
+      const result = await solanaBridge.getGame(gamePubkey);
+      console.log("[Game Bridge] getGame result:", result);
+      return result;
+    },
+
+    getAllPlayersInGame: async (gamePubkey) => {
+      console.log("[Game Bridge] getAllPlayersInGame called:", gamePubkey);
+      const result = await solanaBridge.getAllPlayersInGame(gamePubkey);
+      console.log("[Game Bridge] getAllPlayersInGame result:", result);
+      return result;
+    },
   };
 
   console.log("✅ Game bridge initialized");

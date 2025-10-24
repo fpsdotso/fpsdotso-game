@@ -5,7 +5,7 @@ mod map;
 mod menu;
 
 use map::MapBuilder;
-use menu::{MenuState, MenuTab, LobbyTab, WeaponsTab};
+use menu::{MenuState, MenuTab, LobbyTab, LobbyView, WeaponsTab};
 
 /// Apply Solana-themed modern colors to ImGui
 pub fn apply_solana_ui_colors(_ui: &imgui::Ui) {
@@ -63,18 +63,24 @@ fn draw_menu_ui(
 
         ui.dummy([0.0, 10.0]);
 
-        // Content area based on selected tab
-        match menu_state.current_tab {
-            MenuTab::Lobby => {
-                LobbyTab::draw(menu_state, ui);
-            },
-            MenuTab::Weapons => {
-                WeaponsTab::draw(menu_state, ui);
-            },
-            MenuTab::MapEditor => {
-                // Should not reach here since we handle it above
-            }
-        };
+        // Content area based on selected tab or lobby state
+        if menu_state.in_lobby {
+            // Show lobby view when in a lobby
+            LobbyView::draw(menu_state, ui);
+        } else {
+            // Show normal tabs when not in lobby
+            match menu_state.current_tab {
+                MenuTab::Lobby => {
+                    LobbyTab::draw(menu_state, ui);
+                },
+                MenuTab::Weapons => {
+                    WeaponsTab::draw(menu_state, ui);
+                },
+                MenuTab::MapEditor => {
+                    // Should not reach here since we handle it above
+                }
+            };
+        }
 
         return true; // Menu tabs are fullscreen
     }
@@ -251,6 +257,26 @@ fn main() {
         // Check for async responses from blockchain
         menu_state.check_load_games_response();
         menu_state.check_create_game_response();
+        
+        // Check for lobby responses
+        menu_state.check_join_game_response();
+        menu_state.check_start_game_response();
+        menu_state.check_lobby_data_response();
+        menu_state.check_team_players_response();
+        
+        // Periodically fetch lobby data when in lobby (every 2-3 seconds)
+        if menu_state.in_lobby {
+            static mut LAST_LOBBY_UPDATE: f32 = 0.0;
+            unsafe {
+                if delta > 0.0 {
+                    LAST_LOBBY_UPDATE += delta;
+                    if LAST_LOBBY_UPDATE >= 3.0 {
+                        menu_state.fetch_lobby_data();
+                        LAST_LOBBY_UPDATE = 0.0;
+                    }
+                }
+            }
+        }
 
         // Always draw the menu UI with tabs - content changes based on selected tab
         mouse_over_ui = draw_menu_ui(ui, &mut menu_state, &mut map_builder, viewport_width as f32, &mut style_applied);

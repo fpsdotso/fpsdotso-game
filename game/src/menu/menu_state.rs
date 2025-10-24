@@ -17,6 +17,13 @@ pub struct Room {
     pub host: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AvailableMap {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+}
+
 pub struct MenuState {
     /// Current active tab
     pub current_tab: MenuTab,
@@ -28,6 +35,9 @@ pub struct MenuState {
     pub new_room_name: String,
     pub new_room_max_players: i32,
     pub selected_map_for_room: String,
+    pub available_maps: Vec<AvailableMap>,
+    pub maps_loaded: bool,
+    pub maps_loading: bool,
 
     /// Weapons state
     pub selected_weapon: Option<usize>,
@@ -42,6 +52,16 @@ pub struct MenuState {
     pub pending_room_name: String,
     pub pending_room_map: String,
     pub pending_room_max_players: i32,
+
+    /// Lobby interface state
+    pub in_lobby: bool,
+    pub current_lobby_id: Option<String>,
+    pub lobby_team_a: Vec<String>,
+    pub lobby_team_b: Vec<String>,
+    pub lobby_leader: Option<String>,
+    pub is_lobby_leader: bool,
+    pub joining_lobby_pending: bool,
+    pub starting_game_pending: bool,
 }
 
 impl MenuState {
@@ -53,13 +73,24 @@ impl MenuState {
             show_create_room_popup: false,
             new_room_name: String::new(),
             new_room_max_players: 10,
-            selected_map_for_room: "test-map-1".to_string(),
+            selected_map_for_room: String::new(),
+            available_maps: Vec::new(),
+            maps_loaded: false,
+            maps_loading: false,
             selected_weapon: None,
             show_map_editor: false,
             create_game_pending: false,
             pending_room_name: String::new(),
             pending_room_map: String::new(),
             pending_room_max_players: 10,
+            in_lobby: false,
+            current_lobby_id: None,
+            lobby_team_a: Vec::new(),
+            lobby_team_b: Vec::new(),
+            lobby_leader: None,
+            is_lobby_leader: false,
+            joining_lobby_pending: false,
+            starting_game_pending: false,
         };
         
         // Games will be loaded manually via the REFRESH button
@@ -222,6 +253,7 @@ impl MenuState {
     #[cfg(target_os = "emscripten")]
     pub fn check_load_games_response(&mut self) {
         extern "C" {
+            pub fn emscripten_run_script(script: *const i8);
             pub fn emscripten_run_script_string(script: *const i8) -> *const i8;
         }
 
@@ -483,6 +515,7 @@ impl MenuState {
         println!("🔍 Checking for create game response... (pending: {})", self.create_game_pending);
 
         extern "C" {
+            pub fn emscripten_run_script(script: *const i8);
             pub fn emscripten_run_script_string(script: *const i8) -> *const i8;
         }
 
@@ -591,5 +624,594 @@ impl MenuState {
     pub fn check_create_game_response(&mut self) {
         println!("🔍 Debug: check_create_game_response called but not in emscripten mode");
         // No-op for native builds
+    }
+
+    /// Fetch user maps from Solana (for Emscripten/web builds)
+    #[cfg(target_os = "emscripten")]
+    pub fn fetch_user_maps(&mut self) {
+        use std::ffi::CString;
+
+        extern "C" {
+            pub fn emscripten_run_script(script: *const i8);
+        }
+
+        if self.maps_loading {
+            return;
+        }
+
+        self.maps_loading = true;
+
+        let js_code = r#"
+        (async function() {
+            try {
+                if (!window.solanaMapBridge) {
+                    console.warn('Solana bridge not initialized');
+                    Module.userMapsData = JSON.stringify([]);
+                    return;
+                }
+
+                // Fetch user's maps
+                const userMaps = await window.solanaMapBridge.getUserMaps();
+
+                if (!userMaps || !userMaps.mapIds || userMaps.mapIds.length === 0) {
+                    console.log('No maps found for user');
+                    Module.userMapsData = JSON.stringify([]);
+                    return;
+                }
+
+                // Fetch metadata for each map
+                const mapsWithMetadata = [];
+                for (const mapId of userMaps.mapIds) {
+                    try {
+                        const metadata = await window.solanaMapBridge.getMapMetadata(mapId);
+                        if (metadata) {
+                            mapsWithMetadata.push({
+                                id: mapId,
+                                name: metadata.name,
+                                description: metadata.description || ''
+                            });
+                        }
+                    } catch (error) {
+                        console.error('Failed to fetch metadata for map:', mapId, error);
+                    }
+                }
+
+                Module.userMapsData = JSON.stringify(mapsWithMetadata);
+                console.log('Loaded', mapsWithMetadata.length, 'user maps');
+            } catch (error) {
+                console.error('Error fetching user maps:', error);
+                Module.userMapsData = JSON.stringify([]);
+            }
+        })();
+        "#;
+
+        let c_str = CString::new(js_code).unwrap();
+        unsafe {
+            emscripten_run_script(c_str.as_ptr());
+        }
+    }
+
+    /// Check if maps have been loaded from Solana and update the state
+    #[cfg(target_os = "emscripten")]
+    pub fn check_loaded_maps(&mut self) {
+        use std::ffi::CString;
+
+        extern "C" {
+            pub fn emscripten_run_script_string(script: *const i8) -> *const i8;
+            pub fn emscripten_run_script(script: *const i8);
+        }
+
+        if !self.maps_loading || self.maps_loaded {
+            return;
+        }
+
+        let js_check = CString::new("typeof Module.userMapsData !== 'undefined' ? Module.userMapsData : ''").unwrap();
+
+        unsafe {
+            let result_ptr = emscripten_run_script_string(js_check.as_ptr());
+            if result_ptr.is_null() {
+                return;
+            }
+
+            let c_str = std::ffi::CStr::from_ptr(result_ptr);
+            if let Ok(json_str) = c_str.to_str() {
+                if !json_str.is_empty() {
+                    // Parse the JSON
+                    if let Ok(maps) = serde_json::from_str::<Vec<AvailableMap>>(json_str) {
+                        self.available_maps = maps;
+                        self.maps_loaded = true;
+                        self.maps_loading = false;
+
+                        // Set default selected map if available
+                        if !self.available_maps.is_empty() && self.selected_map_for_room.is_empty() {
+                            self.selected_map_for_room = self.available_maps[0].id.clone();
+                        }
+
+                        // Clear the JavaScript variable
+                        let clear_js = CString::new("delete Module.userMapsData;").unwrap();
+                        emscripten_run_script(clear_js.as_ptr());
+                    }
+                }
+            }
+        }
+    }
+
+    #[cfg(not(target_os = "emscripten"))]
+    pub fn fetch_user_maps(&mut self) {
+        // Not available outside of browser
+    }
+
+    #[cfg(not(target_os = "emscripten"))]
+    pub fn check_loaded_maps(&mut self) {
+        // Not available outside of browser
+    }
+
+    // ===== LOBBY INTERFACE FUNCTIONS =====
+
+    /// Join a lobby by calling joinGame
+    #[cfg(target_os = "emscripten")]
+    pub fn join_lobby(&mut self, game_id: String) {
+        println!("🎮 Joining lobby: {}", game_id);
+        self.joining_lobby_pending = true;
+
+        extern "C" {
+            pub fn emscripten_run_script(script: *const i8);
+        }
+        use std::ffi::CString;
+
+        let js_code = format!(
+            r#"
+            (async function() {{
+                try {{
+                    console.log('🎮 Joining game: {}');
+                    const result = await window.gameBridge.joinGame('{}');
+                    if (result && result.transaction) {{
+                        Module.joinGameResult = JSON.stringify({{ success: true, transaction: result.transaction }});
+                    }} else if (result && result.error) {{
+                        Module.joinGameResult = JSON.stringify({{ error: result.error, message: result.message }});
+                    }} else {{
+                        Module.joinGameResult = JSON.stringify({{ error: 'Unknown error' }});
+                    }}
+                }} catch (error) {{
+                    Module.joinGameResult = JSON.stringify({{ error: error.message }});
+                }}
+            }})();
+            "#,
+            game_id, game_id
+        );
+
+        let c_str = CString::new(js_code).unwrap();
+        unsafe {
+            emscripten_run_script(c_str.as_ptr());
+        }
+    }
+
+    #[cfg(not(target_os = "emscripten"))]
+    pub fn join_lobby(&mut self, _game_id: String) {
+        println!("🎮 Join lobby not available in native build");
+    }
+
+    /// Leave the current lobby
+    #[cfg(target_os = "emscripten")]
+    pub fn leave_lobby(&mut self) {
+        println!("🚪 Leaving lobby...");
+        
+        extern "C" {
+            pub fn emscripten_run_script(script: *const i8);
+        }
+        use std::ffi::CString;
+
+        let js_code = r#"
+        (async function() {
+            try {
+                console.log('🚪 Leaving current game...');
+                const result = await window.gameBridge.leaveCurrentGame();
+                if (result && result.transaction) {
+                    Module.leaveGameResult = JSON.stringify({ success: true, transaction: result.transaction });
+                } else if (result && result.error) {
+                    Module.leaveGameResult = JSON.stringify({ error: result.error, message: result.message });
+                } else {
+                    Module.leaveGameResult = JSON.stringify({ error: 'Unknown error' });
+                }
+            } catch (error) {
+                Module.leaveGameResult = JSON.stringify({ error: error.message });
+            }
+        })();
+        "#;
+
+        let c_str = CString::new(js_code).unwrap();
+        unsafe {
+            emscripten_run_script(c_str.as_ptr());
+        }
+    }
+
+    #[cfg(not(target_os = "emscripten"))]
+    pub fn leave_lobby(&mut self) {
+        println!("🚪 Leave lobby not available in native build");
+    }
+
+    /// Start the lobby game (leader only)
+    #[cfg(target_os = "emscripten")]
+    pub fn start_lobby_game(&mut self) {
+        if let Some(lobby_id) = &self.current_lobby_id {
+            println!("🎮 Starting game: {}", lobby_id);
+            self.starting_game_pending = true;
+
+            extern "C" {
+                pub fn emscripten_run_script(script: *const i8);
+            }
+            use std::ffi::CString;
+
+            let js_code = format!(
+                r#"
+                (async function() {{
+                    try {{
+                        console.log('🎮 Starting game: {}');
+                        const result = await window.gameBridge.startGame('{}');
+                        if (result && result.transaction) {{
+                            Module.startGameResult = JSON.stringify({{ success: true, transaction: result.transaction }});
+                        }} else if (result && result.error) {{
+                            Module.startGameResult = JSON.stringify({{ error: result.error, message: result.message }});
+                        }} else {{
+                            Module.startGameResult = JSON.stringify({{ error: 'Unknown error' }});
+                        }}
+                    }} catch (error) {{
+                        Module.startGameResult = JSON.stringify({{ error: error.message }});
+                    }}
+                }})();
+                "#,
+                lobby_id, lobby_id
+            );
+
+            let c_str = CString::new(js_code).unwrap();
+            unsafe {
+                emscripten_run_script(c_str.as_ptr());
+            }
+        }
+    }
+
+    #[cfg(not(target_os = "emscripten"))]
+    pub fn start_lobby_game(&mut self) {
+        println!("🎮 Start lobby game not available in native build");
+    }
+
+    /// Fetch lobby data to update team rosters
+    #[cfg(target_os = "emscripten")]
+    pub fn fetch_lobby_data(&mut self) {
+        if let Some(lobby_id) = &self.current_lobby_id {
+            extern "C" {
+                pub fn emscripten_run_script(script: *const i8);
+            }
+            use std::ffi::CString;
+
+            let js_code = format!(
+                r#"
+                (async function() {{
+                    try {{
+                        console.log('📊 Fetching lobby data: {}');
+                        const result = await window.gameBridge.getGame('{}');
+                        if (result) {{
+                            Module.lobbyDataResult = JSON.stringify({{ success: true, game: result }});
+                        }} else {{
+                            Module.lobbyDataResult = JSON.stringify({{ error: 'Failed to fetch game data' }});
+                        }}
+                    }} catch (error) {{
+                        Module.lobbyDataResult = JSON.stringify({{ error: error.message }});
+                    }}
+                }})();
+                "#,
+                lobby_id, lobby_id
+            );
+
+            let c_str = CString::new(js_code).unwrap();
+            unsafe {
+                emscripten_run_script(c_str.as_ptr());
+            }
+        }
+    }
+
+    #[cfg(not(target_os = "emscripten"))]
+    pub fn fetch_lobby_data(&mut self) {
+        // Not available outside of browser
+    }
+
+    /// Check for lobby data response and populate team rosters
+    #[cfg(target_os = "emscripten")]
+    pub fn check_lobby_data_response(&mut self) {
+        extern "C" {
+            pub fn emscripten_run_script(script: *const i8);
+            pub fn emscripten_run_script_string(script: *const i8) -> *const i8;
+        }
+        use std::ffi::CString;
+
+        let check_js = CString::new("Module.lobbyDataResult || null").unwrap();
+        let result_ptr = unsafe { emscripten_run_script_string(check_js.as_ptr()) };
+        
+        if !result_ptr.is_null() {
+            let result_cstr = unsafe { std::ffi::CStr::from_ptr(result_ptr) };
+            let result_str = result_cstr.to_string_lossy();
+            
+            if result_str != "null" && !result_str.is_empty() {
+                println!("🔍 Lobby data result: {}", result_str);
+                
+                if let Ok(result) = serde_json::from_str::<serde_json::Value>(&result_str) {
+                    if let Some(success) = result.get("success") {
+                        if success.as_bool().unwrap_or(false) {
+                            if let Some(game) = result.get("game") {
+                                self.populate_team_rosters(game);
+                            }
+                        }
+                    }
+                }
+                
+                // Clear the result
+                let clear_js = CString::new("Module.lobbyDataResult = null").unwrap();
+                unsafe {
+                    emscripten_run_script(clear_js.as_ptr());
+                }
+            }
+        }
+    }
+
+    #[cfg(not(target_os = "emscripten"))]
+    pub fn check_lobby_data_response(&mut self) {
+        // Not available outside of browser
+    }
+
+    /// Populate team rosters from game data
+    fn populate_team_rosters(&mut self, game: &serde_json::Value) {
+        // Clear existing rosters
+        self.lobby_team_a.clear();
+        self.lobby_team_b.clear();
+        
+        // Get team counts from game data
+        let team_a_count = game.get("currentPlayersTeamA")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0) as usize;
+        let team_b_count = game.get("currentPlayersTeamB")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0) as usize;
+        
+        // Get lobby leader info
+        if let Some(created_by) = game.get("createdBy") {
+            if let Some(leader_pubkey) = created_by.as_str() {
+                self.lobby_leader = Some(leader_pubkey.to_string());
+                
+                // Check if current player is the leader
+                // We'll need to get the current wallet public key from JavaScript
+                self.check_if_current_player_is_leader(leader_pubkey);
+            }
+        }
+        
+        // Populate Team A with placeholder players
+        for i in 1..=team_a_count {
+            self.lobby_team_a.push(format!("Player {}", i));
+        }
+        
+        // Populate Team B with placeholder players
+        for i in 1..=team_b_count {
+            self.lobby_team_b.push(format!("Player {}", i));
+        }
+        
+        println!("📊 Updated team rosters - Team A: {} players, Team B: {} players", 
+                 team_a_count, team_b_count);
+    }
+
+    /// Check if current player is the lobby leader
+    #[cfg(target_os = "emscripten")]
+    fn check_if_current_player_is_leader(&mut self, leader_pubkey: &str) {
+        extern "C" {
+            pub fn emscripten_run_script_string(script: *const i8) -> *const i8;
+        }
+        use std::ffi::CString;
+
+        let js_code = r#"
+        (function() {
+            try {
+                if (window.solana && window.solana.publicKey) {
+                    return window.solana.publicKey.toString();
+                }
+                return null;
+            } catch (error) {
+                return null;
+            }
+        })();
+        "#;
+
+        let c_str = CString::new(js_code).unwrap();
+        let result_ptr = unsafe { emscripten_run_script_string(c_str.as_ptr()) };
+        
+        if !result_ptr.is_null() {
+            let result_cstr = unsafe { std::ffi::CStr::from_ptr(result_ptr) };
+            let current_pubkey = result_cstr.to_string_lossy();
+            
+            if current_pubkey != "null" && !current_pubkey.is_empty() {
+                self.is_lobby_leader = current_pubkey == leader_pubkey;
+                println!("🔍 Current player: {}, Leader: {}, Is leader: {}", 
+                         current_pubkey, leader_pubkey, self.is_lobby_leader);
+            }
+        }
+    }
+
+    #[cfg(not(target_os = "emscripten"))]
+    fn check_if_current_player_is_leader(&mut self, _leader_pubkey: &str) {
+        // Not available outside of browser
+        self.is_lobby_leader = false;
+    }
+
+    /// Check for join game response
+    #[cfg(target_os = "emscripten")]
+    pub fn check_join_game_response(&mut self) {
+        if !self.joining_lobby_pending {
+            return;
+        }
+
+        extern "C" {
+            pub fn emscripten_run_script(script: *const i8);
+            pub fn emscripten_run_script_string(script: *const i8) -> *const i8;
+        }
+        use std::ffi::CString;
+
+        let check_js = CString::new("Module.joinGameResult || null").unwrap();
+        let result_ptr = unsafe { emscripten_run_script_string(check_js.as_ptr()) };
+        
+        if !result_ptr.is_null() {
+            let result_cstr = unsafe { std::ffi::CStr::from_ptr(result_ptr) };
+            let result_str = result_cstr.to_string_lossy();
+            
+            if result_str != "null" && !result_str.is_empty() {
+                println!("🔍 Join game result: {}", result_str);
+                
+                if let Ok(result) = serde_json::from_str::<serde_json::Value>(&result_str) {
+                    if let Some(success) = result.get("success") {
+                        if success.as_bool().unwrap_or(false) {
+                            println!("✅ Successfully joined game!");
+                            self.in_lobby = true;
+                            self.joining_lobby_pending = false;
+                            // Set the lobby ID if not already set
+                            if self.current_lobby_id.is_none() {
+                                // This should have been set when join_lobby was called
+                                println!("⚠️ Warning: current_lobby_id not set when joining game");
+                            }
+                            // Fetch lobby data to populate teams
+                            self.fetch_lobby_data();
+                        } else if let Some(error) = result.get("error") {
+                            println!("❌ Failed to join game: {}", error);
+                            self.joining_lobby_pending = false;
+                        }
+                    }
+                }
+                
+                // Clear the result
+                let clear_js = CString::new("Module.joinGameResult = null").unwrap();
+                unsafe {
+                    emscripten_run_script(clear_js.as_ptr());
+                }
+            }
+        }
+    }
+
+    #[cfg(not(target_os = "emscripten"))]
+    pub fn check_join_game_response(&mut self) {
+        // Not available outside of browser
+    }
+
+    /// Check for start game response
+    #[cfg(target_os = "emscripten")]
+    pub fn check_start_game_response(&mut self) {
+        if !self.starting_game_pending {
+            return;
+        }
+
+        extern "C" {
+            pub fn emscripten_run_script(script: *const i8);
+            pub fn emscripten_run_script_string(script: *const i8) -> *const i8;
+        }
+        use std::ffi::CString;
+
+        let check_js = CString::new("Module.startGameResult || null").unwrap();
+        let result_ptr = unsafe { emscripten_run_script_string(check_js.as_ptr()) };
+        
+        if !result_ptr.is_null() {
+            let result_cstr = unsafe { std::ffi::CStr::from_ptr(result_ptr) };
+            let result_str = result_cstr.to_string_lossy();
+            
+            if result_str != "null" && !result_str.is_empty() {
+                println!("🔍 Start game result: {}", result_str);
+                
+                if let Ok(result) = serde_json::from_str::<serde_json::Value>(&result_str) {
+                    if let Some(success) = result.get("success") {
+                        if success.as_bool().unwrap_or(false) {
+                            println!("✅ Game started successfully!");
+                            if let Some(transaction) = result.get("transaction") {
+                                println!("Transaction: {}", transaction);
+                            }
+                            self.starting_game_pending = false;
+                        } else if let Some(error) = result.get("error") {
+                            println!("❌ Failed to start game: {}", error);
+                            self.starting_game_pending = false;
+                        }
+                    }
+                }
+                
+                // Clear the result
+                let clear_js = CString::new("Module.startGameResult = null").unwrap();
+                unsafe {
+                    emscripten_run_script(clear_js.as_ptr());
+                }
+            }
+        }
+    }
+
+    #[cfg(not(target_os = "emscripten"))]
+    pub fn check_start_game_response(&mut self) {
+        // Not available outside of browser
+    }
+
+    /// Check for team players response and update rosters with real usernames
+    #[cfg(target_os = "emscripten")]
+    pub fn check_team_players_response(&mut self) {
+        extern "C" {
+            pub fn emscripten_run_script(script: *const i8);
+            pub fn emscripten_run_script_string(script: *const i8) -> *const i8;
+        }
+        use std::ffi::CString;
+
+        let check_js = CString::new("Module.teamPlayersResult || null").unwrap();
+        let result_ptr = unsafe { emscripten_run_script_string(check_js.as_ptr()) };
+        
+        if !result_ptr.is_null() {
+            let result_cstr = unsafe { std::ffi::CStr::from_ptr(result_ptr) };
+            let result_str = result_cstr.to_string_lossy();
+            
+            if result_str != "null" && !result_str.is_empty() {
+                println!("🔍 Team players result: {}", result_str);
+                
+                if let Ok(result) = serde_json::from_str::<serde_json::Value>(&result_str) {
+                    if let Some(success) = result.get("success") {
+                        if success.as_bool().unwrap_or(false) {
+                            if let Some(players) = result.get("players") {
+                                self.update_rosters_with_real_usernames(players);
+                            }
+                        }
+                    }
+                }
+                
+                // Clear the result
+                let clear_js = CString::new("Module.teamPlayersResult = null").unwrap();
+                unsafe {
+                    emscripten_run_script(clear_js.as_ptr());
+                }
+            }
+        }
+    }
+
+    #[cfg(not(target_os = "emscripten"))]
+    pub fn check_team_players_response(&mut self) {
+        // Not available outside of browser
+    }
+
+    /// Update team rosters with real usernames from player data
+    fn update_rosters_with_real_usernames(&mut self, players: &serde_json::Value) {
+        // Clear existing rosters
+        self.lobby_team_a.clear();
+        self.lobby_team_b.clear();
+        
+        if let Some(players_array) = players.as_array() {
+            for player in players_array {
+                if let Some(username) = player.get("username").and_then(|v| v.as_str()) {
+                    if let Some(team) = player.get("team").and_then(|v| v.as_str()) {
+                        match team {
+                            "A" => self.lobby_team_a.push(username.to_string()),
+                            "B" => self.lobby_team_b.push(username.to_string()),
+                            _ => {}
+                        }
+                    }
+                }
+            }
+        }
+        
+        println!("📊 Updated rosters with real usernames - Team A: {:?}, Team B: {:?}", 
+                 self.lobby_team_a, self.lobby_team_b);
     }
 }
