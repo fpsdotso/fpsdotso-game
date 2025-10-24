@@ -1752,6 +1752,20 @@ export function getMatchmakingProgram() {
 }
 
 /**
+ * Get the game program instance (for advanced usage)
+ */
+export function getGameProgram() {
+  return gameProgram;
+}
+
+/**
+ * Check if game program is initialized and ready
+ */
+export function isGameProgramReady() {
+  return gameProgram !== null;
+}
+
+/**
  * Test function to initialize a player (for game bridge compatibility)
  */
 export async function testInitPlayer() {
@@ -2021,6 +2035,7 @@ export function getEphemeralPublicKey() {
 
 /**
  * Get all players in a game for synchronization
+ * IMPORTANT: Fetches game roster from main chain, but player positions from ephemeral rollup
  * @param {string} gamePublicKey - The game's public key
  * @returns {Array} Array of player data with positions
  */
@@ -2029,8 +2044,27 @@ export async function getGamePlayers(gamePublicKey) {
     throw new Error("Matchmaking program not initialized");
   }
 
+  // Initialize game program if not already done
+  if (!gameProgram) {
+    if (!ephemeralConnection) {
+      throw new Error("Ephemeral connection not initialized");
+    }
+
+    const ephemeralKeypair = EphemeralWallet.getEphemeralKeypair();
+    if (!ephemeralKeypair) {
+      throw new Error("Ephemeral wallet not initialized");
+    }
+
+    ephemeralProvider = new AnchorProvider(
+      ephemeralConnection,
+      new NodeWallet(ephemeralKeypair),
+      { commitment: "confirmed" }
+    );
+    gameProgram = new Program(gameIdl, ephemeralProvider);
+  }
+
   try {
-    // Fetch the game account
+    // Fetch the game account from MAIN CHAIN to get team rosters
     const game = await matchmakingProgram.account.game.fetch(gamePublicKey);
 
     // Get all player public keys from both teams
@@ -2039,11 +2073,19 @@ export async function getGamePlayers(gamePublicKey) {
       ...(game.teamBPlayers || [])
     ];
 
-    // Fetch all player accounts
+    // Create matchmaking program instance using EPHEMERAL connection
+    const ephProvider = ephemeralProvider || new AnchorProvider(
+      ephemeralConnection,
+      new NodeWallet(EphemeralWallet.getEphemeralKeypair()),
+      { commitment: "confirmed" }
+    );
+    const ephemeralMatchmakingProgram = new Program(matchmakingIdl, ephProvider);
+
+    // Fetch all player accounts from EPHEMERAL ROLLUP
     const players = await Promise.all(
       allPlayerKeys.map(async (playerKey) => {
         try {
-          const player = await matchmakingProgram.account.player.fetch(playerKey);
+          const player = await ephemeralMatchmakingProgram.account.player.fetch(playerKey);
           return {
             publicKey: playerKey.toString(),
             authority: player.authority.toString(),
@@ -2058,7 +2100,7 @@ export async function getGamePlayers(gamePublicKey) {
             isAlive: player.isAlive,
           };
         } catch (error) {
-          console.error(`Failed to fetch player ${playerKey.toString()}:`, error);
+          // Silently skip failed fetches
           return null;
         }
       })
@@ -2090,26 +2132,24 @@ export function getCurrentPlayerAuthority() {
  * @returns {string} Transaction signature
  */
 export async function sendPlayerInput(input) {
-  if (!gameProgram) {
-    throw new Error("Game program not initialized");
-  }
-
   const ephemeralKeypair = EphemeralWallet.getEphemeralKeypair();
   if (!ephemeralKeypair) {
     throw new Error("Ephemeral wallet not initialized");
   }
 
-  console.log("🎮 Sending player input transaction:", {
-    forward: input.forward || false,
-    backward: input.backward || false,
-    left: input.left || false,
-    right: input.right || false,
-    deltaX: input.deltaX || 0.0,
-    deltaY: input.deltaY || 0.0,
-    deltaTime: input.deltaTime || 0.033,
-    sensitivity: input.sensitivity || 1.0,
-    timestamp: new Date().toISOString()
-  });
+  // Initialize game program if not already done
+  if (!gameProgram) {
+    if (!ephemeralConnection) {
+      throw new Error("Ephemeral connection not initialized");
+    }
+
+    ephemeralProvider = new AnchorProvider(
+      ephemeralConnection,
+      new NodeWallet(ephemeralKeypair),
+      { commitment: "confirmed" }
+    );
+    gameProgram = new Program(gameIdl, ephemeralProvider);
+  }
 
   try {
     // Derive Player PDA (using main wallet's public key since that's the authority)
@@ -2118,11 +2158,6 @@ export async function sendPlayerInput(input) {
       [Buffer.from("player"), mainWalletPubkey.toBuffer()],
       MATCHMAKING_PROGRAM_ID
     );
-
-    console.log("🎮 Player PDA:", playerPda.toString());
-    console.log("🎮 Ephemeral wallet:", ephemeralKeypair.publicKey.toString());
-
-    const startTime = Date.now();
 
     // Send input to game program on ephemeral rollup
     const tx = await gameProgram.methods
@@ -2140,13 +2175,6 @@ export async function sendPlayerInput(input) {
         player: playerPda,
       })
       .rpc();
-
-    const duration = Date.now() - startTime;
-    console.log("✅ Player input transaction successful:", {
-      signature: tx,
-      duration: `${duration}ms`,
-      timestamp: new Date().toISOString()
-    });
 
     return tx;
   } catch (error) {

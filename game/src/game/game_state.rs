@@ -17,6 +17,17 @@ pub enum GameMode {
     Playing,
 }
 
+/// Represents another player in the game (from blockchain)
+#[derive(Debug, Clone)]
+pub struct OtherPlayer {
+    pub authority: String,
+    pub username: String,
+    pub team: String,
+    pub position: Vector3,
+    pub rotation: Vector3,
+    pub is_alive: bool,
+}
+
 /// Main game state that manages the FPS game
 pub struct GameState {
     /// Current game mode
@@ -42,6 +53,9 @@ pub struct GameState {
 
     /// Current player authority (wallet public key)
     current_player_authority: Option<String>,
+
+    /// Other players in the game (from blockchain)
+    other_players: Vec<OtherPlayer>,
 }
 
 impl GameState {
@@ -56,19 +70,18 @@ impl GameState {
             sync_interval: 0.033, // 33ms
             current_game_pubkey: None,
             current_player_authority: None,
+            other_players: Vec::new(),
         }
     }
 
     /// Set the current game for blockchain synchronization
     pub fn set_current_game(&mut self, game_pubkey: String) {
         self.current_game_pubkey = Some(game_pubkey);
-        println!("🎮 Set current game: {:?}", self.current_game_pubkey);
     }
 
     /// Set the current player authority for identifying the local player
     pub fn set_player_authority(&mut self, authority: String) {
         self.current_player_authority = Some(authority);
-        println!("👤 Set player authority: {:?}", self.current_player_authority);
     }
 
     /// Load a map and spawn the player
@@ -131,7 +144,6 @@ impl GameState {
 
     /// Synchronize game state with blockchain (send inputs and fetch player positions)
     fn sync_with_blockchain(&mut self, rl: &RaylibHandle) {
-        println!("🔄 Syncing with blockchain...");
         // Only sync if we have a game pubkey set
         if self.current_game_pubkey.is_none() {
             return;
@@ -255,10 +267,85 @@ impl GameState {
 
     /// Process fetched players data and update game state
     fn process_players_data(&mut self, json_str: &str) {
-        // Parse JSON and update player positions
-        // For now, just log that we received data
-        // TODO: Parse JSON and update other players' positions, differentiate current player
-        println!("🔄 Received players data: {} bytes", json_str.len());
+        use serde_json::Value;
+
+        // Parse the JSON
+        if let Ok(data) = serde_json::from_str::<Value>(json_str) {
+            // Get current player's authority to filter them out
+            let current_authority = data.get("currentAuthority")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+
+            // Get the players array
+            if let Some(players) = data.get("players").and_then(|v| v.as_array()) {
+                // Clear the previous player list
+                self.other_players.clear();
+
+                for player in players {
+                    // Skip the current player (don't render ourselves)
+                    let authority = player.get("authority")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("");
+
+                    if authority == current_authority {
+                        continue;
+                    }
+
+                    // Parse player data
+                    let username = player.get("username")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("Unknown")
+                        .to_string();
+
+                    let team = player.get("team")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("A")
+                        .to_string();
+
+                    let is_alive = player.get("isAlive")
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(true);
+
+                    // Parse position (convert from i32 to f32)
+                    let pos_x = player.get("positionX")
+                        .and_then(|v| v.as_i64())
+                        .unwrap_or(0) as f32 / 100.0;
+
+                    let pos_y = player.get("positionY")
+                        .and_then(|v| v.as_i64())
+                        .unwrap_or(0) as f32 / 100.0;
+
+                    let pos_z = player.get("positionZ")
+                        .and_then(|v| v.as_i64())
+                        .unwrap_or(0) as f32 / 100.0;
+
+                    // Parse rotation (convert from i16 to f32 degrees)
+                    let rot_x = player.get("rotationX")
+                        .and_then(|v| v.as_i64())
+                        .unwrap_or(0) as f32 / 100.0;
+
+                    let rot_y = player.get("rotationY")
+                        .and_then(|v| v.as_i64())
+                        .unwrap_or(0) as f32 / 100.0;
+
+                    let rot_z = player.get("rotationZ")
+                        .and_then(|v| v.as_i64())
+                        .unwrap_or(0) as f32 / 100.0;
+
+                    // Create OtherPlayer struct
+                    let other_player = OtherPlayer {
+                        authority: authority.to_string(),
+                        username,
+                        team,
+                        position: Vector3::new(pos_x, pos_y, pos_z),
+                        rotation: Vector3::new(rot_x, rot_y, rot_z),
+                        is_alive,
+                    };
+
+                    self.other_players.push(other_player);
+                }
+            }
+        }
     }
 
     /// Draw the Solana logo in the sky (visible when looking down)
@@ -466,6 +553,9 @@ impl GameState {
             if let Some(ref map) = self.map {
                 map.render(&mut d3d);
             }
+
+            // Draw other players from blockchain
+            Self::draw_other_players(&mut d3d, &self.other_players);
 
             // Draw some simple point lights as visual spheres (for ambient lighting effect)
             // Top light
@@ -695,5 +785,61 @@ impl GameState {
 
         // "HEALTH" label
         d.draw_text("HEALTH", bar_x + 5, bar_y - 20, 12, Color::new(200, 200, 220, 255));
+    }
+
+    /// Draw other players in the game (from blockchain sync)
+    fn draw_other_players(d3d: &mut RaylibMode3D<RaylibDrawHandle>, other_players: &[OtherPlayer]) {
+        for player in other_players {
+            // Skip dead players
+            if !player.is_alive {
+                continue;
+            }
+
+            // Choose color based on team
+            let player_color = if player.team == "A" {
+                Color::new(0, 150, 255, 255) // Blue for Team A
+            } else {
+                Color::new(255, 100, 100, 255) // Red for Team B
+            };
+
+            // Draw player as a capsule (cylinder + spheres)
+            let height = 1.8; // Player height
+            let radius = 0.3; // Player radius
+
+            // Draw body (cylinder)
+            d3d.draw_cylinder(
+                player.position,
+                radius,
+                radius,
+                height,
+                8,
+                player_color,
+            );
+
+            // Draw head (sphere on top)
+            let head_pos = Vector3::new(
+                player.position.x,
+                player.position.y + height,
+                player.position.z,
+            );
+            d3d.draw_sphere(head_pos, radius * 0.8, player_color);
+
+            // Draw username above player
+            // Note: draw_text_3d doesn't exist in raylib, so we'll skip this for now
+            // In a real game, you'd use billboard text or UI overlays
+
+            // Draw direction indicator (small cube in front of player based on rotation)
+            let yaw_rad = player.rotation.y.to_radians();
+            let dir_x = yaw_rad.cos() * 0.5;
+            let dir_z = yaw_rad.sin() * 0.5;
+
+            let indicator_pos = Vector3::new(
+                player.position.x + dir_x,
+                player.position.y + height * 0.5,
+                player.position.z + dir_z,
+            );
+
+            d3d.draw_cube(indicator_pos, 0.2, 0.2, 0.2, Color::WHITE);
+        }
     }
 }
