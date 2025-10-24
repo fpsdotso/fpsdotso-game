@@ -229,6 +229,58 @@
       "args": []
     },
     {
+      "name": "set_ready_state",
+      "discriminator": [
+        110,
+        145,
+        182,
+        101,
+        90,
+        72,
+        203,
+        158
+      ],
+      "accounts": [
+        {
+          "name": "game",
+          "writable": true
+        },
+        {
+          "name": "player",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  108,
+                  97,
+                  121,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "authority"
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "is_ready",
+          "type": "bool"
+        }
+      ]
+    },
+    {
       "name": "start_game",
       "discriminator": [
         249,
@@ -306,13 +358,23 @@
   "errors": [
     {
       "code": 6000,
-      "name": "PlayerNotInGame",
-      "msg": "Player not in a game"
+      "name": "GameAlreadyStarted",
+      "msg": "Game has already started"
     },
     {
       "code": 6001,
-      "name": "PlayerNotInThisGame",
-      "msg": "Player not in this specific game"
+      "name": "NotEnoughPlayers",
+      "msg": "Not enough players to start game"
+    },
+    {
+      "code": 6002,
+      "name": "CannotStartGame",
+      "msg": "Cannot start game - not lobby owner and not all players ready"
+    },
+    {
+      "code": 6003,
+      "name": "NotLobbyOwner",
+      "msg": "Only lobby owner can start the game"
     }
   ],
   "types": [

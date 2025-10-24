@@ -140,6 +140,13 @@ export function initGameBridge() {
       console.log("[Game Bridge] getAllPlayersInGame result:", result);
       return result;
     },
+
+    setReadyState: async (gamePubkey, isReady) => {
+      console.log("[Game Bridge] setReadyState called:", gamePubkey, isReady);
+      const result = await solanaBridge.setReadyState(gamePubkey, isReady);
+      console.log("[Game Bridge] setReadyState result:", result);
+      return result;
+    },
   };
 
   console.log("✅ Game bridge initialized");

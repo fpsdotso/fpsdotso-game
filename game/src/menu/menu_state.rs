@@ -58,10 +58,14 @@ pub struct MenuState {
     pub current_lobby_id: Option<String>,
     pub lobby_team_a: Vec<String>,
     pub lobby_team_b: Vec<String>,
+    pub lobby_team_a_ready: Vec<bool>, // Ready state for each Team A player
+    pub lobby_team_b_ready: Vec<bool>, // Ready state for each Team B player
     pub lobby_leader: Option<String>,
     pub is_lobby_leader: bool,
     pub joining_lobby_pending: bool,
     pub starting_game_pending: bool,
+    pub player_ready_state: bool, // Current player's ready state
+    pub set_ready_pending: bool, // Flag for async ready state change
 
     /// Game state tracking
     pub current_game_state: u8, // 0=waiting, 1=active, 2=ended, 3=paused
@@ -94,10 +98,14 @@ impl MenuState {
             current_lobby_id: None,
             lobby_team_a: Vec::new(),
             lobby_team_b: Vec::new(),
+            lobby_team_a_ready: Vec::new(),
+            lobby_team_b_ready: Vec::new(),
             lobby_leader: None,
             is_lobby_leader: false,
             joining_lobby_pending: false,
             starting_game_pending: false,
+            player_ready_state: false,
+            set_ready_pending: false,
             current_game_state: 0,
             game_should_start: false,
             check_player_game_pending: false,
@@ -1277,26 +1285,38 @@ impl MenuState {
 
     /// Update team rosters with real usernames from player data
     fn update_rosters_with_real_usernames(&mut self, players: &serde_json::Value) {
-        // Clear existing rosters
+        // Clear existing rosters and ready states
         self.lobby_team_a.clear();
         self.lobby_team_b.clear();
-        
+        self.lobby_team_a_ready.clear();
+        self.lobby_team_b_ready.clear();
+
         if let Some(players_array) = players.as_array() {
             for player in players_array {
                 if let Some(username) = player.get("username").and_then(|v| v.as_str()) {
                     if let Some(team) = player.get("team").and_then(|v| v.as_str()) {
+                        let is_ready = player.get("isReady").and_then(|v| v.as_bool()).unwrap_or(false);
+
                         match team {
-                            "A" => self.lobby_team_a.push(username.to_string()),
-                            "B" => self.lobby_team_b.push(username.to_string()),
+                            "A" => {
+                                self.lobby_team_a.push(username.to_string());
+                                self.lobby_team_a_ready.push(is_ready);
+                            },
+                            "B" => {
+                                self.lobby_team_b.push(username.to_string());
+                                self.lobby_team_b_ready.push(is_ready);
+                            },
                             _ => {}
                         }
                     }
                 }
             }
         }
-        
+
         println!("📊 Updated rosters with real usernames - Team A: {:?}, Team B: {:?}",
                  self.lobby_team_a, self.lobby_team_b);
+        println!("📊 Ready states - Team A: {:?}, Team B: {:?}",
+                 self.lobby_team_a_ready, self.lobby_team_b_ready);
     }
 
     /// Check if player is currently in a game (for auto-reconnect)
@@ -1402,6 +1422,130 @@ impl MenuState {
 
     #[cfg(not(target_os = "emscripten"))]
     pub fn check_player_current_game_response(&mut self) {
+        // Not available outside of browser
+    }
+
+    /// Toggle player's ready state
+    #[cfg(target_os = "emscripten")]
+    pub fn toggle_ready_state(&mut self) {
+        println!("🔄 Toggle ready state called! Current state: {}", self.player_ready_state);
+        let new_ready_state = !self.player_ready_state;
+        println!("🔄 New state will be: {}", new_ready_state);
+        self.set_ready_state(new_ready_state);
+    }
+
+    #[cfg(not(target_os = "emscripten"))]
+    pub fn toggle_ready_state(&mut self) {
+        // Not available outside of browser
+    }
+
+    /// Set player's ready state
+    #[cfg(target_os = "emscripten")]
+    pub fn set_ready_state(&mut self, is_ready: bool) {
+        if self.set_ready_pending {
+            return;
+        }
+
+        // Need to be in a lobby to set ready state
+        let lobby_id = match &self.current_lobby_id {
+            Some(id) => id.clone(),
+            None => {
+                println!("❌ Cannot set ready state: not in a lobby");
+                return;
+            }
+        };
+
+        self.set_ready_pending = true;
+
+        extern "C" {
+            pub fn emscripten_run_script(script: *const i8);
+        }
+        use std::ffi::CString;
+
+        let js_code = format!(
+            r#"
+            (async function() {{
+                try {{
+                    console.log('📝 Setting ready state to: {} for game: {}');
+                    const result = await window.gameBridge.setReadyState('{}', {});
+                    if (result && result.transaction) {{
+                        Module.setReadyResult = JSON.stringify({{ success: true, isReady: {} }});
+                    }} else {{
+                        Module.setReadyResult = JSON.stringify({{ error: 'Failed to set ready state' }});
+                    }}
+                }} catch (error) {{
+                    Module.setReadyResult = JSON.stringify({{ error: error.message }});
+                }}
+            }})();
+            "#,
+            is_ready, lobby_id, lobby_id, is_ready, is_ready
+        );
+
+        let c_str = CString::new(js_code).unwrap();
+        unsafe {
+            emscripten_run_script(c_str.as_ptr());
+        }
+    }
+
+    #[cfg(not(target_os = "emscripten"))]
+    pub fn set_ready_state(&mut self, _is_ready: bool) {
+        // Not available outside of browser
+    }
+
+    /// Check for set ready state response
+    #[cfg(target_os = "emscripten")]
+    pub fn check_set_ready_response(&mut self) {
+        if !self.set_ready_pending {
+            return;
+        }
+
+        extern "C" {
+            pub fn emscripten_run_script(script: *const i8);
+            pub fn emscripten_run_script_string(script: *const i8) -> *const i8;
+        }
+        use std::ffi::CString;
+
+        let check_js = CString::new("Module.setReadyResult || null").unwrap();
+        let result_ptr = unsafe { emscripten_run_script_string(check_js.as_ptr()) };
+
+        if !result_ptr.is_null() {
+            let result_cstr = unsafe { std::ffi::CStr::from_ptr(result_ptr) };
+            let result_str = result_cstr.to_string_lossy();
+
+            if result_str != "null" && !result_str.is_empty() {
+                println!("🔍 Set ready result: {}", result_str);
+
+                if let Ok(result) = serde_json::from_str::<serde_json::Value>(&result_str) {
+                    if let Some(success) = result.get("success") {
+                        if success.as_bool().unwrap_or(false) {
+                            if let Some(is_ready) = result.get("isReady") {
+                                if let Some(ready_bool) = is_ready.as_bool() {
+                                    self.player_ready_state = ready_bool;
+                                    println!("✅ Ready state updated to: {}", ready_bool);
+
+                                    // Refresh lobby data to update all players' ready states
+                                    self.fetch_lobby_data();
+                                }
+                            }
+                        } else if let Some(error) = result.get("error") {
+                            println!("❌ Failed to set ready state: {}", error);
+                        }
+                    }
+                }
+
+                // Clear the result
+                let clear_js = CString::new("Module.setReadyResult = null").unwrap();
+                unsafe {
+                    emscripten_run_script(clear_js.as_ptr());
+                }
+            }
+
+            self.set_ready_pending = false;
+        }
+    }
+
+    #[cfg(not(target_os = "emscripten"))]
+    pub fn check_set_ready_response(&mut self) {
         // Not available outside of browser
     }
 }

@@ -269,6 +269,7 @@ fn main() {
         menu_state.check_lobby_data_response();
         menu_state.check_team_players_response();
         menu_state.check_player_current_game_response();
+        menu_state.check_set_ready_response();
 
         // Periodically check if player is in a game (every 1 second) - for auto-reconnect
         if !menu_state.in_lobby {

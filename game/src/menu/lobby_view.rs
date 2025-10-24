@@ -7,6 +7,7 @@ impl LobbyView {
         // Check for async responses
         menu_state.check_join_game_response();
         menu_state.check_start_game_response();
+        menu_state.check_set_ready_response();
 
         // Main container with padding
         ui.dummy([0.0, 20.0]); // Top padding
@@ -48,7 +49,10 @@ impl LobbyView {
 
                 // Show team A players
                 for (i, player) in menu_state.lobby_team_a.iter().enumerate() {
-                    ui.text_colored([0.9, 0.9, 0.9, 1.0], &format!("{}. {}", i + 1, player));
+                    let is_ready = menu_state.lobby_team_a_ready.get(i).copied().unwrap_or(false);
+                    let ready_indicator = if is_ready { "✓" } else { "○" };
+                    let color = if is_ready { [0.2, 1.0, 0.2, 1.0] } else { [0.9, 0.9, 0.9, 1.0] };
+                    ui.text_colored(color, &format!("{}. {} {}", i + 1, ready_indicator, player));
                 }
 
                 // Show empty slots
@@ -76,7 +80,10 @@ impl LobbyView {
 
                 // Show team B players
                 for (i, player) in menu_state.lobby_team_b.iter().enumerate() {
-                    ui.text_colored([0.9, 0.9, 0.9, 1.0], &format!("{}. {}", i + 1, player));
+                    let is_ready = menu_state.lobby_team_b_ready.get(i).copied().unwrap_or(false);
+                    let ready_indicator = if is_ready { "✓" } else { "○" };
+                    let color = if is_ready { [0.2, 1.0, 0.2, 1.0] } else { [0.9, 0.9, 0.9, 1.0] };
+                    ui.text_colored(color, &format!("{}. {} {}", i + 1, ready_indicator, player));
                 }
 
                 // Show empty slots
@@ -103,6 +110,41 @@ impl LobbyView {
             menu_state.lobby_leader = None;
             menu_state.is_lobby_leader = false;
         }
+
+        ui.same_line();
+        ui.dummy([20.0, 0.0]);
+        ui.same_line();
+
+        // Ready/Unready button (all players)
+        let ready_text = if menu_state.player_ready_state { "UNREADY" } else { "READY" };
+        let ready_color = if menu_state.player_ready_state {
+            [0.8, 0.4, 0.0, 1.0] // Orange for unready
+        } else {
+            [0.2, 0.8, 0.2, 1.0] // Green for ready
+        };
+
+        let _ready_btn_color = ui.push_style_color(imgui::StyleColor::Button, ready_color);
+        let _ready_btn_hover = ui.push_style_color(imgui::StyleColor::ButtonHovered, [
+            ready_color[0] + 0.1,
+            ready_color[1] + 0.1,
+            ready_color[2] + 0.1,
+            1.0
+        ]);
+        let _ready_btn_active = ui.push_style_color(imgui::StyleColor::ButtonActive, [
+            ready_color[0] + 0.2,
+            ready_color[1] + 0.2,
+            ready_color[2] + 0.2,
+            1.0
+        ]);
+
+        if ui.button_with_size(ready_text, [150.0, 40.0]) {
+            println!("🖱️ READY button clicked!");
+            menu_state.toggle_ready_state();
+        }
+
+        drop(_ready_btn_color);
+        drop(_ready_btn_hover);
+        drop(_ready_btn_active);
 
         ui.same_line();
         ui.dummy([20.0, 0.0]);

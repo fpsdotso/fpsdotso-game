@@ -1275,6 +1275,50 @@ export async function startGame(gamePubkey) {
 }
 
 /**
+ * Set player ready state in a game
+ * @param {string} gamePubkey - The game's public key
+ * @param {boolean} isReady - Whether the player is ready
+ */
+export async function setReadyState(gamePubkey, isReady) {
+  if (!matchmakingProgram || !wallet) {
+    console.error(
+      "Matchmaking program not initialized or wallet not connected"
+    );
+    return null;
+  }
+
+  try {
+    console.log(`📝 Setting ready state to: ${isReady} for game: ${gamePubkey}`);
+
+    // Derive player PDA
+    const [playerPda] = PublicKey.findProgramAddressSync(
+      [Buffer.from("player"), wallet.publicKey.toBuffer()],
+      matchmakingProgram.programId
+    );
+
+    const gamePublicKey = new PublicKey(gamePubkey);
+
+    const tx = await matchmakingProgram.methods
+      .setReadyState(isReady)
+      .accounts({
+        game: gamePublicKey,
+        player: playerPda,
+        authority: wallet.publicKey,
+      })
+      .rpc();
+
+    console.log("✅ Ready state updated! Transaction:", tx);
+    return {
+      transaction: tx,
+      isReady: isReady,
+    };
+  } catch (error) {
+    console.error("❌ Failed to set ready state:", error);
+    return null;
+  }
+}
+
+/**
  * Get player account data
  * @param {string} userPublicKey - User's public key (optional, defaults to connected wallet)
  */
@@ -1769,6 +1813,7 @@ export async function getAllPlayersInGame(gamePubkey) {
           team: "A",
           level: playerAccount.level,
           matches: playerAccount.totalMatchesPlayed,
+          isReady: playerAccount.isReady,
         });
       } catch (error) {
         console.warn(
@@ -1797,6 +1842,7 @@ export async function getAllPlayersInGame(gamePubkey) {
           team: "B",
           level: playerAccount.level,
           matches: playerAccount.totalMatchesPlayed,
+          isReady: playerAccount.isReady,
         });
       } catch (error) {
         console.warn(
