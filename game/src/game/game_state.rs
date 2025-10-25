@@ -308,40 +308,41 @@ impl GameState {
                         .unwrap_or("Unknown")
                         .to_string();
 
-                    let team = player.get("team")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("A")
-                        .to_string();
+                    // Parse team (0 = Team A, 1 = Team B)
+                    let team_num = player.get("team")
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or(0);
+                    let team = if team_num == 0 { "A" } else { "B" }.to_string();
 
                     let is_alive = player.get("isAlive")
                         .and_then(|v| v.as_bool())
                         .unwrap_or(true);
 
-                    // Parse position (convert from i32 to f32)
+                    // Parse position (already in f32 from GamePlayer contract)
                     let pos_x = player.get("positionX")
-                        .and_then(|v| v.as_i64())
-                        .unwrap_or(0) as f32 / 100.0;
+                        .and_then(|v| v.as_f64())
+                        .unwrap_or(0.0) as f32;
 
                     let pos_y = player.get("positionY")
-                        .and_then(|v| v.as_i64())
-                        .unwrap_or(0) as f32 / 100.0;
+                        .and_then(|v| v.as_f64())
+                        .unwrap_or(0.0) as f32;
 
                     let pos_z = player.get("positionZ")
-                        .and_then(|v| v.as_i64())
-                        .unwrap_or(0) as f32 / 100.0;
+                        .and_then(|v| v.as_f64())
+                        .unwrap_or(0.0) as f32;
 
-                    // Parse rotation (convert from i16 to f32 degrees)
+                    // Parse rotation (already in f32 radians from GamePlayer contract)
                     let rot_x = player.get("rotationX")
-                        .and_then(|v| v.as_i64())
-                        .unwrap_or(0) as f32 / 100.0;
+                        .and_then(|v| v.as_f64())
+                        .unwrap_or(0.0) as f32;
 
                     let rot_y = player.get("rotationY")
-                        .and_then(|v| v.as_i64())
-                        .unwrap_or(0) as f32 / 100.0;
+                        .and_then(|v| v.as_f64())
+                        .unwrap_or(0.0) as f32;
 
                     let rot_z = player.get("rotationZ")
-                        .and_then(|v| v.as_i64())
-                        .unwrap_or(0) as f32 / 100.0;
+                        .and_then(|v| v.as_f64())
+                        .unwrap_or(0.0) as f32;
 
                     // Create OtherPlayer struct
                     let other_player = OtherPlayer {
@@ -840,7 +841,8 @@ impl GameState {
             // In a real game, you'd use billboard text or UI overlays
 
             // Draw direction indicator (small cube in front of player based on rotation)
-            let yaw_rad = player.rotation.y.to_radians();
+            // rotation.y is already in radians from the contract
+            let yaw_rad = player.rotation.y;
             let dir_x = yaw_rad.cos() * 0.5;
             let dir_z = yaw_rad.sin() * 0.5;
 

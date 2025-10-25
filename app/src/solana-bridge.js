@@ -61,10 +61,9 @@ let matchmakingProgram = null;
 let gameProgram = null;
 let wallet = null;
 
-// Cache for Player PDA -> signingKey mappings to avoid redundant fetches
-// Note: signingKey is the wallet pubkey used for game transactions
-// Format: { [playerPdaString]: signingKeyPublicKey }
-const playerAuthorityCache = new Map();
+// Cache for Player PDA -> player data to avoid redundant fetches
+// Format: { [playerPdaString]: { signingKey: PublicKey, username: string } }
+const playerDataCache = new Map();
 
 /**
  * Model types enum matching the Solana program
@@ -481,7 +480,7 @@ export async function disconnectWallet() {
     matchmakingProgram = null;
 
     // Clear cache when disconnecting
-    playerAuthorityCache.clear();
+    playerDataCache.clear();
 
     console.log("👋 Wallet disconnected");
     return true;
@@ -2100,12 +2099,12 @@ export function getEphemeralPublicKey() {
 }
 
 /**
- * Clear the player authority cache
+ * Clear the player data cache
  * Call this when switching games or when you need fresh data
  */
-export function clearPlayerAuthorityCache() {
-  playerAuthorityCache.clear();
-  console.log("🗑️ Player authority cache cleared");
+export function clearPlayerDataCache() {
+  playerDataCache.clear();
+  console.log("🗑️ Player data cache cleared");
 }
 
 /**
@@ -2150,29 +2149,30 @@ export async function getGamePlayers(gamePublicKey) {
       ...(game.teamBPlayers || [])
     ];
 
-    // Fetch Player accounts to get their signing_key (wallet pubkeys)
+    // Fetch Player accounts to get their signing_key and username
     // Use cache to avoid redundant fetches
-    const playerAuthorities = await Promise.all(
+    const playerDataList = await Promise.all(
       allPlayerPdas.map(async (playerPda) => {
         const playerPdaString = playerPda.toString();
 
         // Check cache first
-        if (playerAuthorityCache.has(playerPdaString)) {
-          return playerAuthorityCache.get(playerPdaString);
+        if (playerDataCache.has(playerPdaString)) {
+          return playerDataCache.get(playerPdaString);
         }
 
         // Cache miss - fetch from blockchain
         try {
           const player = await matchmakingProgram.account.player.fetch(playerPda);
-          console.log("Player Data for PDA", playerPdaString, ":", player);
           // Use signingKey (camelCase - Anchor converts snake_case to camelCase)
-          const signingKey = player.signingKey;
+          const playerData = {
+            signingKey: player.signingKey,
+            username: player.username,
+          };
 
-          console.log("Fetched Player PDA:", playerPdaString, "=> Signing Key:", signingKey?.toString());
           // Store in cache for future use
-          playerAuthorityCache.set(playerPdaString, signingKey);
+          playerDataCache.set(playerPdaString, playerData);
 
-          return signingKey;
+          return playerData;
         } catch (error) {
           console.warn(`⚠️ Failed to fetch Player PDA ${playerPdaString}:`, error.message);
           return null;
@@ -2180,20 +2180,18 @@ export async function getGamePlayers(gamePublicKey) {
       })
     );
 
-    console.log("📊 Fetched player authorities:", playerAuthorities);
-
     // Filter out null values and fetch GamePlayer accounts from EPHEMERAL ROLLUP
     const players = await Promise.all(
-      playerAuthorities
-        .filter(auth => auth !== null)
-        .map(async (authorityKey) => {
+      playerDataList
+        .filter(data => data !== null)
+        .map(async (playerData) => {
           try {
-            // Derive GamePlayer PDA with canonical bump for this authority and game
+            // Derive GamePlayer PDA with canonical bump for this signingKey and game
             const [gamePlayerPda, gamePlayerBump] = PublicKey.findProgramAddressSync(
-              [Buffer.from("game_player"), authorityKey.toBuffer(), gamePubkey.toBuffer()],
+              [Buffer.from("game_player"), playerData.signingKey.toBuffer(), gamePubkey.toBuffer()],
               GAME_PROGRAM_ID
             );
-            console.log("Signing Key:", authorityKey.toString(), "=> GamePlayer PDA:", gamePlayerPda.toString());
+
             // Fetch GamePlayer from ephemeral rollup (game contract)
             // GamePlayer contains ALL game data: position, rotation, health, team, stats
             const gamePlayer = await gameProgram.account.gamePlayer.fetch(gamePlayerPda);
@@ -2214,9 +2212,10 @@ export async function getGamePlayers(gamePublicKey) {
               kills: gamePlayer.kills,
               deaths: gamePlayer.deaths,
               score: gamePlayer.score,
+              username: playerData.username, // Add username from cached Player data
             };
           } catch (error) {
-            console.warn(`⚠️ Failed to fetch GamePlayer for ${authorityKey.toString()}:`, error.message);
+            console.warn(`⚠️ Failed to fetch GamePlayer for ${playerData.signingKey.toString()}:`, error.message);
             // Silently skip failed fetches (player may not have initialized yet)
             return null;
           }
