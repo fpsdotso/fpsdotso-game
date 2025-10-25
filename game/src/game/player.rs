@@ -84,6 +84,11 @@ impl Player {
         // Clamp pitch to prevent camera flipping
         self.pitch = self.pitch.clamp(-89.0, 89.0);
 
+        // Log rotation every frame for debugging
+        println!("🎯 Rotation - Yaw: {:.2}°, Pitch: {:.2}° | Radians - Yaw: {:.4}, Pitch: {:.4}",
+                 self.yaw, self.pitch,
+                 self.yaw.to_radians(), self.pitch.to_radians());
+
         // Calculate camera direction from yaw and pitch
         let yaw_rad = self.yaw.to_radians();
         let pitch_rad = self.pitch.to_radians();
@@ -145,6 +150,10 @@ impl Player {
         let boundary = 25.0;
         self.position.x = self.position.x.clamp(-boundary, boundary);
         self.position.z = self.position.z.clamp(-boundary, boundary);
+
+        // Log position every frame for debugging
+        println!("📍 Position - X: {:.2}, Y: {:.2}, Z: {:.2}",
+                 self.position.x, self.position.y, self.position.z);
 
         // Calculate effective height based on crouching
         let effective_height = if self.is_crouching {
