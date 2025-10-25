@@ -2231,7 +2231,7 @@ export async function getGamePlayers(gamePublicKey) {
 }
 
 /**
- * Get current player's authority public key
+ * Get current player's authority public key (main wallet)
  * @returns {string} Current wallet's public key
  */
 export function getCurrentPlayerAuthority() {
@@ -2239,6 +2239,19 @@ export function getCurrentPlayerAuthority() {
     throw new Error("Wallet not connected");
   }
   return wallet.publicKey.toString();
+}
+
+/**
+ * Get current player's ephemeral wallet public key
+ * This is used for GamePlayer matching since GamePlayer.authority is the ephemeral wallet
+ * @returns {string} Ephemeral wallet's public key
+ */
+export function getCurrentPlayerEphemeralKey() {
+  const ephemeralKey = EphemeralWallet.getEphemeralPublicKey();
+  if (!ephemeralKey) {
+    throw new Error("Ephemeral wallet not initialized");
+  }
+  return ephemeralKey;
 }
 
 /**

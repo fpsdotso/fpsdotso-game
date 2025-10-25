@@ -67,7 +67,7 @@ impl GameState {
             player: None,
             mouse_captured: false,
             sync_timer: 0.0,
-            sync_interval: 0.033, // 33ms
+            sync_interval: 0.033, // Fetch other players every 33ms (30 ticks/sec)
             current_game_pubkey: None,
             current_player_authority: None,
             other_players: Vec::new(),
@@ -133,33 +133,23 @@ impl GameState {
                 player.update(rl, delta);
             }
 
-            // Blockchain synchronization timer
+            // Send player input every frame for maximum responsiveness
+            if let Some(ref player) = self.player {
+                self.send_player_input(rl, player, delta);
+            }
+
+            // Fetch other players' positions every 33ms (30 ticks/sec) to reduce network load
             self.sync_timer += delta;
-            if self.sync_timer >= self.sync_interval {
+            if self.sync_timer >= 0.033 {
                 self.sync_timer = 0.0;
-                self.sync_with_blockchain(rl);
+                self.fetch_and_sync_players();
             }
         }
     }
 
-    /// Synchronize game state with blockchain (send inputs and fetch player positions)
-    fn sync_with_blockchain(&mut self, rl: &RaylibHandle) {
-        // Only sync if we have a game pubkey set
-        if self.current_game_pubkey.is_none() {
-            return;
-        }
-
-        // Get player input and send to contract
-        if let Some(ref player) = self.player {
-            self.send_player_input(rl, player);
-        }
-
-        // Fetch all players and update their positions
-        self.fetch_and_sync_players();
-    }
 
     /// Send player input to the game contract
-    fn send_player_input(&self, rl: &RaylibHandle, player: &Player) {
+    fn send_player_input(&self, rl: &RaylibHandle, player: &Player, delta: f32) {
         use std::os::raw::c_char;
         use std::ffi::CString;
 
@@ -193,8 +183,8 @@ impl GameState {
             rl.is_key_down(KeyboardKey::KEY_A),
             rl.is_key_down(KeyboardKey::KEY_D),
             mouse_delta.x,
-            mouse_delta.y,
-            self.sync_interval,
+            -mouse_delta.y,
+            delta,  // Use actual frame delta time
             player.mouse_sensitivity,
             game_id  // Add the game ID (lobby public key)
         );
@@ -239,12 +229,12 @@ impl GameState {
                 try {{
                     if (window.gameBridge && window.gameBridge.getGamePlayers) {{
                         const players = await window.gameBridge.getGamePlayers('{}');
-                        const currentAuthority = window.gameBridge.getCurrentPlayerAuthority();
+                        const currentEphemeralKey = window.gameBridge.getCurrentPlayerEphemeralKey();
 
                         // Store players data for Rust to read
                         window.___game_players_data = JSON.stringify({{
                             players: players,
-                            currentAuthority: currentAuthority
+                            currentAuthority: currentEphemeralKey
                         }});
                     }}
                 }} catch (error) {{
@@ -282,7 +272,7 @@ impl GameState {
 
         // Parse the JSON
         if let Ok(data) = serde_json::from_str::<Value>(json_str) {
-            // Get current player's authority to filter them out
+            // Get current player's authority to identify ourselves
             let current_authority = data.get("currentAuthority")
                 .and_then(|v| v.as_str())
                 .unwrap_or("");
@@ -293,16 +283,68 @@ impl GameState {
                 self.other_players.clear();
 
                 for player in players {
-                    // Skip the current player (don't render ourselves)
                     let authority = player.get("authority")
                         .and_then(|v| v.as_str())
                         .unwrap_or("");
 
+                    // Parse position and rotation first (needed for both current and other players)
+                    let pos_x = player.get("positionX")
+                        .and_then(|v| v.as_f64())
+                        .unwrap_or(0.0) as f32;
+
+                    let pos_y = player.get("positionY")
+                        .and_then(|v| v.as_f64())
+                        .unwrap_or(0.0) as f32;
+
+                    let pos_z = player.get("positionZ")
+                        .and_then(|v| v.as_f64())
+                        .unwrap_or(0.0) as f32;
+
+                    let rot_x = player.get("rotationX")
+                        .and_then(|v| v.as_f64())
+                        .unwrap_or(0.0) as f32;
+
+                    let rot_y = player.get("rotationY")
+                        .and_then(|v| v.as_f64())
+                        .unwrap_or(0.0) as f32;
+
+                    let rot_z = player.get("rotationZ")
+                        .and_then(|v| v.as_f64())
+                        .unwrap_or(0.0) as f32;
+
+                    // If this is the current player, update from blockchain (with smooth interpolation)
                     if authority == current_authority {
-                        continue;
+                        if let Some(ref mut local_player) = self.player {
+                            let blockchain_pos = Vector3::new(pos_x, pos_y, pos_z);
+                            let blockchain_yaw = rot_y.to_degrees();
+                            let blockchain_pitch = rot_x.to_degrees();
+
+                            // Calculate distance between local and blockchain positions
+                            let distance = (local_player.position - blockchain_pos).length();
+
+                            // Always sync position with smooth interpolation
+                            // Use higher factor for small distances, lower for large (smoother at close range)
+                            let lerp_factor = if distance > 1.0 {
+                                0.5 // Faster correction for large desyncs
+                            } else {
+                                0.2 // Subtle correction for small desyncs
+                            };
+
+                            local_player.position = local_player.position.lerp(blockchain_pos, lerp_factor);
+
+                            // Sync rotation with smooth interpolation
+                            // Use smaller factor to keep rotation feeling responsive to mouse
+                            let angle_lerp = 0.3;
+                            local_player.yaw = local_player.yaw + (blockchain_yaw - local_player.yaw) * angle_lerp;
+                            local_player.pitch = local_player.pitch + (blockchain_pitch - local_player.pitch) * angle_lerp;
+
+                            // Update camera
+                            local_player.update_camera();
+                        }
+                        continue; // Don't add ourselves to other_players list
                     }
 
-                    // Parse player data
+                    // Parse other player data
                     let username = player.get("username")
                         .and_then(|v| v.as_str())
                         .unwrap_or("Unknown")
@@ -317,32 +359,6 @@ impl GameState {
                     let is_alive = player.get("isAlive")
                         .and_then(|v| v.as_bool())
                         .unwrap_or(true);
-
-                    // Parse position (already in f32 from GamePlayer contract)
-                    let pos_x = player.get("positionX")
-                        .and_then(|v| v.as_f64())
-                        .unwrap_or(0.0) as f32;
-
-                    let pos_y = player.get("positionY")
-                        .and_then(|v| v.as_f64())
-                        .unwrap_or(0.0) as f32;
-
-                    let pos_z = player.get("positionZ")
-                        .and_then(|v| v.as_f64())
-                        .unwrap_or(0.0) as f32;
-
-                    // Parse rotation (already in f32 radians from GamePlayer contract)
-                    let rot_x = player.get("rotationX")
-                        .and_then(|v| v.as_f64())
-                        .unwrap_or(0.0) as f32;
-
-                    let rot_y = player.get("rotationY")
-                        .and_then(|v| v.as_f64())
-                        .unwrap_or(0.0) as f32;
-
-                    let rot_z = player.get("rotationZ")
-                        .and_then(|v| v.as_f64())
-                        .unwrap_or(0.0) as f32;
 
                     // Create OtherPlayer struct
                     let other_player = OtherPlayer {

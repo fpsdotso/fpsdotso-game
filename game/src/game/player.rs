@@ -55,7 +55,7 @@ impl Player {
             position,
             camera,
             move_speed: 5.0, // 5 units per second
-            mouse_sensitivity: 0.15,
+            mouse_sensitivity: 0.01,
             yaw: -90.0, // Start facing forward (negative Z)
             pitch: 0.0,
             height,
@@ -172,8 +172,13 @@ impl Player {
     /// Set player position (useful for spawning)
     pub fn set_position(&mut self, position: Vector3) {
         self.position = position;
+        self.update_camera();
+    }
 
-        // Update camera based on current look direction
+    /// Update camera based on current position and rotation (without processing input)
+    /// This is useful for syncing camera with blockchain-authoritative state
+    pub fn update_camera(&mut self) {
+        // Calculate look direction from yaw and pitch
         let yaw_rad = self.yaw.to_radians();
         let pitch_rad = self.pitch.to_radians();
 
@@ -183,10 +188,17 @@ impl Player {
             yaw_rad.sin() * pitch_rad.cos(),
         );
 
+        // Calculate effective height based on crouching state
+        let effective_height = if self.is_crouching {
+            self.height * 0.6
+        } else {
+            self.height
+        };
+
         let camera_pos = Vector3::new(
-            position.x,
-            position.y + self.height,
-            position.z,
+            self.position.x,
+            self.position.y + effective_height,
+            self.position.z,
         );
         let camera_target = camera_pos + direction;
 

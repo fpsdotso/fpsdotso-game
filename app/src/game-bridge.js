@@ -186,6 +186,11 @@ export function initGameBridge() {
     getCurrentPlayerAuthority: () => {
       return solanaBridge.getCurrentPlayerAuthority();
     },
+
+    // Get current player's ephemeral wallet public key (for GamePlayer matching)
+    getCurrentPlayerEphemeralKey: () => {
+      return solanaBridge.getCurrentPlayerEphemeralKey();
+    },
   };
 
   console.log("✅ Game bridge initialized");
