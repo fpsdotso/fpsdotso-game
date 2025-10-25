@@ -1,5 +1,5 @@
 {
-  "address": "7TE8ZZqRyFMR7K3ocVCL2hBNfW29cH57pMTvj1qTj8cX",
+  "address": "4pfYuQkFmGXPFMjBNmYUstnC3jjgjxcBS8rSk8qcUUnE",
   "metadata": {
     "name": "game",
     "version": "0.1.0",
@@ -29,7 +29,7 @@
           "signer": true
         },
         {
-          "name": "player",
+          "name": "game_player",
           "writable": true
         },
         {
@@ -43,6 +43,193 @@
         }
       ],
       "args": []
+    },
+    {
+      "name": "delegate_game_player",
+      "docs": [
+        "Delegate GamePlayer account to game ephemeral rollup",
+        "This should be called AFTER init_game_player"
+      ],
+      "discriminator": [
+        40,
+        222,
+        2,
+        178,
+        146,
+        143,
+        120,
+        92
+      ],
+      "accounts": [
+        {
+          "name": "buffer_game_player",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  117,
+                  102,
+                  102,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "game_player"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                56,
+                200,
+                242,
+                143,
+                91,
+                11,
+                6,
+                213,
+                12,
+                150,
+                80,
+                0,
+                188,
+                113,
+                140,
+                63,
+                29,
+                88,
+                7,
+                213,
+                90,
+                253,
+                114,
+                149,
+                188,
+                144,
+                155,
+                244,
+                64,
+                143,
+                236,
+                179
+              ]
+            }
+          }
+        },
+        {
+          "name": "delegation_record_game_player",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  108,
+                  101,
+                  103,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "game_player"
+              }
+            ],
+            "program": {
+              "kind": "account",
+              "path": "delegation_program"
+            }
+          }
+        },
+        {
+          "name": "delegation_metadata_game_player",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  108,
+                  101,
+                  103,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110,
+                  45,
+                  109,
+                  101,
+                  116,
+                  97,
+                  100,
+                  97,
+                  116,
+                  97
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "game_player"
+              }
+            ],
+            "program": {
+              "kind": "account",
+              "path": "delegation_program"
+            }
+          }
+        },
+        {
+          "name": "game_player",
+          "writable": true
+        },
+        {
+          "name": "authority",
+          "docs": [
+            "The player's authority/wallet"
+          ],
+          "signer": true
+        },
+        {
+          "name": "signer",
+          "docs": [
+            "The signer paying for delegation"
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "owner_program",
+          "address": "4pfYuQkFmGXPFMjBNmYUstnC3jjgjxcBS8rSk8qcUUnE"
+        },
+        {
+          "name": "delegation_program",
+          "address": "DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "game_id",
+          "type": "pubkey"
+        }
+      ]
     },
     {
       "name": "get_player_state",
@@ -61,7 +248,7 @@
       ],
       "accounts": [
         {
-          "name": "player"
+          "name": "game_player"
         }
       ],
       "args": [],
@@ -70,6 +257,87 @@
           "name": "PlayerStateData"
         }
       }
+    },
+    {
+      "name": "init_game_player",
+      "docs": [
+        "Initialize game player (called after matchmaking ready)"
+      ],
+      "discriminator": [
+        183,
+        53,
+        198,
+        174,
+        162,
+        100,
+        236,
+        112
+      ],
+      "accounts": [
+        {
+          "name": "game_player",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  97,
+                  109,
+                  101,
+                  95,
+                  112,
+                  108,
+                  97,
+                  121,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "authority"
+              },
+              {
+                "kind": "arg",
+                "path": "game_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "game_id",
+          "type": "pubkey"
+        },
+        {
+          "name": "team",
+          "type": "u8"
+        },
+        {
+          "name": "spawn_x",
+          "type": "f32"
+        },
+        {
+          "name": "spawn_y",
+          "type": "f32"
+        },
+        {
+          "name": "spawn_z",
+          "type": "f32"
+        }
+      ]
     },
     {
       "name": "process_input",
@@ -89,8 +357,40 @@
       ],
       "accounts": [
         {
-          "name": "player",
-          "writable": true
+          "name": "game_player",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  97,
+                  109,
+                  101,
+                  95,
+                  112,
+                  108,
+                  97,
+                  121,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "authority"
+              },
+              {
+                "kind": "arg",
+                "path": "_game_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "signer": true
         }
       ],
       "args": [
@@ -125,86 +425,10 @@
         {
           "name": "sensitivity",
           "type": "f32"
-        }
-      ]
-    },
-    {
-      "name": "process_movement",
-      "docs": [
-        "Separate movement processing for when you only need to update position"
-      ],
-      "discriminator": [
-        65,
-        198,
-        73,
-        223,
-        45,
-        208,
-        185,
-        176
-      ],
-      "accounts": [
-        {
-          "name": "player",
-          "writable": true
-        }
-      ],
-      "args": [
-        {
-          "name": "forward",
-          "type": "bool"
         },
         {
-          "name": "backward",
-          "type": "bool"
-        },
-        {
-          "name": "left",
-          "type": "bool"
-        },
-        {
-          "name": "right",
-          "type": "bool"
-        },
-        {
-          "name": "delta_time",
-          "type": "f32"
-        }
-      ]
-    },
-    {
-      "name": "process_rotation",
-      "docs": [
-        "Separate rotation processing for camera updates"
-      ],
-      "discriminator": [
-        30,
-        108,
-        242,
-        104,
-        27,
-        65,
-        1,
-        121
-      ],
-      "accounts": [
-        {
-          "name": "player",
-          "writable": true
-        }
-      ],
-      "args": [
-        {
-          "name": "delta_x",
-          "type": "f32"
-        },
-        {
-          "name": "delta_y",
-          "type": "f32"
-        },
-        {
-          "name": "sensitivity",
-          "type": "f32"
+          "name": "_game_id",
+          "type": "pubkey"
         }
       ]
     },
@@ -244,9 +468,171 @@
           }
         }
       ]
+    },
+    {
+      "name": "undelegate_game_player",
+      "docs": [
+        "Undelegate GamePlayer account from game ephemeral rollup",
+        "This should be called when game ends"
+      ],
+      "discriminator": [
+        204,
+        248,
+        159,
+        220,
+        219,
+        194,
+        106,
+        225
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "game_player",
+          "docs": [
+            "GamePlayer account to undelegate from game ephemeral"
+          ],
+          "writable": true
+        },
+        {
+          "name": "magic_program",
+          "address": "Magic11111111111111111111111111111111111111"
+        },
+        {
+          "name": "magic_context",
+          "writable": true,
+          "address": "MagicContext1111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    }
+  ],
+  "accounts": [
+    {
+      "name": "GamePlayer",
+      "discriminator": [
+        0,
+        81,
+        202,
+        91,
+        5,
+        74,
+        232,
+        120
+      ]
     }
   ],
   "types": [
+    {
+      "name": "GamePlayer",
+      "docs": [
+        "Game-specific player state containing position, rotation, and game stats",
+        "This is separate from the matchmaking Player account"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "authority",
+            "docs": [
+              "The player's authority (wallet pubkey)"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "game_id",
+            "docs": [
+              "Reference to the game this player is in"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "position_x",
+            "docs": [
+              "Position in 3D space"
+            ],
+            "type": "f32"
+          },
+          {
+            "name": "position_y",
+            "type": "f32"
+          },
+          {
+            "name": "position_z",
+            "type": "f32"
+          },
+          {
+            "name": "rotation_x",
+            "docs": [
+              "Rotation (Euler angles in radians)"
+            ],
+            "type": "f32"
+          },
+          {
+            "name": "rotation_y",
+            "type": "f32"
+          },
+          {
+            "name": "rotation_z",
+            "type": "f32"
+          },
+          {
+            "name": "health",
+            "docs": [
+              "Health (0-100)"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "is_alive",
+            "docs": [
+              "Is player alive"
+            ],
+            "type": "bool"
+          },
+          {
+            "name": "team",
+            "docs": [
+              "Team (0 or 1)"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "kills",
+            "docs": [
+              "Game stats"
+            ],
+            "type": "u32"
+          },
+          {
+            "name": "deaths",
+            "type": "u32"
+          },
+          {
+            "name": "score",
+            "type": "u32"
+          },
+          {
+            "name": "last_update",
+            "docs": [
+              "Last update timestamp"
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "bump",
+            "docs": [
+              "Bump seed for PDA"
+            ],
+            "type": "u8"
+          }
+        ]
+      }
+    },
     {
       "name": "PlayerStateData",
       "type": {
@@ -275,6 +661,30 @@
           {
             "name": "rotation_z",
             "type": "f32"
+          },
+          {
+            "name": "health",
+            "type": "u8"
+          },
+          {
+            "name": "is_alive",
+            "type": "bool"
+          },
+          {
+            "name": "team",
+            "type": "u8"
+          },
+          {
+            "name": "kills",
+            "type": "u32"
+          },
+          {
+            "name": "deaths",
+            "type": "u32"
+          },
+          {
+            "name": "score",
+            "type": "u32"
           }
         ]
       }

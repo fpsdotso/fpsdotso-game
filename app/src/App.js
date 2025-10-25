@@ -341,6 +341,26 @@ function App() {
                       <div>Level: {playerData.level}</div>
                       <div>Matches: {playerData.totalMatchesPlayed}</div>
                       <div>Team: {playerData.team}</div>
+                      {playerData.authority && (
+                        <div
+                          title={playerData.authority.toString()}
+                          style={{ cursor: "help" }}
+                        >
+                          Authority:{" "}
+                          {playerData.authority.toString().slice(0, 4)}...
+                          {playerData.authority.toString().slice(-4)}
+                        </div>
+                      )}
+                      {playerData.signingKey && (
+                        <div
+                          title={playerData.signingKey.toString()}
+                          style={{ cursor: "help" }}
+                        >
+                          Signing Key:{" "}
+                          {playerData.signingKey.toString().slice(0, 4)}...
+                          {playerData.signingKey.toString().slice(-4)}
+                        </div>
+                      )}
                     </div>
                   )}
                   <button

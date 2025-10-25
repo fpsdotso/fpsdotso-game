@@ -163,10 +163,19 @@ impl GameState {
         use std::os::raw::c_char;
         use std::ffi::CString;
 
+        // Get the game ID - return early if not set
+        let game_id = match &self.current_game_pubkey {
+            Some(id) => id,
+            None => {
+                // No game ID set, can't send input
+                return;
+            }
+        };
+
         // Get mouse delta for rotation
         let mouse_delta = rl.get_mouse_delta();
 
-        // Prepare input data as JSON
+        // Prepare input data as JSON - now including gameId
         let input_json = format!(
             r#"{{
                 "forward": {},
@@ -176,7 +185,8 @@ impl GameState {
                 "deltaX": {},
                 "deltaY": {},
                 "deltaTime": {},
-                "sensitivity": {}
+                "sensitivity": {},
+                "gameId": "{}"
             }}"#,
             rl.is_key_down(KeyboardKey::KEY_W),
             rl.is_key_down(KeyboardKey::KEY_S),
@@ -185,7 +195,8 @@ impl GameState {
             mouse_delta.x,
             mouse_delta.y,
             self.sync_interval,
-            player.mouse_sensitivity
+            player.mouse_sensitivity,
+            game_id  // Add the game ID (lobby public key)
         );
 
         // Call JavaScript function to send input

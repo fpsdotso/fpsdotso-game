@@ -15,6 +15,8 @@ const PROGRAM_ID = new PublicKey(mapRegistryIdl.address);
 const MATCHMAKING_PROGRAM_ID = new PublicKey(matchmakingIdl.address);
 const GAME_PROGRAM_ID = new PublicKey(gameIdl.address);
 
+let GamePlayerBumpGlobal = null;
+
 /**
  * Simple wallet wrapper for Keypair to work with Anchor
  */
@@ -58,6 +60,11 @@ let program = null;
 let matchmakingProgram = null;
 let gameProgram = null;
 let wallet = null;
+
+// Cache for Player PDA -> signingKey mappings to avoid redundant fetches
+// Note: signingKey is the wallet pubkey used for game transactions
+// Format: { [playerPdaString]: signingKeyPublicKey }
+const playerAuthorityCache = new Map();
 
 /**
  * Model types enum matching the Solana program
@@ -472,6 +479,10 @@ export async function disconnectWallet() {
     provider = null;
     program = null;
     matchmakingProgram = null;
+
+    // Clear cache when disconnecting
+    playerAuthorityCache.clear();
+
     console.log("👋 Wallet disconnected");
     return true;
   } catch (error) {
@@ -954,6 +965,9 @@ export async function initPlayer(username) {
     return null;
   }
 
+  const ephemeralInfo = await EphemeralWallet.initializeEphemeralWallet(wallet);
+  const ephemeralKeypair = EphemeralWallet.getEphemeralKeypair();
+
   try {
     console.log(`📝 Initializing player: ${username}`);
 
@@ -975,13 +989,17 @@ export async function initPlayer(username) {
       usernameUtf8, // Following bytes: actual username
     ]);
 
+    console.log("Setting this to be Player Signing Key: ", ephemeralKeypair.publicKey.toString());
+
     const tx = await matchmakingProgram.methods
       .initPlayer(usernameBytes)
       .accounts({
-        player: playerPda,
-        authority: wallet.publicKey,
-        systemProgram: web3.SystemProgram.programId,
+      player: playerPda,
+      authority: wallet.publicKey,
+      signingKey: ephemeralKeypair.publicKey,
+      systemProgram: web3.SystemProgram.programId,
       })
+      //.signers() // Add ephemeralKeypair as a signer
       .rpc();
 
     console.log("✅ Player initialized! Transaction:", tx);
@@ -1350,75 +1368,123 @@ export async function setReadyState(gamePubkey, isReady) {
   try {
     console.log(`📝 Setting ready state to: ${isReady} for game: ${gamePubkey}`);
 
-    // Get ephemeral wallet keypair - now required as signer
+    // Get ephemeral wallet keypair - required for delegation
     const ephemeralKeypair = EphemeralWallet.getEphemeralKeypair();
     if (!ephemeralKeypair) {
       throw new Error("Ephemeral wallet not initialized");
     }
 
-    // Derive player PDA
+    const gamePublicKey = new PublicKey(gamePubkey);
+
+    // Derive player PDA (matchmaking)
     const [playerPda] = PublicKey.findProgramAddressSync(
       [Buffer.from("player"), wallet.publicKey.toBuffer()],
       matchmakingProgram.programId
     );
 
-    // Derive buffer_pda (used by Magicblock for delegation)
-    const [bufferPda] = PublicKey.findProgramAddressSync(
-      [Buffer.from("buffer"), playerPda.toBuffer()],
-      DELEGATION_PROGRAM_ID
-    );
+    // Step 1: Set ready state in matchmaking contract
+    console.log("📝 Step 1: Setting ready state in matchmaking contract...");
+    const readyTx = await matchmakingProgram.methods
+      .setReadyState(isReady)
+      .accounts({
+        game: gamePublicKey,
+        player: playerPda,
+        authority: wallet.publicKey,
+      })
+      .rpc();
 
-    // Derive delegation_record_pda
-    const [delegationRecordPda] = PublicKey.findProgramAddressSync(
-      [Buffer.from("delegation"), playerPda.toBuffer()],
-      DELEGATION_PROGRAM_ID
-    );
+    console.log("✅ Step 1 complete - Ready state set:", readyTx);
 
-    // Derive delegation_metadata_pda
-    const [delegationMetadataPda] = PublicKey.findProgramAddressSync(
-      [Buffer.from("delegation-metadata"), playerPda.toBuffer()],
-      DELEGATION_PROGRAM_ID
-    );
+    // If setting ready to true, initialize and delegate GamePlayer
+    if (isReady) {
+      // Get player's team from matchmaking
+      const playerAccount = await matchmakingProgram.account.player.fetch(playerPda);
+      const team = playerAccount.team;
 
-    const gamePublicKey = new PublicKey(gamePubkey);
+      // Default spawn positions (you can customize these based on team/map)
+      const spawnX = team === 0 ? -10.0 : 10.0;
+      const spawnY = 1.0;
+      const spawnZ = 0.0;
 
-    // Add local validator identity to remaining accounts if running on localnet
-    const remainingAccounts =
-      connection.rpcEndpoint.includes("localhost") ||
-      connection.rpcEndpoint.includes("127.0.0.1")
-        ? [
+      // Derive GamePlayer PDA with canonical bump
+      const [gamePlayerPda, gamePlayerBump] = PublicKey.findProgramAddressSync(
+        [Buffer.from("game_player"), ephemeralKeypair.publicKey.toBuffer(), gamePublicKey.toBuffer()],
+        GAME_PROGRAM_ID
+      );
+
+      console.log("✅ Derived GamePlayer PDA:", gamePlayerPda.toString());
+      console.log("✅ GamePlayer bump:", gamePlayerBump);
+
+      // Create a game program instance with the MAIN wallet provider
+      const mainProvider = new AnchorProvider(
+        connection,
+        wallet,
+        { commitment: "confirmed" }
+      );
+
+      const ephemeralMainConnectionProvider = new AnchorProvider(
+        connection,
+        new NodeWallet(ephemeralKeypair),
+        { commitment: "confirmed" }
+      );
+
+      const gameProgramWithEphemeralWalletOnMain = new Program(gameIdl, ephemeralMainConnectionProvider);
+      const gameProgramWithMainWallet = new Program(gameIdl, mainProvider);
+
+      // Step 2: Initialize GamePlayer
+      console.log("📝 Step 2: Initializing GamePlayer...");
+      const initTx = await gameProgramWithEphemeralWalletOnMain.methods
+        .initGamePlayer(gamePublicKey, team, spawnX, spawnY, spawnZ)
+        .accounts({
+          authority: ephemeralKeypair.publicKey,
+          systemProgram: web3.SystemProgram.programId,
+        })
+        .rpc();
+
+      console.log("✅ Step 2 complete - GamePlayer initialized:", initTx);
+
+      // Step 3: Delegate GamePlayer to ephemeral rollup
+      console.log("📝 Step 3: Delegating GamePlayer to ephemeral rollup...");
+
+
+      const remaining_accounts = [
             {
-              pubkey: new PublicKey("mAGicPQYBMvcYveUZA5F5UNNwyHvfYh5xkLS2Fr1mev"),
+              pubkey: new web3.PublicKey("mAGicPQYBMvcYveUZA5F5UNNwyHvfYh5xkLS2Fr1mev"),
               isSigner: false,
               isWritable: false,
             },
           ]
-        : [];
+      // Call delegate_game_player on game contract
+      // Authority = main wallet (owner), Signer = ephemeral wallet (payer)
+      // Note: buffer_game_player, delegation_record, and delegation_metadata PDAs
+      // are automatically derived by Anchor based on the IDL definitions
+      const delegateTx = await gameProgramWithMainWallet.methods
+        .delegateGamePlayer(gamePublicKey) // Pass game_id parameter
+        .accounts({
+          gamePlayer: gamePlayerPda, // The GamePlayer account to delegate
+          authority: ephemeralKeypair.publicKey, // Main wallet is the authority
+          signer: ephemeralKeypair.publicKey, // Ephemeral wallet pays for delegation
+        })
+        .remainingAccounts(remaining_accounts)
+        .signers([ephemeralKeypair]) // Add ephemeral wallet as additional signer
+        .rpc();
 
-    // Build transaction with both main wallet and ephemeral wallet as signers
-    const tx = await matchmakingProgram.methods
-      .setReadyState(isReady)
-      .accounts({
-        game: gamePublicKey,
-        pda: playerPda,
-        authority: wallet.publicKey,
-        signer: ephemeralKeypair.publicKey,
-      })
-      .remainingAccounts(remainingAccounts)
-      .signers([ephemeralKeypair])
-      .rpc();
+      console.log("✅ Step 3 complete - GamePlayer delegated:", delegateTx);
 
-    if (isReady) {
-      console.log("✅ Ready state set to true! Player PDA delegated via Magicblock:", ephemeralKeypair.publicKey.toString());
+      return {
+        readyTransaction: readyTx,
+        initTransaction: initTx,
+        delegationTransaction: delegateTx,
+        gamePlayerPda: gamePlayerPda.toString(),
+        isReady: true,
+      };
     } else {
-      console.log("✅ Ready state set to false!");
+      console.log("✅ Ready state set to false (no GamePlayer actions needed)");
+      return {
+        readyTransaction: readyTx,
+        isReady: false,
+      };
     }
-    console.log("Transaction:", tx);
-
-    return {
-      transaction: tx,
-      isReady: isReady,
-    };
   } catch (error) {
     console.error("❌ Failed to set ready state:", error);
     return null;
@@ -2034,8 +2100,17 @@ export function getEphemeralPublicKey() {
 }
 
 /**
+ * Clear the player authority cache
+ * Call this when switching games or when you need fresh data
+ */
+export function clearPlayerAuthorityCache() {
+  playerAuthorityCache.clear();
+  console.log("🗑️ Player authority cache cleared");
+}
+
+/**
  * Get all players in a game for synchronization
- * IMPORTANT: Fetches game roster from main chain, but player positions from ephemeral rollup
+ * IMPORTANT: Only fetches GamePlayer data from game contract on ephemeral rollup
  * @param {string} gamePublicKey - The game's public key
  * @returns {Array} Array of player data with positions
  */
@@ -2064,46 +2139,88 @@ export async function getGamePlayers(gamePublicKey) {
   }
 
   try {
-    // Fetch the game account from MAIN CHAIN to get team rosters
-    const game = await matchmakingProgram.account.game.fetch(gamePublicKey);
+    const gamePubkey = new PublicKey(gamePublicKey);
 
-    // Get all player public keys from both teams
-    const allPlayerKeys = [
+    // Fetch the game account from MAIN CHAIN to get team rosters (list of Player PDAs)
+    const game = await matchmakingProgram.account.game.fetch(gamePubkey);
+
+    // Get all Player PDA addresses from both teams
+    const allPlayerPdas = [
       ...(game.teamAPlayers || []),
       ...(game.teamBPlayers || [])
     ];
 
-    // Create matchmaking program instance using EPHEMERAL connection
-    const ephProvider = ephemeralProvider || new AnchorProvider(
-      ephemeralConnection,
-      new NodeWallet(EphemeralWallet.getEphemeralKeypair()),
-      { commitment: "confirmed" }
-    );
-    const ephemeralMatchmakingProgram = new Program(matchmakingIdl, ephProvider);
+    // Fetch Player accounts to get their signing_key (wallet pubkeys)
+    // Use cache to avoid redundant fetches
+    const playerAuthorities = await Promise.all(
+      allPlayerPdas.map(async (playerPda) => {
+        const playerPdaString = playerPda.toString();
 
-    // Fetch all player accounts from EPHEMERAL ROLLUP
-    const players = await Promise.all(
-      allPlayerKeys.map(async (playerKey) => {
+        // Check cache first
+        if (playerAuthorityCache.has(playerPdaString)) {
+          return playerAuthorityCache.get(playerPdaString);
+        }
+
+        // Cache miss - fetch from blockchain
         try {
-          const player = await ephemeralMatchmakingProgram.account.player.fetch(playerKey);
-          return {
-            publicKey: playerKey.toString(),
-            authority: player.authority.toString(),
-            username: player.username,
-            team: player.team,
-            positionX: player.positionX,
-            positionY: player.positionY,
-            positionZ: player.positionZ,
-            rotationX: player.rotationX,
-            rotationY: player.rotationY,
-            rotationZ: player.rotationZ,
-            isAlive: player.isAlive,
-          };
+          const player = await matchmakingProgram.account.player.fetch(playerPda);
+          console.log("Player Data for PDA", playerPdaString, ":", player);
+          // Use signingKey (camelCase - Anchor converts snake_case to camelCase)
+          const signingKey = player.signingKey;
+
+          console.log("Fetched Player PDA:", playerPdaString, "=> Signing Key:", signingKey?.toString());
+          // Store in cache for future use
+          playerAuthorityCache.set(playerPdaString, signingKey);
+
+          return signingKey;
         } catch (error) {
-          // Silently skip failed fetches
+          console.warn(`⚠️ Failed to fetch Player PDA ${playerPdaString}:`, error.message);
           return null;
         }
       })
+    );
+
+    console.log("📊 Fetched player authorities:", playerAuthorities);
+
+    // Filter out null values and fetch GamePlayer accounts from EPHEMERAL ROLLUP
+    const players = await Promise.all(
+      playerAuthorities
+        .filter(auth => auth !== null)
+        .map(async (authorityKey) => {
+          try {
+            // Derive GamePlayer PDA with canonical bump for this authority and game
+            const [gamePlayerPda, gamePlayerBump] = PublicKey.findProgramAddressSync(
+              [Buffer.from("game_player"), authorityKey.toBuffer(), gamePubkey.toBuffer()],
+              GAME_PROGRAM_ID
+            );
+            console.log("Signing Key:", authorityKey.toString(), "=> GamePlayer PDA:", gamePlayerPda.toString());
+            // Fetch GamePlayer from ephemeral rollup (game contract)
+            // GamePlayer contains ALL game data: position, rotation, health, team, stats
+            const gamePlayer = await gameProgram.account.gamePlayer.fetch(gamePlayerPda);
+
+            return {
+              publicKey: gamePlayerPda.toString(),
+              authority: gamePlayer.authority.toString(),
+              gameId: gamePlayer.gameId.toString(),
+              team: gamePlayer.team,
+              positionX: gamePlayer.positionX,
+              positionY: gamePlayer.positionY,
+              positionZ: gamePlayer.positionZ,
+              rotationX: gamePlayer.rotationX,
+              rotationY: gamePlayer.rotationY,
+              rotationZ: gamePlayer.rotationZ,
+              health: gamePlayer.health,
+              isAlive: gamePlayer.isAlive,
+              kills: gamePlayer.kills,
+              deaths: gamePlayer.deaths,
+              score: gamePlayer.score,
+            };
+          } catch (error) {
+            console.warn(`⚠️ Failed to fetch GamePlayer for ${authorityKey.toString()}:`, error.message);
+            // Silently skip failed fetches (player may not have initialized yet)
+            return null;
+          }
+        })
     );
 
     // Filter out null values (failed fetches)
@@ -2128,13 +2245,17 @@ export function getCurrentPlayerAuthority() {
 /**
  * Send player input to game program (movement and rotation)
  * This uses the ephemeral wallet and ephemeral RPC for high-speed transactions
- * @param {Object} input - Player input {forward, backward, left, right, deltaX, deltaY, deltaTime, sensitivity}
+ * @param {Object} input - Player input {forward, backward, left, right, deltaX, deltaY, deltaTime, sensitivity, gameId}
  * @returns {string} Transaction signature
  */
 export async function sendPlayerInput(input) {
   const ephemeralKeypair = EphemeralWallet.getEphemeralKeypair();
   if (!ephemeralKeypair) {
     throw new Error("Ephemeral wallet not initialized");
+  }
+
+  if (!input.gameId) {
+    throw new Error("gameId is required in input");
   }
 
   // Initialize game program if not already done
@@ -2152,11 +2273,14 @@ export async function sendPlayerInput(input) {
   }
 
   try {
-    // Derive Player PDA (using main wallet's public key since that's the authority)
+    // Derive GamePlayer PDA with canonical bump (using main wallet's public key as authority and game_id)
     const mainWalletPubkey = wallet.publicKey;
-    const [playerPda] = PublicKey.findProgramAddressSync(
-      [Buffer.from("player"), mainWalletPubkey.toBuffer()],
-      MATCHMAKING_PROGRAM_ID
+    const getEphemeralPublicKey = ephemeralKeypair.publicKey;
+    const gameIdPubkey = new PublicKey(input.gameId);
+
+    const [gamePlayerPda, gamePlayerBump] = PublicKey.findProgramAddressSync(
+      [Buffer.from("game_player"), getEphemeralPublicKey.toBuffer(), gameIdPubkey.toBuffer()],
+      GAME_PROGRAM_ID
     );
 
     // Send input to game program on ephemeral rollup
@@ -2169,10 +2293,12 @@ export async function sendPlayerInput(input) {
         input.deltaX || 0.0,
         input.deltaY || 0.0,
         input.deltaTime || 0.033, // 33ms default
-        input.sensitivity || 1.0
+        input.sensitivity || 1.0,
+        gameIdPubkey // _game_id parameter for PDA derivation
       )
       .accounts({
-        player: playerPda,
+        gamePlayer: gamePlayerPda,
+        authority: getEphemeralPublicKey,
       })
       .rpc();
 
