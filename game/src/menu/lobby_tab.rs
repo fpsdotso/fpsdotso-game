@@ -41,23 +41,6 @@ impl LobbyTab {
             menu_state.load_games_from_blockchain();
         }
 
-        ui.same_line();
-        ui.dummy([20.0, 0.0]);
-        ui.same_line();
-
-        // Test button
-        if ui.button_with_size("TEST", [80.0, 40.0]) {
-            menu_state.test_blockchain_connection();
-        }
-
-        ui.same_line();
-        ui.dummy([20.0, 0.0]);
-        ui.same_line();
-
-        // Leave Game button
-        if ui.button_with_size("LEAVE GAME", [120.0, 40.0]) {
-            menu_state.leave_current_game();
-        }
 
         ui.dummy([0.0, 20.0]);
         ui.separator();

@@ -6,7 +6,7 @@ mod menu;
 mod game;
 
 use map::MapBuilder;
-use menu::{MenuState, MenuTab, LobbyTab, LobbyView, WeaponsTab};
+use menu::{MenuState, MenuTab, LobbyTab, LobbyView, WeaponsTab, WalletMenu};
 use game::GameState;
 
 /// Apply Solana-themed modern colors to ImGui
@@ -26,12 +26,16 @@ fn draw_menu_ui(
 ) -> bool {
     let [window_width, window_height] = ui.io().display_size;
 
+    // Reserve space for wallet menu on the right (300px when expanded, 60px when collapsed)
+    let wallet_menu_width = 300.0; // Assume expanded for layout calculations
+    let available_width = window_width - wallet_menu_width;
+
     // For Map Editor, draw top bar separately without fullscreen background
     if menu_state.current_tab == MenuTab::MapEditor {
         // Draw top bar in a transparent window
         let top_bar_token = ui.window("Top Bar")
             .position([0.0, 0.0], imgui::Condition::Always)
-            .size([window_width, 90.0], imgui::Condition::Always)
+            .size([available_width, 90.0], imgui::Condition::Always)
             .title_bar(false)
             .resizable(false)
             .movable(false)
@@ -47,10 +51,10 @@ fn draw_menu_ui(
         return map_builder.draw_imgui_ui(ui, viewport_width, style_applied);
     }
 
-    // For other tabs (Lobby, Weapons), use fullscreen window with background
+    // For other tabs (Lobby, Weapons), use window with background but not fullscreen
     let window_token = ui.window("Main Menu")
         .position([0.0, 0.0], imgui::Condition::Always)
-        .size([window_width, window_height], imgui::Condition::Always)
+        .size([available_width, window_height], imgui::Condition::Always)
         .title_bar(false)
         .resizable(false)
         .movable(false)
@@ -93,12 +97,14 @@ fn draw_menu_ui(
 /// Draw the Valorant-style top navigation bar
 fn draw_top_bar(ui: &imgui::Ui, menu_state: &mut MenuState) {
     let window_width = ui.io().display_size[0];
+    let wallet_menu_width = 300.0; // Reserve space for wallet menu
+    let available_width = window_width - wallet_menu_width;
     let current_tab = menu_state.current_tab; // Copy the current tab before the closure
 
     let mut new_tab = None;
 
     ui.child_window("top_bar")
-        .size([window_width, 80.0])
+        .size([available_width, 80.0])
         .border(false)
         .bg_alpha(1.0)
         .build(|| {
@@ -220,6 +226,9 @@ fn main() {
     // Create game state
     let mut game_state = GameState::new();
 
+    // Create wallet menu
+    let mut wallet_menu = WalletMenu::new();
+
     // Create a new map builder
     let mut map_builder = MapBuilder::new("My Map".to_string());
 
@@ -270,6 +279,9 @@ fn main() {
         menu_state.check_team_players_response();
         menu_state.check_player_current_game_response();
         menu_state.check_set_ready_response();
+
+        // Check wallet menu responses
+        wallet_menu.check_responses();
 
         // Periodically check if player is in a game (every 1 second) - for auto-reconnect
         if !menu_state.in_lobby {
@@ -329,7 +341,10 @@ fn main() {
         // Update game state if playing
         game_state.update(&mut rl, delta);
 
-        // Always draw the menu UI with tabs - content changes based on selected tab
+        // Draw wallet menu (always visible on the right side)
+        wallet_menu.draw(ui, &mut menu_state);
+        
+        // Always draw the main menu UI with tabs - content changes based on selected tab
         // Only show menu if not in playing mode
         if game_state.mode != game::GameMode::Playing {
             mouse_over_ui = draw_menu_ui(ui, &mut menu_state, &mut map_builder, viewport_width as f32, &mut style_applied);
