@@ -491,21 +491,55 @@ button:disabled {
   height: 100vh;
 }
 
-/* Hide UI overlay in fullscreen during active gameplay */
-#container:-webkit-full-screen .web-ui-overlay {
-  display: none;
-}
-
-#container:-moz-full-screen .web-ui-overlay {
-  display: none;
-}
-
-#container:-ms-fullscreen .web-ui-overlay {
-  display: none;
-}
-
+/* Keep UI overlay visible in fullscreen but make it minimal for gameplay */
+#container:-webkit-full-screen .web-ui-overlay,
+#container:-moz-full-screen .web-ui-overlay,
+#container:-ms-fullscreen .web-ui-overlay,
 #container:fullscreen .web-ui-overlay {
+  display: block;
+  pointer-events: none; /* Don't block clicks to the game */
+}
+
+/* Allow specific UI elements to receive clicks */
+#container:-webkit-full-screen .web-ui-overlay .hud-button,
+#container:-moz-full-screen .web-ui-overlay .hud-button,
+#container:-ms-fullscreen .web-ui-overlay .hud-button,
+#container:fullscreen .web-ui-overlay .hud-button {
+  pointer-events: auto;
+}
+
+/* Hide the lobby/store tabs during fullscreen gameplay */
+#container:-webkit-full-screen .game-nav,
+#container:-moz-full-screen .game-nav,
+#container:-ms-fullscreen .game-nav,
+#container:fullscreen .game-nav {
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.7) 0%, transparent 100%);
+  border-bottom: none;
+}
+
+/* Hide nav tabs in fullscreen (only show in-game HUD) */
+#container:-webkit-full-screen .nav-tabs,
+#container:-moz-full-screen .nav-tabs,
+#container:-ms-fullscreen .nav-tabs,
+#container:fullscreen .nav-tabs {
   display: none;
+}
+
+/* Compact player card in fullscreen */
+#container:-webkit-full-screen .player-card,
+#container:-moz-full-screen .player-card,
+#container:-ms-fullscreen .player-card,
+#container:fullscreen .player-card {
+  background: rgba(13, 13, 17, 0.8);
+  backdrop-filter: blur(10px);
+}
+
+/* Keep wallet info visible but more transparent */
+#container:-webkit-full-screen .nav-wallet-info,
+#container:-moz-full-screen .nav-wallet-info,
+#container:-ms-fullscreen .nav-wallet-info,
+#container:fullscreen .nav-wallet-info {
+  opacity: 0.8;
 }
 
 /* Canvas takes full screen in fullscreen mode */

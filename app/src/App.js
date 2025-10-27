@@ -976,6 +976,115 @@ function App() {
         )}
 
         {/* Map Editor is shown via canvas when activeTab === 'mapeditor' */}
+
+        {/* In-Game HUD (shown when in fullscreen gameplay) */}
+        {isFullscreen && currentGameState === 1 && (
+          <>
+            {/* Crosshair */}
+            <div style={{
+              position: 'fixed',
+              top: '50%',
+              left: '50%',
+              transform: 'translate(-50%, -50%)',
+              width: '20px',
+              height: '20px',
+              pointerEvents: 'none',
+              zIndex: 1000
+            }}>
+              <div style={{
+                position: 'absolute',
+                top: '50%',
+                left: '0',
+                width: '20px',
+                height: '2px',
+                background: 'rgba(0, 242, 148, 0.8)',
+                boxShadow: '0 0 10px rgba(0, 242, 148, 0.6)'
+              }}></div>
+              <div style={{
+                position: 'absolute',
+                left: '50%',
+                top: '0',
+                width: '2px',
+                height: '20px',
+                background: 'rgba(0, 242, 148, 0.8)',
+                boxShadow: '0 0 10px rgba(0, 242, 148, 0.6)'
+              }}></div>
+            </div>
+
+            {/* Health and Ammo Display */}
+            <div style={{
+              position: 'fixed',
+              bottom: '20px',
+              right: '20px',
+              display: 'flex',
+              gap: '20px',
+              pointerEvents: 'none',
+              zIndex: 1000
+            }}>
+              {/* Health */}
+              <div style={{
+                background: 'linear-gradient(135deg, rgba(156, 81, 255, 0.2), rgba(156, 81, 255, 0.1))',
+                backdropFilter: 'blur(10px)',
+                border: '2px solid rgba(156, 81, 255, 0.5)',
+                borderRadius: '8px',
+                padding: '15px 25px',
+                boxShadow: '0 4px 20px rgba(156, 81, 255, 0.3)'
+              }}>
+                <div style={{ color: '#9c51ff', fontSize: '12px', marginBottom: '5px' }}>HEALTH</div>
+                <div style={{ color: '#fff', fontSize: '32px', fontWeight: 'bold' }}>100</div>
+              </div>
+
+              {/* Ammo */}
+              <div style={{
+                background: 'linear-gradient(135deg, rgba(0, 242, 148, 0.2), rgba(0, 242, 148, 0.1))',
+                backdropFilter: 'blur(10px)',
+                border: '2px solid rgba(0, 242, 148, 0.5)',
+                borderRadius: '8px',
+                padding: '15px 25px',
+                boxShadow: '0 4px 20px rgba(0, 242, 148, 0.3)'
+              }}>
+                <div style={{ color: '#00f294', fontSize: '12px', marginBottom: '5px' }}>AMMO</div>
+                <div style={{ color: '#fff', fontSize: '32px', fontWeight: 'bold' }}>30/120</div>
+              </div>
+            </div>
+
+            {/* Minimap placeholder */}
+            <div style={{
+              position: 'fixed',
+              top: '100px',
+              right: '20px',
+              width: '200px',
+              height: '200px',
+              background: 'rgba(13, 13, 17, 0.8)',
+              backdropFilter: 'blur(10px)',
+              border: '2px solid rgba(0, 242, 148, 0.3)',
+              borderRadius: '8px',
+              pointerEvents: 'none',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: 'rgba(255, 255, 255, 0.3)',
+              fontSize: '14px'
+            }}>
+              MINIMAP
+            </div>
+
+            {/* ESC to exit hint */}
+            <div style={{
+              position: 'fixed',
+              top: '20px',
+              left: '50%',
+              transform: 'translateX(-50%)',
+              color: 'rgba(255, 255, 255, 0.5)',
+              fontSize: '14px',
+              textAlign: 'center',
+              pointerEvents: 'none',
+              zIndex: 1000
+            }}>
+              Press <span style={{ color: '#9c51ff', fontWeight: 'bold' }}>ESC</span> to exit fullscreen
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
