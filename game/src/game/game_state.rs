@@ -84,6 +84,33 @@ impl GameState {
         self.current_player_authority = Some(authority);
     }
 
+    /// Switch game mode to Playing (for when game starts from lobby)
+    pub fn start_playing(&mut self) {
+        println!("🎮 Switching to Playing mode");
+        self.mode = GameMode::Playing;
+        self.mouse_captured = true;
+
+        // If no player exists, create one at origin
+        if self.player.is_none() {
+            println!("⚠️ No player exists, creating default player at origin");
+            self.player = Some(Player::new(Vector3::new(0.0, 0.0, 0.0)));
+        }
+
+        // If no map exists, log a warning
+        if self.map.is_none() {
+            println!("⚠️ No map loaded, gameplay will have no map geometry");
+        } else {
+            println!("✅ Map is loaded and ready");
+        }
+    }
+
+    /// Switch game mode to DebugMenu (for when returning to editor/menu)
+    pub fn stop_playing(&mut self) {
+        println!("🛑 Switching to DebugMenu mode");
+        self.mode = GameMode::DebugMenu;
+        self.mouse_captured = false;
+    }
+
     /// Load a map and spawn the player
     pub fn load_map(&mut self, map: Map) {
         // Get spawn position from map
@@ -103,9 +130,9 @@ impl GameState {
         self.mode = GameMode::Playing;
     }
 
-    /// Start the game (capture mouse, etc.)
-    pub fn start_playing(&mut self, rl: &mut RaylibHandle) {
-        if self.mode == GameMode::Playing {
+    /// Capture mouse for gameplay (called from update loop)
+    pub fn capture_mouse_if_playing(&mut self, rl: &mut RaylibHandle) {
+        if self.mode == GameMode::Playing && !self.mouse_captured {
             rl.disable_cursor();
             self.mouse_captured = true;
         }

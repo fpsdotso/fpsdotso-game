@@ -1,5 +1,6 @@
 use raylib::prelude::*;
 use raylib_imgui::RaylibGui;
+use std::cell::RefCell;
 
 mod map;
 mod menu;
@@ -8,6 +9,70 @@ mod game;
 use map::MapBuilder;
 use menu::{MenuState, MenuTab};
 use game::GameState;
+
+// Global game state for JavaScript interop
+// Using thread_local since Emscripten is single-threaded
+thread_local! {
+    static GAME_STATE: RefCell<Option<*mut GameState>> = RefCell::new(None);
+}
+
+/// Set the game state pointer for JavaScript interop
+fn set_game_state_ptr(state: *mut GameState) {
+    GAME_STATE.with(|gs| {
+        *gs.borrow_mut() = Some(state);
+    });
+}
+
+/// JavaScript-callable function to start playing mode
+#[no_mangle]
+pub extern "C" fn start_game() {
+    println!("📞 JavaScript called start_game()");
+    GAME_STATE.with(|gs| {
+        if let Some(state_ptr) = *gs.borrow() {
+            unsafe {
+                (*state_ptr).start_playing();
+            }
+        } else {
+            println!("⚠️ Game state not initialized");
+        }
+    });
+}
+
+/// JavaScript-callable function to stop playing mode
+#[no_mangle]
+pub extern "C" fn stop_game() {
+    println!("📞 JavaScript called stop_game()");
+    GAME_STATE.with(|gs| {
+        if let Some(state_ptr) = *gs.borrow() {
+            unsafe {
+                (*state_ptr).stop_playing();
+            }
+        } else {
+            println!("⚠️ Game state not initialized");
+        }
+    });
+}
+
+/// JavaScript-callable function to set current game for sync
+#[no_mangle]
+pub extern "C" fn set_current_game_js(game_pubkey_ptr: *const std::os::raw::c_char) {
+    let game_pubkey = unsafe {
+        std::ffi::CStr::from_ptr(game_pubkey_ptr)
+            .to_string_lossy()
+            .into_owned()
+    };
+
+    println!("📞 JavaScript called set_current_game_js: {}", game_pubkey);
+    GAME_STATE.with(|gs| {
+        if let Some(state_ptr) = *gs.borrow() {
+            unsafe {
+                (*state_ptr).set_current_game(game_pubkey);
+            }
+        } else {
+            println!("⚠️ Game state not initialized");
+        }
+    });
+}
 
 /// Apply Solana-themed modern colors to ImGui
 pub fn apply_solana_ui_colors(_ui: &imgui::Ui) {
@@ -77,6 +142,10 @@ fn main() {
 
     // Create game state
     let mut game_state = GameState::new();
+
+    // Set the game state pointer for JavaScript interop
+    set_game_state_ptr(&mut game_state as *mut GameState);
+    println!("✅ Game state pointer set for JavaScript interop");
 
     // Create a new map builder
     let mut map_builder = MapBuilder::new("My Map".to_string());

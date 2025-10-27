@@ -10,6 +10,13 @@ import {
   getAvailableGames,
   joinGame,
   createGame,
+  getPlayerCurrentGame,
+  getGame,
+  getAllPlayersInGame,
+  setReadyState,
+  startGame,
+  leaveCurrentGame,
+  getGameState,
 } from "./solana-bridge";
 import { initGameBridge, onGameMessage } from "./game-bridge";
 import EphemeralWalletPanel from "./components/EphemeralWalletPanel";
@@ -55,6 +62,10 @@ function App() {
 
   // Tab navigation state
   const [activeTab, setActiveTab] = useState('mapeditor'); // 'lobby', 'store', 'mapeditor' - default to map editor so game loads
+
+  // Game state tracking
+  const [currentGameState, setCurrentGameState] = useState(null); // 0=waiting, 1=active, 2=ended, 3=paused
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   useEffect(() => {
     async function init() {
@@ -128,6 +139,210 @@ function App() {
     return () => clearInterval(interval);
   }, [showGameBrowser, walletConnected]);
 
+  // Auto-refresh lobby data when in lobby
+  useEffect(() => {
+    if (!inLobby || !currentLobbyData?.gamePublicKey) return;
+
+    const refreshLobbyData = async () => {
+      try {
+        const players = await getAllPlayersInGame(currentLobbyData.gamePublicKey);
+
+        console.log('🔄 Refreshing lobby data, players:', players);
+
+        const teamAPlayers = players
+          .filter(p => p.team === 'A')
+          .map(p => p.username);
+        const teamBPlayers = players
+          .filter(p => p.team === 'B')
+          .map(p => p.username);
+        const teamAReady = players
+          .filter(p => p.team === 'A')
+          .map(p => p.isReady);
+        const teamBReady = players
+          .filter(p => p.team === 'B')
+          .map(p => p.isReady);
+
+        console.log('🔄 Ready states - Team A:', teamAReady, 'Team B:', teamBReady);
+
+        setCurrentLobbyData(prev => ({
+          ...prev,
+          teamA: teamAPlayers,
+          teamB: teamBPlayers,
+          teamAReady: teamAReady,
+          teamBReady: teamBReady
+        }));
+      } catch (error) {
+        console.warn("⚠️ Failed to refresh lobby data:", error);
+      }
+    };
+
+    // Initial refresh
+    refreshLobbyData();
+
+    // Set up interval for periodic refresh
+    const interval = setInterval(refreshLobbyData, 3000); // Refresh every 3 seconds
+
+    return () => clearInterval(interval);
+  }, [inLobby, currentLobbyData?.gamePublicKey]);
+
+  // Monitor game state and switch to fullscreen when game starts
+  useEffect(() => {
+    if (!inLobby || !currentLobbyData?.gamePublicKey) return;
+
+    const checkGameState = async () => {
+      try {
+        const gameState = await getGameState(currentLobbyData.gamePublicKey);
+        console.log('🎮 Current game state:', gameState);
+
+        if (gameState !== null && gameState !== currentGameState) {
+          setCurrentGameState(gameState);
+
+          // Game state 1 = active (game has started)
+          if (gameState === 1) {
+            console.log('🎮 Game has started! Switching to fullscreen gameplay...');
+
+            // Exit lobby view
+            setInLobby(false);
+
+            // Switch to map editor tab (where game canvas is)
+            setActiveTab('mapeditor');
+
+            // Set the current game in Raylib for multiplayer sync
+            if (window.gameBridge && window.gameBridge.setCurrentGame && currentLobbyData?.gamePublicKey) {
+              window.gameBridge.setCurrentGame(currentLobbyData.gamePublicKey);
+              console.log('✅ Set current game pubkey in Raylib');
+            }
+
+            // Load the map data from blockchain
+            if (window.gameBridge && window.gameBridge.getMapDataById && currentLobbyData?.mapName) {
+              console.log('🗺️ Loading map from blockchain:', currentLobbyData.mapName);
+              window.gameBridge.getMapDataById(currentLobbyData.mapName).then(mapData => {
+                if (mapData) {
+                  console.log('✅ Map data loaded, length:', mapData ? mapData.length : 0);
+                  // The Rust side will handle loading the map
+                } else {
+                  console.warn('⚠️ No map data returned');
+                }
+              }).catch(err => {
+                console.error('❌ Failed to load map:', err);
+              });
+            }
+
+            // Tell Raylib game to switch to playing mode AFTER setting up the game
+            setTimeout(() => {
+              if (window.gameBridge && window.gameBridge.startGameMode) {
+                window.gameBridge.startGameMode();
+                console.log('✅ Called startGameMode');
+              } else {
+                console.warn('⚠️ gameBridge.startGameMode not available');
+              }
+            }, 500); // Wait 500ms for map to load
+
+            // Enter fullscreen mode
+            enterFullscreen();
+          }
+          // Game state 2 = ended
+          else if (gameState === 2) {
+            console.log('🏁 Game has ended');
+
+            // Tell Raylib game to switch back to menu mode
+            if (window.gameBridge && window.gameBridge.stopGameMode) {
+              window.gameBridge.stopGameMode();
+            }
+
+            exitFullscreen();
+            setInLobby(false);
+            setCurrentLobbyData(null);
+          }
+        }
+      } catch (error) {
+        console.warn("⚠️ Failed to check game state:", error);
+      }
+    };
+
+    // Check immediately
+    checkGameState();
+
+    // Poll game state every 2 seconds
+    const interval = setInterval(checkGameState, 2000);
+
+    return () => clearInterval(interval);
+  }, [inLobby, currentLobbyData?.gamePublicKey, currentGameState]);
+
+  // Fullscreen functions
+  const enterFullscreen = () => {
+    const container = document.getElementById('container');
+    if (container && !isFullscreen) {
+      if (container.requestFullscreen) {
+        container.requestFullscreen().then(() => {
+          setIsFullscreen(true);
+          console.log('✅ Entered fullscreen mode');
+        }).catch(err => {
+          console.error('❌ Failed to enter fullscreen:', err);
+        });
+      } else if (container.webkitRequestFullscreen) { // Safari
+        container.webkitRequestFullscreen();
+        setIsFullscreen(true);
+      } else if (container.mozRequestFullScreen) { // Firefox
+        container.mozRequestFullScreen();
+        setIsFullscreen(true);
+      } else if (container.msRequestFullscreen) { // IE/Edge
+        container.msRequestFullscreen();
+        setIsFullscreen(true);
+      }
+    }
+  };
+
+  const exitFullscreen = () => {
+    if (isFullscreen) {
+      if (document.exitFullscreen) {
+        document.exitFullscreen().then(() => {
+          setIsFullscreen(false);
+          console.log('✅ Exited fullscreen mode');
+        }).catch(err => {
+          console.error('❌ Failed to exit fullscreen:', err);
+        });
+      } else if (document.webkitExitFullscreen) { // Safari
+        document.webkitExitFullscreen();
+        setIsFullscreen(false);
+      } else if (document.mozCancelFullScreen) { // Firefox
+        document.mozCancelFullScreen();
+        setIsFullscreen(false);
+      } else if (document.msExitFullscreen) { // IE/Edge
+        document.msExitFullscreen();
+        setIsFullscreen(false);
+      }
+    }
+  };
+
+  // Listen for fullscreen changes (user pressing ESC)
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      const isCurrentlyFullscreen = !!(document.fullscreenElement ||
+        document.webkitFullscreenElement ||
+        document.mozFullScreenElement ||
+        document.msFullscreenElement);
+
+      setIsFullscreen(isCurrentlyFullscreen);
+
+      if (!isCurrentlyFullscreen && currentGameState === 1) {
+        console.log('⚠️ User exited fullscreen during gameplay');
+      }
+    };
+
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+    document.addEventListener('mozfullscreenchange', handleFullscreenChange);
+    document.addEventListener('MSFullscreenChange', handleFullscreenChange);
+
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
+      document.removeEventListener('mozfullscreenchange', handleFullscreenChange);
+      document.removeEventListener('MSFullscreenChange', handleFullscreenChange);
+    };
+  }, [currentGameState]);
+
   const handleConnectWallet = async () => {
     const result = await connectWallet();
     if (result && result.connected) {
@@ -143,10 +358,77 @@ function App() {
           setPlayerInitialized(true);
           setPlayerData(playerInfo);
           console.log("✅ Existing player found:", playerInfo);
+
+          // Check if player is already in a game
+          await checkPlayerInGame(playerInfo);
         }
       } catch (error) {
         console.log("ℹ️ No existing player found");
       }
+    }
+  };
+
+  // Check if player is already in a game and auto-open lobby
+  const checkPlayerInGame = async (playerInfo) => {
+    try {
+      const currentGamePubkey = await getPlayerCurrentGame();
+      if (currentGamePubkey) {
+        console.log("🎮 Player is already in game:", currentGamePubkey);
+
+        // Fetch game data
+        const gameData = await getGame(currentGamePubkey);
+        if (gameData) {
+          console.log("📊 Game data:", gameData);
+
+          // Fetch all players in the game
+          const players = await getAllPlayersInGame(currentGamePubkey);
+          console.log("👥 Players in game:", players);
+
+          // Separate players into teams
+          const teamAPlayers = players
+            .filter(p => p.team === 'A')
+            .map(p => p.username);
+          const teamBPlayers = players
+            .filter(p => p.team === 'B')
+            .map(p => p.username);
+          const teamAReady = players
+            .filter(p => p.team === 'A')
+            .map(p => p.isReady);
+          const teamBReady = players
+            .filter(p => p.team === 'B')
+            .map(p => p.isReady);
+
+          // Determine if current player is the leader
+          const createdByString = gameData.createdBy?.toString();
+          console.log('👑 Leadership check:', {
+            createdBy: createdByString,
+            walletAddress: walletAddress,
+            isLeader: createdByString === walletAddress
+          });
+          const isLeader = createdByString === walletAddress;
+
+          // Set lobby state
+          setInLobby(true);
+          setIsLobbyLeader(isLeader);
+          setPlayerReady(playerInfo.isReady || false);
+          setCurrentLobbyData({
+            gamePublicKey: currentGamePubkey,
+            lobbyName: gameData.lobbyName || "Game Lobby",
+            mapName: gameData.mapName || gameData.mapId || "Default Map",
+            maxPlayers: gameData.maxPlayersPerTeam * 2,
+            teamA: teamAPlayers,
+            teamB: teamBPlayers,
+            teamAReady: teamAReady,
+            teamBReady: teamBReady,
+          });
+
+          // Switch to lobby tab
+          setActiveTab('lobby');
+          console.log("✅ Auto-opened lobby for existing game");
+        }
+      }
+    } catch (error) {
+      console.log("ℹ️ Player not in any game:", error.message);
     }
   };
 
@@ -268,22 +550,75 @@ function App() {
     }
 
     try {
-      console.log(`🎮 Creating room: ${roomName}`);
+      console.log(`🎮 Creating room: ${roomName} with map: ${mapName}`);
       const result = await createGame(roomName, mapName);
       if (result) {
         console.log("✅ Successfully created room!");
-        // Enter the lobby
-        setInLobby(true);
-        setIsLobbyLeader(true);
-        setCurrentLobbyData({
-          lobbyName: roomName,
-          mapName: mapName,
-          maxPlayers: maxPlayers,
-          teamA: [playerData?.username || walletAddress.slice(0, 8)],
-          teamB: [],
-          teamAReady: [false],
-          teamBReady: []
-        });
+
+        // Get the game public key from result
+        const gamePubkey = result.gamePda || result.publicKey;
+        console.log("📍 Game PDA:", gamePubkey);
+
+        // Fetch actual game data and players
+        if (gamePubkey) {
+          const gameData = await getGame(gamePubkey);
+          const players = await getAllPlayersInGame(gamePubkey);
+
+          console.log('📊 Created game data:', gameData);
+          console.log('👥 Players after creation:', players);
+
+          const teamAPlayers = players
+            .filter(p => p.team === 'A')
+            .map(p => p.username);
+          const teamBPlayers = players
+            .filter(p => p.team === 'B')
+            .map(p => p.username);
+          const teamAReady = players
+            .filter(p => p.team === 'A')
+            .map(p => p.isReady);
+          const teamBReady = players
+            .filter(p => p.team === 'B')
+            .map(p => p.isReady);
+
+          // Verify leadership against blockchain
+          const createdByString = gameData.createdBy?.toString();
+          const isLeader = createdByString === walletAddress;
+          console.log('👑 Leadership check (create room):', {
+            createdBy: createdByString,
+            walletAddress: walletAddress,
+            isLeader: isLeader
+          });
+
+          setCurrentLobbyData({
+            gamePublicKey: gamePubkey,
+            lobbyName: roomName,
+            mapName: mapName,
+            maxPlayers: maxPlayers,
+            teamA: teamAPlayers.length > 0 ? teamAPlayers : [playerData?.username || walletAddress.slice(0, 8)],
+            teamB: teamBPlayers,
+            teamAReady: teamAReady.length > 0 ? teamAReady : [false],
+            teamBReady: teamBReady
+          });
+
+          // Enter the lobby
+          setInLobby(true);
+          setIsLobbyLeader(isLeader); // Use blockchain verification
+        } else {
+          // Fallback if we can't get game pubkey
+          setCurrentLobbyData({
+            lobbyName: roomName,
+            mapName: mapName,
+            maxPlayers: maxPlayers,
+            teamA: [playerData?.username || walletAddress.slice(0, 8)],
+            teamB: [],
+            teamAReady: [false],
+            teamBReady: []
+          });
+
+          // Enter the lobby - assume leader if we created it
+          setInLobby(true);
+          setIsLobbyLeader(true);
+        }
         await loadGames();
       }
     } catch (error) {
@@ -301,21 +636,67 @@ function App() {
     try {
       console.log(`🎮 Joining room: ${gamePublicKey}`);
       const result = await joinGame(gamePublicKey);
-      if (result) {
-        console.log("✅ Successfully joined room!");
-        setInLobby(true);
-        setIsLobbyLeader(false);
-        setPlayerReady(false);
-        // TODO: Fetch actual lobby data from blockchain
-        setCurrentLobbyData({
-          lobbyName: "Game Lobby",
-          mapName: "Default Map",
-          maxPlayers: 10,
-          teamA: ["Player1"],
-          teamB: [playerData?.username || walletAddress.slice(0, 8)],
-          teamAReady: [false],
-          teamBReady: [false]
+
+      console.log('🔍 Join game result:', result);
+
+      if (result?.error === "PlayerAlreadyInGame") {
+        console.warn("⚠️ Player already in game:", result.currentGame);
+        alert(`You are already in a game (${result.currentGame}). Please leave that game first.`);
+        return;
+      }
+
+      if (result && result.transaction) {
+        console.log("✅ Successfully joined room! Transaction:", result.transaction);
+
+        // Wait a moment for transaction to be confirmed
+        await new Promise(resolve => setTimeout(resolve, 2000));
+
+        // Fetch actual game data and players from blockchain
+        const gameData = await getGame(gamePublicKey);
+        const players = await getAllPlayersInGame(gamePublicKey);
+
+        console.log("📊 Game data:", gameData);
+        console.log("👥 Players in game:", players);
+
+        // Separate players into teams
+        const teamAPlayers = players
+          .filter(p => p.team === 'A')
+          .map(p => p.username);
+        const teamBPlayers = players
+          .filter(p => p.team === 'B')
+          .map(p => p.username);
+        const teamAReady = players
+          .filter(p => p.team === 'A')
+          .map(p => p.isReady);
+        const teamBReady = players
+          .filter(p => p.team === 'B')
+          .map(p => p.isReady);
+
+        // Determine if current player is the leader
+        const createdByString = gameData.createdBy?.toString();
+        console.log('👑 Leadership check (join room):', {
+          createdBy: createdByString,
+          walletAddress: walletAddress,
+          isLeader: createdByString === walletAddress
         });
+        const isLeader = createdByString === walletAddress;
+
+        setInLobby(true);
+        setIsLobbyLeader(isLeader);
+        setPlayerReady(false);
+        setCurrentLobbyData({
+          gamePublicKey: gamePublicKey,
+          lobbyName: gameData.lobbyName || "Game Lobby",
+          mapName: gameData.mapName || gameData.mapId || "Default Map",
+          maxPlayers: gameData.maxPlayersPerTeam * 2,
+          teamA: teamAPlayers,
+          teamB: teamBPlayers,
+          teamAReady: teamAReady,
+          teamBReady: teamBReady
+        });
+      } else {
+        console.error("❌ Failed to join room: No transaction returned");
+        alert("Failed to join room. No transaction was created. Check console for details.");
       }
     } catch (error) {
       console.error("❌ Error joining room:", error);
@@ -323,39 +704,85 @@ function App() {
     }
   };
 
-  const handleToggleReady = () => {
-    setPlayerReady(!playerReady);
-    // TODO: Call blockchain to update ready state
-    if (window.gameBridge && window.gameBridge.setReadyState) {
-      window.gameBridge.setReadyState(currentLobbyData?.gamePublicKey, !playerReady);
+  const handleToggleReady = async () => {
+    if (!currentLobbyData?.gamePublicKey) {
+      console.error("No game public key available");
+      return;
+    }
+
+    try {
+      const newReadyState = !playerReady;
+      console.log(`🎮 Setting ready state to: ${newReadyState}`);
+
+      const result = await setReadyState(currentLobbyData.gamePublicKey, newReadyState);
+
+      if (result) {
+        setPlayerReady(newReadyState);
+        console.log("✅ Ready state updated successfully");
+      } else {
+        console.error("❌ Failed to update ready state");
+        alert("Failed to update ready state. Check console for details.");
+      }
+    } catch (error) {
+      console.error("❌ Error updating ready state:", error);
+      alert("Error updating ready state: " + error.message);
     }
   };
 
   const handleStartGame = async () => {
     if (!isLobbyLeader) return;
+    if (!currentLobbyData?.gamePublicKey) {
+      console.error("No game public key available");
+      return;
+    }
 
     try {
       console.log("🎮 Starting game...");
-      // TODO: Call blockchain to start game
-      if (window.gameBridge && window.gameBridge.startGame) {
-        await window.gameBridge.startGame(currentLobbyData?.gamePublicKey);
+      const result = await startGame(currentLobbyData.gamePublicKey);
+
+      if (result) {
+        console.log("✅ Game started successfully!");
+        // Game will transition to playing mode
+        setInLobby(false);
+        // Switch to map editor tab where the game will load
+        setActiveTab('mapeditor');
+      } else {
+        console.error("❌ Failed to start game");
+        alert("Failed to start game. Check console for details.");
       }
-      // Game will transition to playing mode via Rust
-      setInLobby(false);
     } catch (error) {
       console.error("❌ Error starting game:", error);
       alert("Error starting game: " + error.message);
     }
   };
 
-  const handleLeaveLobby = () => {
-    setInLobby(false);
-    setCurrentLobbyData(null);
-    setPlayerReady(false);
-    setIsLobbyLeader(false);
-    // TODO: Call blockchain to leave game
-    if (window.gameBridge && window.gameBridge.leaveCurrentGame) {
-      window.gameBridge.leaveCurrentGame();
+  const handleLeaveLobby = async () => {
+    try {
+      console.log("🚪 Leaving lobby...");
+      const result = await leaveCurrentGame();
+
+      if (result) {
+        console.log("✅ Left lobby successfully");
+        setInLobby(false);
+        setCurrentLobbyData(null);
+        setPlayerReady(false);
+        setIsLobbyLeader(false);
+        // Refresh games list
+        await loadGames();
+      } else if (result?.error === "NotInGame") {
+        // Player is not in a game, just clear local state
+        console.log("ℹ️ Not in a game, clearing local state");
+        setInLobby(false);
+        setCurrentLobbyData(null);
+        setPlayerReady(false);
+        setIsLobbyLeader(false);
+      } else {
+        console.error("❌ Failed to leave lobby");
+        alert("Failed to leave lobby. Check console for details.");
+      }
+    } catch (error) {
+      console.error("❌ Error leaving lobby:", error);
+      alert("Error leaving lobby: " + error.message);
     }
   };
 

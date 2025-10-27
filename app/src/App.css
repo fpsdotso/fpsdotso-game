@@ -469,3 +469,52 @@ button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+/* Fullscreen mode styles */
+#container:-webkit-full-screen {
+  width: 100vw;
+  height: 100vh;
+}
+
+#container:-moz-full-screen {
+  width: 100vw;
+  height: 100vh;
+}
+
+#container:-ms-fullscreen {
+  width: 100vw;
+  height: 100vh;
+}
+
+#container:fullscreen {
+  width: 100vw;
+  height: 100vh;
+}
+
+/* Hide UI overlay in fullscreen during active gameplay */
+#container:-webkit-full-screen .web-ui-overlay {
+  display: none;
+}
+
+#container:-moz-full-screen .web-ui-overlay {
+  display: none;
+}
+
+#container:-ms-fullscreen .web-ui-overlay {
+  display: none;
+}
+
+#container:fullscreen .web-ui-overlay {
+  display: none;
+}
+
+/* Canvas takes full screen in fullscreen mode */
+#container:-webkit-full-screen #canvas,
+#container:-moz-full-screen #canvas,
+#container:-ms-fullscreen #canvas,
+#container:fullscreen #canvas {
+  width: 100vw;
+  height: 100vh;
+  object-fit: contain;
+  display: block !important;
+}

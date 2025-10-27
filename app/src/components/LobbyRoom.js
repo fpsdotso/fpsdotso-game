@@ -26,6 +26,23 @@ function LobbyRoom({
 
   const totalPlayers = teamA.length + teamB.length;
 
+  // Check if all players are ready
+  const allReadyStates = [...teamAReady, ...teamBReady];
+  const allPlayersReady = totalPlayers >= 2 &&
+    allReadyStates.length === totalPlayers &&
+    allReadyStates.every(ready => ready === true);
+
+  // Debug logging
+  console.log('🔍 Lobby ready check:', {
+    totalPlayers,
+    teamA: teamA.length,
+    teamB: teamB.length,
+    teamAReady,
+    teamBReady,
+    allReadyStates,
+    allPlayersReady
+  });
+
   return (
     <div className="lobby-room">
       {/* Header */}
@@ -133,9 +150,17 @@ function LobbyRoom({
         {isLeader ? (
           <>
             <button
+              className={`btn btn-large ${playerReady ? 'btn-ready-active' : 'btn-ready'}`}
+              onClick={onToggleReady}
+              style={{ marginRight: '10px' }}
+            >
+              {playerReady ? '✓ READY' : 'READY UP'}
+            </button>
+            <button
               className="btn btn-primary btn-large"
               onClick={onStartGame}
-              disabled={totalPlayers < 2}
+              disabled={!allPlayersReady}
+              title={!allPlayersReady ? 'All players must be ready to start' : 'Start the game'}
             >
               🎮 START GAME
             </button>
@@ -165,9 +190,15 @@ function LobbyRoom({
       </div>
 
       {/* Waiting Message */}
-      {isLeader && totalPlayers < 2 && (
+      {isLeader && (
         <div className="waiting-message">
-          ⏳ Waiting for at least 2 players to start the game...
+          {totalPlayers < 2 ? (
+            <>⏳ Waiting for at least 2 players to start the game...</>
+          ) : !allPlayersReady ? (
+            <>⏳ Waiting for all players to be ready... ({[...teamAReady, ...teamBReady].filter(r => r).length}/{totalPlayers} ready)</>
+          ) : (
+            <>✅ All players are ready! You can start the game now.</>
+          )}
         </div>
       )}
     </div>

@@ -15,12 +15,82 @@ function LobbyBrowser({
 }) {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newRoomName, setNewRoomName] = useState('');
-  const [selectedMap, setSelectedMap] = useState('Default Map');
+  const [selectedMap, setSelectedMap] = useState('');
   const [maxPlayers, setMaxPlayers] = useState(10);
+  const [availableMaps, setAvailableMaps] = useState([]);
+  const [loadingMaps, setLoadingMaps] = useState(false);
+
+  // Load user's maps when modal opens
+  useEffect(() => {
+    if (showCreateModal && window.solanaMapBridge) {
+      loadUserMaps();
+    }
+  }, [showCreateModal]);
+
+  const loadUserMaps = async () => {
+    setLoadingMaps(true);
+    try {
+      console.log('🗺️ Loading user maps from blockchain...');
+      const userMapIndex = await window.solanaMapBridge.getUserMaps();
+      console.log('✅ Loaded user map index:', userMapIndex);
+
+      // UserMapIndex has structure: { owner, map_count, map_ids: string[] }
+      // In JavaScript, Anchor converts snake_case to camelCase
+      if (userMapIndex && userMapIndex.mapIds && userMapIndex.mapIds.length > 0) {
+        console.log(`📊 Found ${userMapIndex.mapIds.length} user-created maps`);
+
+        // Fetch metadata for each map to get display names
+        const mapPromises = userMapIndex.mapIds.map(async (mapId) => {
+          try {
+            const metadata = await window.solanaMapBridge.getMapMetadata(mapId);
+            return {
+              id: mapId,
+              name: metadata?.name || mapId, // Use metadata name if available, fallback to ID
+            };
+          } catch (error) {
+            console.warn(`⚠️ Could not fetch metadata for map ${mapId}:`, error);
+            // Return map with ID as name if metadata fetch fails
+            return {
+              id: mapId,
+              name: mapId,
+            };
+          }
+        });
+
+        const resolvedMaps = await Promise.all(mapPromises);
+        setAvailableMaps(resolvedMaps);
+        setSelectedMap(resolvedMaps[0].id); // Set first map as default
+      } else {
+        console.log('ℹ️ No user maps found, using default maps');
+        // Fallback to default maps if user has no maps
+        setAvailableMaps([
+          { id: 'default', name: 'Default Map' },
+          { id: 'dust2', name: 'Dust 2' },
+          { id: 'mirage', name: 'Mirage' }
+        ]);
+        setSelectedMap('default');
+      }
+    } catch (error) {
+      console.error('❌ Error loading maps:', error);
+      // Fallback to default maps on error
+      setAvailableMaps([
+        { id: 'default', name: 'Default Map' },
+        { id: 'dust2', name: 'Dust 2' },
+        { id: 'mirage', name: 'Mirage' }
+      ]);
+      setSelectedMap('default');
+    } finally {
+      setLoadingMaps(false);
+    }
+  };
 
   const handleCreateRoom = () => {
     if (!newRoomName.trim()) {
       alert('Please enter a room name');
+      return;
+    }
+    if (!selectedMap) {
+      alert('Please select a map');
       return;
     }
     onCreateRoom(newRoomName, selectedMap, maxPlayers);
@@ -132,17 +202,35 @@ function LobbyBrowser({
             </div>
 
             <div className="form-group">
-              <label>Map</label>
+              <label>Map {loadingMaps && '⏳'}</label>
               <select
                 value={selectedMap}
                 onChange={(e) => setSelectedMap(e.target.value)}
                 className="form-select"
+                disabled={loadingMaps}
               >
-                <option>Default Map</option>
-                <option>Dust 2</option>
-                <option>Mirage</option>
-                <option>Inferno</option>
+                {loadingMaps ? (
+                  <option>Loading maps...</option>
+                ) : availableMaps.length === 0 ? (
+                  <option>No maps available</option>
+                ) : (
+                  availableMaps.map((map) => (
+                    <option key={map.id} value={map.id}>
+                      {map.name}
+                    </option>
+                  ))
+                )}
               </select>
+              {!loadingMaps && availableMaps.length === 0 && (
+                <div style={{
+                  marginTop: '8px',
+                  fontSize: '12px',
+                  color: 'rgba(255, 193, 7, 0.9)',
+                  fontWeight: '600'
+                }}>
+                  ⚠️ No maps found. Create a map in the Map Editor first!
+                </div>
+              )}
             </div>
 
             <div className="form-group">

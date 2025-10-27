@@ -1671,7 +1671,7 @@ impl MenuState {
                                                     println!("⚠️ No game pubkey available for blockchain sync");
                                                 }
 
-                                                game_state.start_playing(rl);
+                                                game_state.capture_mouse_if_playing(rl);
 
                                                 // Reset flags
                                                 self.waiting_for_map_data = false;

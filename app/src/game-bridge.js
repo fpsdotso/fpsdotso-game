@@ -191,6 +191,53 @@ export function initGameBridge() {
     getCurrentPlayerEphemeralKey: () => {
       return solanaBridge.getCurrentPlayerEphemeralKey();
     },
+
+    // Game mode control functions
+    startGameMode: () => {
+      console.log("[Game Bridge] startGameMode called - switching to playing mode");
+      console.log("[Game Bridge] Module available:", !!window.Module);
+      console.log("[Game Bridge] _start_game available:", !!(window.Module && window.Module._start_game));
+
+      if (window.Module && window.Module._start_game) {
+        console.log("[Game Bridge] Calling Module._start_game()...");
+        try {
+          window.Module._start_game();
+          console.log("[Game Bridge] ✅ Module._start_game() called successfully");
+        } catch (error) {
+          console.error("[Game Bridge] ❌ Error calling _start_game:", error);
+        }
+      } else {
+        console.warn("⚠️ Module._start_game not available");
+        console.log("Available Module functions:", Object.keys(window.Module || {}));
+      }
+    },
+
+    stopGameMode: () => {
+      console.log("[Game Bridge] stopGameMode called - switching to menu mode");
+      if (window.Module && window.Module._stop_game) {
+        window.Module._stop_game();
+      } else {
+        console.warn("⚠️ Module._stop_game not available");
+      }
+    },
+
+    setCurrentGame: (gamePubkey) => {
+      console.log("[Game Bridge] setCurrentGame called:", gamePubkey);
+      if (window.Module && window.Module._set_current_game_js) {
+        // Allocate string in WASM memory
+        const lengthBytes = window.Module.lengthBytesUTF8(gamePubkey) + 1;
+        const stringPtr = window.Module._malloc(lengthBytes);
+        window.Module.stringToUTF8(gamePubkey, stringPtr, lengthBytes);
+
+        // Call the function
+        window.Module._set_current_game_js(stringPtr);
+
+        // Free the memory
+        window.Module._free(stringPtr);
+      } else {
+        console.warn("⚠️ Module._set_current_game_js not available");
+      }
+    },
   };
 
   console.log("✅ Game bridge initialized");
