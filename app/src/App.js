@@ -13,6 +13,8 @@ import {
 } from "./solana-bridge";
 import { initGameBridge, onGameMessage } from "./game-bridge";
 import EphemeralWalletPanel from "./components/EphemeralWalletPanel";
+import LobbyBrowser from "./components/LobbyBrowser";
+import LobbyRoom from "./components/LobbyRoom";
 
 // NOTE: This app is configured to connect to Solana LOCALNET only
 // RPC URL is hardcoded to http://127.0.0.1:8899 in solana-bridge.js
@@ -43,7 +45,16 @@ function App() {
   const [playerUsername, setPlayerUsername] = useState("");
   const [games, setGames] = useState([]);
   const [gamesLoading, setGamesLoading] = useState(false);
-  const [showGameBrowser, setShowGameBrowser] = useState(false);
+  const [showGameBrowser, setShowGameBrowser] = useState(false); // Don't show lobby by default
+
+  // Lobby state
+  const [inLobby, setInLobby] = useState(false);
+  const [currentLobbyData, setCurrentLobbyData] = useState(null);
+  const [playerReady, setPlayerReady] = useState(false);
+  const [isLobbyLeader, setIsLobbyLeader] = useState(false);
+
+  // Tab navigation state
+  const [activeTab, setActiveTab] = useState('mapeditor'); // 'lobby', 'store', 'mapeditor' - default to map editor so game loads
 
   useEffect(() => {
     async function init() {
@@ -249,389 +260,296 @@ function App() {
     }
   };
 
+  // Lobby handlers
+  const handleCreateRoom = async (roomName, mapName, maxPlayers) => {
+    if (!playerInitialized) {
+      alert("Please initialize your player first");
+      return;
+    }
+
+    try {
+      console.log(`🎮 Creating room: ${roomName}`);
+      const result = await createGame(roomName, mapName);
+      if (result) {
+        console.log("✅ Successfully created room!");
+        // Enter the lobby
+        setInLobby(true);
+        setIsLobbyLeader(true);
+        setCurrentLobbyData({
+          lobbyName: roomName,
+          mapName: mapName,
+          maxPlayers: maxPlayers,
+          teamA: [playerData?.username || walletAddress.slice(0, 8)],
+          teamB: [],
+          teamAReady: [false],
+          teamBReady: []
+        });
+        await loadGames();
+      }
+    } catch (error) {
+      console.error("❌ Error creating room:", error);
+      alert("Error creating room: " + error.message);
+    }
+  };
+
+  const handleJoinRoom = async (gamePublicKey) => {
+    if (!playerInitialized) {
+      alert("Please initialize your player first");
+      return;
+    }
+
+    try {
+      console.log(`🎮 Joining room: ${gamePublicKey}`);
+      const result = await joinGame(gamePublicKey);
+      if (result) {
+        console.log("✅ Successfully joined room!");
+        setInLobby(true);
+        setIsLobbyLeader(false);
+        setPlayerReady(false);
+        // TODO: Fetch actual lobby data from blockchain
+        setCurrentLobbyData({
+          lobbyName: "Game Lobby",
+          mapName: "Default Map",
+          maxPlayers: 10,
+          teamA: ["Player1"],
+          teamB: [playerData?.username || walletAddress.slice(0, 8)],
+          teamAReady: [false],
+          teamBReady: [false]
+        });
+      }
+    } catch (error) {
+      console.error("❌ Error joining room:", error);
+      alert("Error joining room: " + error.message);
+    }
+  };
+
+  const handleToggleReady = () => {
+    setPlayerReady(!playerReady);
+    // TODO: Call blockchain to update ready state
+    if (window.gameBridge && window.gameBridge.setReadyState) {
+      window.gameBridge.setReadyState(currentLobbyData?.gamePublicKey, !playerReady);
+    }
+  };
+
+  const handleStartGame = async () => {
+    if (!isLobbyLeader) return;
+
+    try {
+      console.log("🎮 Starting game...");
+      // TODO: Call blockchain to start game
+      if (window.gameBridge && window.gameBridge.startGame) {
+        await window.gameBridge.startGame(currentLobbyData?.gamePublicKey);
+      }
+      // Game will transition to playing mode via Rust
+      setInLobby(false);
+    } catch (error) {
+      console.error("❌ Error starting game:", error);
+      alert("Error starting game: " + error.message);
+    }
+  };
+
+  const handleLeaveLobby = () => {
+    setInLobby(false);
+    setCurrentLobbyData(null);
+    setPlayerReady(false);
+    setIsLobbyLeader(false);
+    // TODO: Call blockchain to leave game
+    if (window.gameBridge && window.gameBridge.leaveCurrentGame) {
+      window.gameBridge.leaveCurrentGame();
+    }
+  };
+
   return (
     <div id="container">
-      <div
+      {/* Game canvas - full screen background */}
+      <canvas
+        id="canvas"
+        onContextMenu={(e) => e.preventDefault()}
         style={{
-          marginBottom: "20px",
-          padding: "20px",
-          backgroundColor: "#1a1a1a",
-          color: "#fff",
+          display: activeTab === 'mapeditor' ? 'block' : 'none'
         }}
-      >
-        <h1 style={{ margin: "0 0 20px 0" }}>FPS.so - Solana Game</h1>
+      ></canvas>
 
-        <div
-          style={{
-            display: "flex",
-            gap: "30px",
-            marginBottom: "10px",
-            flexWrap: "wrap",
-          }}
-        >
-          <div>
-            <strong>Status:</strong>
-            <div style={{ marginTop: "5px" }}>
-              Solana: {solanaReady ? "✅ Ready" : "⏳ Loading..."}
+      {/* Web UI overlay */}
+      <div className="web-ui-overlay" style={{ pointerEvents: activeTab === 'mapeditor' ? 'none' : 'auto' }}>
+        {/* Top Navigation Bar with Tabs */}
+        <nav className="game-nav" style={{ pointerEvents: 'auto' }}>
+          {/* Left: Logo and Tabs */}
+          <div className="hud-top-left">
+            <h1 className="game-title">
+              <span style={{ color: '#9c51ff' }}>FPS</span>
+              <span style={{ color: '#00f294' }}>.SO</span>
+            </h1>
+
+            <div className="nav-tabs">
+              <button
+                className={`nav-tab ${activeTab === 'lobby' ? 'active' : ''}`}
+                onClick={() => {
+                  setActiveTab('lobby');
+                  setShowGameBrowser(true);
+                  if (!gamesLoading) loadGames();
+                }}
+              >
+                🎮 Lobby
+              </button>
+              <button
+                className={`nav-tab ${activeTab === 'store' ? 'active' : ''}`}
+                onClick={() => setActiveTab('store')}
+              >
+                🛒 Store
+              </button>
+              <button
+                className={`nav-tab ${activeTab === 'mapeditor' ? 'active' : ''}`}
+                onClick={() => setActiveTab('mapeditor')}
+              >
+                🗺️ Map Editor
+              </button>
             </div>
-            <div>Game: {gameReady ? "✅ Ready" : "⏳ Loading..."}</div>
           </div>
 
-          <div>
-            <strong>Wallet:</strong>
-            <div style={{ marginTop: "5px" }}>
-              {walletConnected ? (
-                <>
-                  <div>✅ Connected</div>
-                  <div style={{ fontSize: "0.85em", opacity: 0.8 }}>
+          {/* Right: Status and Wallet */}
+          <div className="nav-right">
+            <div className="nav-status">
+              <span>{solanaReady ? "✅" : "⏳"} Solana</span>
+              <span>{gameReady ? "✅" : "⏳"} Game</span>
+            </div>
+
+            {walletConnected ? (
+              <div className="nav-wallet-info">
+                <div>
+                  <div className="nav-wallet-address">
                     {walletAddress.slice(0, 4)}...{walletAddress.slice(-4)}
                   </div>
-                  <div>Balance: {balance.toFixed(4)} SOL</div>
-                  <button
-                    onClick={handleRefreshBalance}
-                    style={{
-                      marginTop: "8px",
-                      padding: "6px 12px",
-                      backgroundColor: "#512da8",
-                      color: "white",
-                      border: "none",
-                      borderRadius: "4px",
-                      cursor: "pointer",
-                    }}
-                  >
-                    Refresh Balance
-                  </button>
-                </>
-              ) : (
+                  <div className="nav-wallet-balance">
+                    {balance.toFixed(4)} SOL
+                  </div>
+                </div>
                 <button
-                  onClick={handleConnectWallet}
-                  disabled={!solanaReady}
-                  style={{
-                    marginTop: "8px",
-                    padding: "8px 16px",
-                    backgroundColor: solanaReady ? "#9c27b0" : "#666",
-                    color: "white",
-                    border: "none",
-                    borderRadius: "4px",
-                    cursor: solanaReady ? "pointer" : "not-allowed",
-                    fontSize: "14px",
-                    fontWeight: "bold",
-                  }}
+                  className="hud-button"
+                  onClick={handleRefreshBalance}
+                  style={{ padding: '6px 12px', fontSize: '11px' }}
                 >
-                  Connect Wallet
+                  Refresh
                 </button>
-              )}
-            </div>
+              </div>
+            ) : (
+              <button
+                className="nav-wallet-btn"
+                onClick={handleConnectWallet}
+                disabled={!solanaReady}
+              >
+                Connect Wallet
+              </button>
+            )}
           </div>
+        </nav>
 
-          {/* Ephemeral Wallet Panel - shown when wallet is connected */}
+        {/* Bottom Left - Player Info */}
+        <div className="hud-bottom-left">
+          {playerInitialized && playerData ? (
+            <div className="player-card">
+              <div className="player-header">
+                <div className="player-avatar-icon">👤</div>
+                <div className="player-info">
+                  <h3 className="player-username">{playerData.username}</h3>
+                  <div className="player-level">Level {playerData.level}</div>
+                </div>
+              </div>
+              <div className="player-stats">
+                <div className="stat-item">
+                  Matches: <span className="stat-value">{playerData.totalMatchesPlayed}</span>
+                </div>
+                <div className="stat-item">
+                  Team: <span className="stat-value">{playerData.team}</span>
+                </div>
+              </div>
+              <button className="hud-button" onClick={handleCheckPlayer} style={{ marginTop: '10px', width: '100%' }}>
+                Refresh
+              </button>
+            </div>
+          ) : walletConnected ? (
+            <div className="player-card">
+              <div className="player-header">
+                <div className="player-avatar-icon">❓</div>
+                <div className="player-info">
+                  <h3 className="player-username">Not Initialized</h3>
+                  <div className="player-level">Create Player</div>
+                </div>
+              </div>
+              <input
+                type="text"
+                placeholder="Enter username..."
+                value={playerUsername}
+                onChange={(e) => setPlayerUsername(e.target.value)}
+                className="hud-input"
+                style={{ width: '100%' }}
+              />
+              <button
+                className="hud-button-success hud-button"
+                onClick={handleInitPlayer}
+                disabled={!playerUsername.trim()}
+                style={{ width: '100%' }}
+              >
+                Initialize Player
+              </button>
+            </div>
+          ) : null}
+        </div>
+
+        {/* Bottom Right - Ephemeral Wallet */}
+        <div className="hud-bottom-right">
           {walletConnected && window.gameBridge && (
             <EphemeralWalletPanel gameBridge={window.gameBridge} />
           )}
-
-          <div>
-            <strong>Player:</strong>
-            <div style={{ marginTop: "5px" }}>
-              {playerInitialized ? (
-                <>
-                  <div>✅ Initialized</div>
-                  {playerData && (
-                    <div style={{ fontSize: "0.85em", opacity: 0.8 }}>
-                      <div>Username: {playerData.username}</div>
-                      <div>Level: {playerData.level}</div>
-                      <div>Matches: {playerData.totalMatchesPlayed}</div>
-                      <div>Team: {playerData.team}</div>
-                      {playerData.authority && (
-                        <div
-                          title={playerData.authority.toString()}
-                          style={{ cursor: "help" }}
-                        >
-                          Authority:{" "}
-                          {playerData.authority.toString().slice(0, 4)}...
-                          {playerData.authority.toString().slice(-4)}
-                        </div>
-                      )}
-                      {playerData.signingKey && (
-                        <div
-                          title={playerData.signingKey.toString()}
-                          style={{ cursor: "help" }}
-                        >
-                          Signing Key:{" "}
-                          {playerData.signingKey.toString().slice(0, 4)}...
-                          {playerData.signingKey.toString().slice(-4)}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                  <button
-                    onClick={handleCheckPlayer}
-                    style={{
-                      marginTop: "8px",
-                      padding: "6px 12px",
-                      backgroundColor: "#4caf50",
-                      color: "white",
-                      border: "none",
-                      borderRadius: "4px",
-                      cursor: "pointer",
-                    }}
-                  >
-                    Refresh Player Data
-                  </button>
-                </>
-              ) : (
-                <div>
-                  <input
-                    type="text"
-                    placeholder="Enter username"
-                    value={playerUsername}
-                    onChange={(e) => setPlayerUsername(e.target.value)}
-                    style={{
-                      padding: "6px 8px",
-                      marginRight: "8px",
-                      border: "1px solid #ccc",
-                      borderRadius: "4px",
-                      fontSize: "14px",
-                    }}
-                  />
-                  <button
-                    onClick={handleInitPlayer}
-                    disabled={!walletConnected || !playerUsername.trim()}
-                    style={{
-                      padding: "6px 12px",
-                      backgroundColor:
-                        walletConnected && playerUsername.trim()
-                          ? "#4caf50"
-                          : "#666",
-                      color: "white",
-                      border: "none",
-                      borderRadius: "4px",
-                      cursor:
-                        walletConnected && playerUsername.trim()
-                          ? "pointer"
-                          : "not-allowed",
-                      fontSize: "14px",
-                    }}
-                  >
-                    Initialize Player
-                  </button>
-                  <button
-                    onClick={handleCheckPlayer}
-                    disabled={!walletConnected}
-                    style={{
-                      marginLeft: "8px",
-                      padding: "6px 12px",
-                      backgroundColor: walletConnected ? "#2196f3" : "#666",
-                      color: "white",
-                      border: "none",
-                      borderRadius: "4px",
-                      cursor: walletConnected ? "pointer" : "not-allowed",
-                      fontSize: "14px",
-                    }}
-                  >
-                    Check Player
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div>
-            <strong>Game Browser:</strong>
-            <div style={{ marginTop: "5px" }}>
-              {!showGameBrowser ? (
-                <button
-                  onClick={() => {
-                    setShowGameBrowser(true);
-                    loadGames();
-                  }}
-                  disabled={!walletConnected}
-                  style={{
-                    padding: "8px 16px",
-                    backgroundColor: walletConnected ? "#2196f3" : "#666",
-                    color: "white",
-                    border: "none",
-                    borderRadius: "4px",
-                    cursor: walletConnected ? "pointer" : "not-allowed",
-                    fontSize: "14px",
-                  }}
-                >
-                  Browse Games
-                </button>
-              ) : (
-                <div>
-                  <div
-                    style={{
-                      display: "flex",
-                      gap: "8px",
-                      marginBottom: "10px",
-                      flexWrap: "wrap",
-                    }}
-                  >
-                    <button
-                      onClick={loadGames}
-                      disabled={gamesLoading}
-                      style={{
-                        padding: "6px 12px",
-                        backgroundColor: gamesLoading ? "#666" : "#4caf50",
-                        color: "white",
-                        border: "none",
-                        borderRadius: "4px",
-                        cursor: gamesLoading ? "not-allowed" : "pointer",
-                        fontSize: "14px",
-                      }}
-                    >
-                      {gamesLoading ? "Loading..." : "Refresh Games"}
-                    </button>
-                    <button
-                      onClick={handleCreateGame}
-                      disabled={!playerInitialized || gamesLoading}
-                      style={{
-                        padding: "6px 12px",
-                        backgroundColor:
-                          !playerInitialized || gamesLoading
-                            ? "#666"
-                            : "#ff9800",
-                        color: "white",
-                        border: "none",
-                        borderRadius: "4px",
-                        cursor:
-                          !playerInitialized || gamesLoading
-                            ? "not-allowed"
-                            : "pointer",
-                        fontSize: "14px",
-                      }}
-                    >
-                      Create Game
-                    </button>
-                    <button
-                      onClick={() => setShowGameBrowser(false)}
-                      style={{
-                        padding: "6px 12px",
-                        backgroundColor: "#f44336",
-                        color: "white",
-                        border: "none",
-                        borderRadius: "4px",
-                        cursor: "pointer",
-                        fontSize: "14px",
-                      }}
-                    >
-                      Close Browser
-                    </button>
-                  </div>
-
-                  {gamesLoading ? (
-                    <div style={{ padding: "20px", textAlign: "center" }}>
-                      Loading games...
-                    </div>
-                  ) : games.length === 0 ? (
-                    <div
-                      style={{
-                        padding: "20px",
-                        textAlign: "center",
-                        color: "#666",
-                      }}
-                    >
-                      No games available. Create a new game to get started!
-                    </div>
-                  ) : (
-                    <div
-                      style={{
-                        maxHeight: "300px",
-                        overflowY: "auto",
-                        border: "1px solid #ccc",
-                        borderRadius: "4px",
-                        padding: "10px",
-                      }}
-                    >
-                      {games.map((game, index) => (
-                        <div
-                          key={game.publicKey}
-                          style={{
-                            border: "1px solid #ddd",
-                            borderRadius: "4px",
-                            padding: "10px",
-                            marginBottom: "8px",
-                            backgroundColor: game.isJoinable
-                              ? "#f0f8f0"
-                              : "#f5f5f5",
-                          }}
-                        >
-                          <div
-                            style={{
-                              display: "flex",
-                              justifyContent: "space-between",
-                              alignItems: "center",
-                            }}
-                          >
-                            <div>
-                              <div
-                                style={{ fontWeight: "bold", fontSize: "14px" }}
-                              >
-                                {game.lobbyName}
-                              </div>
-                              <div style={{ fontSize: "12px", color: "#666" }}>
-                                Map: {game.mapName} | Players:{" "}
-                                {game.totalPlayers}/{game.maxPlayers}
-                              </div>
-                              <div style={{ fontSize: "12px", color: "#666" }}>
-                                Created by:{" "}
-                                {game.createdBy.toString().slice(0, 4)}...
-                                {game.createdBy.toString().slice(-4)}
-                              </div>
-                            </div>
-                            <div>
-                              {game.isJoinable ? (
-                                <button
-                                  onClick={() => handleJoinGame(game.publicKey)}
-                                  style={{
-                                    padding: "6px 12px",
-                                    backgroundColor: "#4caf50",
-                                    color: "white",
-                                    border: "none",
-                                    borderRadius: "4px",
-                                    cursor: "pointer",
-                                    fontSize: "12px",
-                                  }}
-                                >
-                                  Join
-                                </button>
-                              ) : (
-                                <span
-                                  style={{ fontSize: "12px", color: "#666" }}
-                                >
-                                  {game.isPrivate ? "Private" : "Full"}
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
         </div>
 
-        {gameMessages.length > 0 && (
-          <div
-            style={{
-              marginTop: "10px",
-              padding: "10px",
-              background: "#f0f0f0",
-              borderRadius: "5px",
-            }}
-          >
-            <strong>Game Messages:</strong>
-            {gameMessages.slice(-5).map((msg, i) => (
-              <div key={i}>{msg}</div>
-            ))}
+        {/* Tab Content */}
+        {activeTab === 'lobby' && !inLobby && (
+          <LobbyBrowser
+            games={games}
+            loading={gamesLoading}
+            onRefresh={loadGames}
+            onCreateRoom={handleCreateRoom}
+            onJoinRoom={handleJoinRoom}
+            onClose={() => setActiveTab('lobby')}
+          />
+        )}
+
+        {activeTab === 'lobby' && inLobby && currentLobbyData && (
+          <LobbyRoom
+            lobbyData={currentLobbyData}
+            currentPlayer={playerData?.username || walletAddress.slice(0, 8)}
+            isLeader={isLobbyLeader}
+            playerReady={playerReady}
+            onToggleReady={handleToggleReady}
+            onStartGame={handleStartGame}
+            onLeaveLobby={handleLeaveLobby}
+          />
+        )}
+
+        {activeTab === 'store' && (
+          <div style={{
+            position: 'fixed',
+            top: '50%',
+            left: '50%',
+            transform: 'translate(-50%, -50%)',
+            background: 'rgba(13, 13, 17, 0.95)',
+            border: '2px solid rgba(156, 81, 255, 0.5)',
+            borderRadius: '16px',
+            padding: '40px',
+            color: '#fff',
+            textAlign: 'center'
+          }}>
+            <h2 style={{ color: '#9c51ff', fontSize: '32px' }}>🛒 Store</h2>
+            <p style={{ color: '#c8c8dc', marginTop: '20px' }}>Coming Soon...</p>
+            <p style={{ color: '#888', fontSize: '14px', marginTop: '10px' }}>
+              Purchase skins, weapons, and exclusive items with SOL
+            </p>
           </div>
         )}
-      </div>
 
-      <canvas id="canvas" onContextMenu={(e) => e.preventDefault()}></canvas>
+        {/* Map Editor is shown via canvas when activeTab === 'mapeditor' */}
+      </div>
     </div>
   );
 }

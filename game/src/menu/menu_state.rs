@@ -2,8 +2,6 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum MenuTab {
-    Lobby,
-    Weapons,
     MapEditor,
 }
 
@@ -81,7 +79,7 @@ pub struct MenuState {
 impl MenuState {
     pub fn new() -> Self {
         let mut state = Self {
-            current_tab: MenuTab::Lobby,
+            current_tab: MenuTab::MapEditor,
             available_rooms: vec![], // Start with empty rooms - will be loaded from blockchain
             selected_room: None,
             show_create_room_popup: false,
