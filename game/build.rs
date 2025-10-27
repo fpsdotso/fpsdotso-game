@@ -11,7 +11,7 @@ fn main() {
     if target == "wasm32-unknown-emscripten" && package_name == "fpsdotso-game" {
         // Export main and our custom game control functions
         println!("cargo:rustc-link-arg=-sEXPORTED_FUNCTIONS=['_main','_start_game','_stop_game','_set_current_game_js','_malloc','_free']");
-        println!("cargo:rustc-link-arg=-sEXPORTED_RUNTIME_METHODS=['cwrap','lengthBytesUTF8','stringToUTF8']");
+        println!("cargo:rustc-link-arg=-sEXPORTED_RUNTIME_METHODS=['cwrap','lengthBytesUTF8','stringToUTF8', 'HEAPF32']");
         //println!("cargo:rustc-link-arg=-sMODULARIZE=1");
 
         // Get the manifest directory (where Cargo.toml is)

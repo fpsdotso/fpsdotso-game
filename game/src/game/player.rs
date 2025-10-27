@@ -34,6 +34,18 @@ pub struct Player {
 
     /// Maximum health
     pub max_health: f32,
+
+    /// Is player currently shooting
+    pub is_shooting: bool,
+
+    /// Muzzle flash timer (for visual effect)
+    pub muzzle_flash_timer: f32,
+
+    /// Time since last shot (for fire rate limiting)
+    pub shot_cooldown: f32,
+
+    /// Fire rate (time between shots in seconds)
+    pub fire_rate: f32,
 }
 
 impl Player {
@@ -63,11 +75,32 @@ impl Player {
             is_running: false,
             health: 100.0,
             max_health: 100.0,
+            is_shooting: false,
+            muzzle_flash_timer: 0.0,
+            shot_cooldown: 0.0,
+            fire_rate: 0.1, // 10 shots per second (submachine gun)
         }
     }
 
     /// Update player movement and camera based on input
     pub fn update(&mut self, rl: &RaylibHandle, delta: f32) {
+        // Update timers
+        if self.shot_cooldown > 0.0 {
+            self.shot_cooldown -= delta;
+        }
+        if self.muzzle_flash_timer > 0.0 {
+            self.muzzle_flash_timer -= delta;
+        }
+
+        // Check for shooting (left mouse button)
+        if rl.is_mouse_button_down(MouseButton::MOUSE_BUTTON_LEFT) && self.shot_cooldown <= 0.0 {
+            self.is_shooting = true;
+            self.shot_cooldown = self.fire_rate;
+            self.muzzle_flash_timer = 0.05; // 50ms flash duration
+        } else {
+            self.is_shooting = false;
+        }
+
         // Check for running (Shift key)
         self.is_running = rl.is_key_down(KeyboardKey::KEY_LEFT_SHIFT) || rl.is_key_down(KeyboardKey::KEY_RIGHT_SHIFT);
 

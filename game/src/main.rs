@@ -134,6 +134,9 @@ fn main() {
         raylib::ffi::rlSetClipPlanes(0.1, 200.0);
     }
 
+    // Initialize audio
+    let mut audio = RaylibAudio::init_audio_device().expect("Failed to initialize audio device");
+
     // Initialize imgui
     let mut gui = RaylibGui::new(&mut rl, &thread);
 
@@ -233,7 +236,7 @@ fn main() {
         }
 
         // Update game state if playing
-        game_state.update(&mut rl, delta);
+        game_state.update(&mut rl, &mut audio, delta);
 
         // Show map editor UI when in editor mode
         if game_state.mode == game::GameMode::DebugMenu && menu_state.current_tab == MenuTab::MapEditor {

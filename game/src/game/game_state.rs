@@ -57,11 +57,14 @@ pub struct GameState {
     /// Other players in the game (from blockchain)
     other_players: Vec<OtherPlayer>,
 
-    /// Player character model (cyber.fbx)
+    /// Player character model (cyber.obj)
     player_model: Option<Model>,
 
     /// Animation index for the walk animation
     anim_frame_counter: i32,
+
+    /// Screen flash timer for shooting effect
+    screen_flash_timer: f32,
 }
 
 impl GameState {
@@ -79,6 +82,7 @@ impl GameState {
             other_players: Vec::new(),
             player_model: None,
             anim_frame_counter: 0,
+            screen_flash_timer: 0.0,
         }
     }
 
@@ -184,7 +188,12 @@ impl GameState {
     }
 
     /// Update game logic
-    pub fn update(&mut self, rl: &mut RaylibHandle, delta: f32) {
+    pub fn update(&mut self, rl: &mut RaylibHandle, audio: &mut RaylibAudio, delta: f32) {
+        // Update screen flash timer
+        if self.screen_flash_timer > 0.0 {
+            self.screen_flash_timer -= delta;
+        }
+
         // ESC to toggle between menu and game
         if rl.is_key_pressed(KeyboardKey::KEY_ESCAPE) {
             if self.mode == GameMode::Playing {
@@ -194,8 +203,24 @@ impl GameState {
 
         // Update player if in playing mode
         if self.mode == GameMode::Playing {
-            if let Some(ref mut player) = self.player {
+            let player_shot = if let Some(ref mut player) = self.player {
+                let was_shooting = player.is_shooting;
                 player.update(rl, delta);
+                !was_shooting && player.is_shooting // Detect new shot
+            } else {
+                false
+            };
+
+            // Handle shooting - play sound and trigger effects
+            if player_shot {
+                // Play gun sound using audio handle
+                let _ = audio.new_sound("/assets/gun/audio/submachinegun-gunshot.mp3")
+                    .or_else(|_| audio.new_sound("assets/gun/audio/submachinegun-gunshot.mp3"))
+                    .or_else(|_| audio.new_sound("game/assets/gun/audio/submachinegun-gunshot.mp3"))
+                    .map(|mut sound| sound.play());
+
+                // Trigger screen flash
+                self.screen_flash_timer = 0.08; // 80ms flash
             }
 
             // Send player input every frame for maximum responsiveness
@@ -669,6 +694,19 @@ impl GameState {
             Self::draw_minimap(d, player);
             Self::draw_health_bar(d, player);
         }
+
+        // Draw screen flash effect when shooting
+        if self.screen_flash_timer > 0.0 {
+            let flash_intensity = (self.screen_flash_timer / 0.08).min(1.0);
+            let flash_alpha = (flash_intensity * 50.0) as u8; // Max 50 alpha for subtle effect
+            d.draw_rectangle(
+                0,
+                0,
+                d.get_screen_width(),
+                d.get_screen_height(),
+                Color::new(255, 220, 100, flash_alpha), // Orange flash
+            );
+        }
     }
 
     /// Draw the gun viewmodel (first-person weapon view) - SIMPLIFIED VERSION
@@ -747,6 +785,27 @@ impl GameState {
             let z = -0.1;
             let pos = to_world(0.0, y, z);
             d3d.draw_sphere(pos, 0.03, Color::new(156, 81, 255, 255)); // Solana purple
+        }
+
+        // MUZZLE FLASH - Draw if player is shooting
+        if player.muzzle_flash_timer > 0.0 {
+            // Position at end of barrel
+            let muzzle_pos = to_world(0.0, 0.0, 0.55);
+
+            // Draw bright flash sphere
+            let flash_intensity = (player.muzzle_flash_timer / 0.05).min(1.0);
+            let flash_size = 0.15 * flash_intensity;
+            let flash_color = Color::new(
+                255,
+                (220.0 * flash_intensity) as u8,
+                (100.0 * flash_intensity) as u8,
+                (200.0 * flash_intensity) as u8,
+            );
+
+            d3d.draw_sphere(muzzle_pos, flash_size, flash_color);
+
+            // Draw outer glow
+            d3d.draw_sphere(muzzle_pos, flash_size * 1.5, Color::new(255, 180, 50, 100));
         }
     }
 
