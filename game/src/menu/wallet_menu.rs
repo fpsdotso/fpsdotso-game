@@ -201,6 +201,14 @@ impl WalletMenu {
                 self.refresh_balance();
             }
             drop(_refresh_color);
+            
+            ui.dummy([0.0, 5.0]);
+            
+            let _fund_color = ui.push_style_color(imgui::StyleColor::Button, [0.08, 0.95, 0.58, 1.0]);
+            if ui.button_with_size("Fund Game Wallet", [0.0, 25.0]) {
+                self.fund_game_wallet();
+            }
+            drop(_fund_color);
         } else {
             ui.text_colored([0.8, 0.3, 0.3, 1.0], "❌ Not Connected");
             
@@ -422,6 +430,38 @@ impl WalletMenu {
                     });
                 } catch (error) {
                     Module.balanceResult = JSON.stringify({
+                        success: false,
+                        error: error.message
+                    });
+                }
+            })();
+            "#;
+
+            let c_str = CString::new(js_code).unwrap();
+            unsafe {
+                emscripten_run_script(c_str.as_ptr());
+            }
+        }
+    }
+
+    fn fund_game_wallet(&mut self) {
+        #[cfg(target_os = "emscripten")]
+        {
+            use std::ffi::CString;
+            extern "C" {
+                pub fn emscripten_run_script(script: *const i8);
+            }
+
+            let js_code = r#"
+            (async function() {
+                try {
+                    await window.gameBridge.fundEphemeralWallet(0.1);
+                    Module.fundResult = JSON.stringify({
+                        success: true,
+                        message: "Game wallet funded with 0.1 SOL"
+                    });
+                } catch (error) {
+                    Module.fundResult = JSON.stringify({
                         success: false,
                         error: error.message
                     });
@@ -658,6 +698,7 @@ impl WalletMenu {
         self.check_games_load_response();
         self.check_game_create_response();
         self.check_game_join_response();
+        self.check_fund_response();
     }
 
     fn check_wallet_connect_response(&mut self) {
@@ -939,6 +980,42 @@ impl WalletMenu {
 
                     // Clear the result
                     let clear_js = CString::new("Module.gameJoinResult = null").unwrap();
+                    unsafe {
+                        emscripten_run_script(clear_js.as_ptr());
+                    }
+                }
+            }
+        }
+    }
+
+    fn check_fund_response(&mut self) {
+        #[cfg(target_os = "emscripten")]
+        {
+            use std::ffi::CString;
+            extern "C" {
+                pub fn emscripten_run_script_string(script: *const i8) -> *const i8;
+                pub fn emscripten_run_script(script: *const i8);
+            }
+
+            let check_js = CString::new("Module.fundResult || null").unwrap();
+            let result_ptr = unsafe { emscripten_run_script_string(check_js.as_ptr()) };
+
+            if !result_ptr.is_null() {
+                let result_cstr = unsafe { std::ffi::CStr::from_ptr(result_ptr) };
+                let result_str = result_cstr.to_string_lossy();
+
+                if result_str != "null" && !result_str.is_empty() {
+                    if let Ok(result) = serde_json::from_str::<serde_json::Value>(&result_str) {
+                        if let Some(success) = result.get("success") {
+                            if success.as_bool().unwrap_or(false) {
+                                // Funding successful, refresh balance
+                                self.refresh_balance();
+                            }
+                        }
+                    }
+
+                    // Clear the result
+                    let clear_js = CString::new("Module.fundResult = null").unwrap();
                     unsafe {
                         emscripten_run_script(clear_js.as_ptr());
                     }
