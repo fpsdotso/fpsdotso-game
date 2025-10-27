@@ -89,10 +89,17 @@ function App() {
       window.Module = {
         canvas: canvas,
         locateFile: function (path) {
+          // Handle WASM file
           if (path.endsWith(".wasm")) {
             // Add cache busting to force reload of WASM file
             const timestamp = Date.now();
             return `${process.env.PUBLIC_URL}/fpsdotso_game.wasm?t=${timestamp}`;
+          }
+          // Handle .data file (preloaded assets including cyber.fbx)
+          if (path.endsWith(".data")) {
+            const timestamp = Date.now();
+            console.log("📦 Loading assets data file:", path);
+            return `${process.env.PUBLIC_URL}/fpsdotso_game.data?t=${timestamp}`;
           }
           return path;
         },

@@ -143,6 +143,9 @@ fn main() {
     // Create game state
     let mut game_state = GameState::new();
 
+    // Load player character model
+    game_state.load_player_model(&mut rl, &thread);
+
     // Set the game state pointer for JavaScript interop
     set_game_state_ptr(&mut game_state as *mut GameState);
     println!("✅ Game state pointer set for JavaScript interop");

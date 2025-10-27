@@ -56,6 +56,12 @@ pub struct GameState {
 
     /// Other players in the game (from blockchain)
     other_players: Vec<OtherPlayer>,
+
+    /// Player character model (cyber.fbx)
+    player_model: Option<Model>,
+
+    /// Animation index for the walk animation
+    anim_frame_counter: i32,
 }
 
 impl GameState {
@@ -71,6 +77,8 @@ impl GameState {
             current_game_pubkey: None,
             current_player_authority: None,
             other_players: Vec::new(),
+            player_model: None,
+            anim_frame_counter: 0,
         }
     }
 
@@ -82,6 +90,36 @@ impl GameState {
     /// Set the current player authority for identifying the local player
     pub fn set_player_authority(&mut self, authority: String) {
         self.current_player_authority = Some(authority);
+    }
+
+    /// Load the player character model
+    pub fn load_player_model(&mut self, rl: &mut RaylibHandle, thread: &RaylibThread) {
+        // Try to load the OBJ model (OBJ format - excellent Raylib support)
+        let possible_paths = [
+            "/assets/characters/cyber.obj",       // WASM preloaded path
+            "assets/characters/cyber.obj",         // Relative path for native
+            "game/assets/characters/cyber.obj",    // From project root
+            "../assets/characters/cyber.obj",      // Parent directory
+        ];
+
+        for path in &possible_paths {
+            println!("🔍 Trying to load OBJ model from: {}", path);
+            match rl.load_model(thread, path) {
+                Ok(model) => {
+                    println!("✅ Successfully loaded cyber.obj model from: {}", path);
+                    println!("📊 OBJ Model loaded - OBJ format has excellent Raylib support!");
+
+                    self.player_model = Some(model);
+                    return;
+                }
+                Err(e) => {
+                    println!("⚠️ Failed to load from {}: {:?}", path, e);
+                }
+            }
+        }
+
+        println!("❌ Could not load cyber.obj model from any path, will use fallback cylinder rendering");
+        println!("💡 Make sure cyber.obj exists in game/assets/characters/");
     }
 
     /// Switch game mode to Playing (for when game starts from lobby)
@@ -610,7 +648,7 @@ impl GameState {
             }
 
             // Draw other players from blockchain
-            Self::draw_other_players(&mut d3d, &self.other_players);
+            Self::draw_other_players(&mut d3d, &self.other_players, &self.player_model);
 
             // Draw some simple point lights as visual spheres (for ambient lighting effect)
             // Top light
@@ -805,10 +843,11 @@ impl GameState {
         let bar_x = (screen_width - bar_width) / 2;
         let bar_y = screen_height - bar_height - 30;
 
-        // Background (dark)
+        /* Background (dark)
         d.draw_rectangle(bar_x - 2, bar_y - 2, bar_width + 4, bar_height + 4, Color::new(0, 0, 0, 180));
         d.draw_rectangle(bar_x, bar_y, bar_width, bar_height, Color::new(40, 40, 50, 200));
 
+        
         // Health fill (gradient from green to red based on health percentage)
         let health_percent = player.health / player.max_health;
         let fill_width = (bar_width as f32 * health_percent) as i32;
@@ -839,11 +878,38 @@ impl GameState {
         );
 
         // "HEALTH" label
-        d.draw_text("HEALTH", bar_x + 5, bar_y - 20, 12, Color::new(200, 200, 220, 255));
+        d.draw_text("HEALTH", bar_x + 5, bar_y - 20, 12, Color::new(200, 200, 220, 255));*/
     }
 
     /// Draw other players in the game (from blockchain sync)
-    fn draw_other_players(d3d: &mut RaylibMode3D<RaylibDrawHandle>, other_players: &[OtherPlayer]) {
+    fn draw_other_players(d3d: &mut RaylibMode3D<RaylibDrawHandle>, other_players: &[OtherPlayer], player_model: &Option<Model>) {
+        // Debug: Log if model is available and player count
+        static mut MODEL_LOGGED: bool = false;
+        static mut FRAME_COUNT: u32 = 0;
+
+        unsafe {
+            FRAME_COUNT += 1;
+
+            if !MODEL_LOGGED {
+                if player_model.is_some() {
+                    println!("🎭 Using cyber.obj model for player rendering");
+                } else {
+                    println!("⚠️ Using fallback cylinder for player rendering (model not loaded)");
+                }
+                MODEL_LOGGED = true;
+            }
+
+            // Log every 60 frames (once per second at 60fps)
+            if FRAME_COUNT % 60 == 0 {
+                println!("👥 Drawing {} other players (Frame {})", other_players.len(), FRAME_COUNT);
+            }
+        }
+
+        if other_players.is_empty() {
+            // No other players to draw
+            return;
+        }
+
         for player in other_players {
             // Skip dead players
             if !player.is_alive {
@@ -857,38 +923,84 @@ impl GameState {
                 Color::new(255, 100, 100, 255) // Red for Team B
             };
 
-            // Draw player as a capsule (cylinder + spheres)
-            let height = 1.8; // Player height
-            let radius = 0.3; // Player radius
+            // Draw player model if available, otherwise fallback to cylinder
+            if let Some(model) = player_model {
+                // Scale the model to proper character height (~1.8 units)
+                // The yellow wireframe is the target size (0.6 x 1.8 x 0.6)
+                let model_scale = 2.0; // Much smaller than 10.0, try 2.0
 
-            // Draw body (cylinder)
-            d3d.draw_cylinder(
-                player.position,
-                radius,
-                radius,
-                height,
-                8,
-                player_color,
-            );
+                // Log first time we draw the model
+                static mut DRAW_LOGGED: bool = false;
+                unsafe {
+                    if !DRAW_LOGGED {
+                        println!("🎨 Drawing OBJ model at position: {:?}, scale: {}", player.position, model_scale);
+                        DRAW_LOGGED = true;
+                    }
+                }
 
-            // Draw head (sphere on top)
-            let head_pos = Vector3::new(
-                player.position.x,
-                player.position.y + height,
-                player.position.z,
-            );
-            d3d.draw_sphere(head_pos, radius * 0.8, player_color);
+                // Calculate rotation from player yaw
+                let yaw_degrees = player.rotation.y.to_degrees();
 
-            // Draw username above player
-            // Note: draw_text_3d doesn't exist in raylib, so we'll skip this for now
-            // In a real game, you'd use billboard text or UI overlays
+                // Adjust position so feet are on ground
+                // player.position is at "eye level" (head), so we need to offset down
+                // With scale 2.0, the model height is different, adjust offset
+                let model_position = Vector3::new(
+                    player.position.x,
+                    player.position.y - 0.9, // Lower model so feet are on ground (try 0.9 instead of 1.7)
+                    player.position.z,
+                );
+
+                // Draw the model with rotation and team color
+                d3d.draw_model_ex(
+                    model,
+                    model_position,
+                    Vector3::new(0.0, 1.0, 0.0), // Rotate around Y axis
+                    yaw_degrees,
+                    Vector3::new(model_scale, model_scale, model_scale),
+                    player_color, // Team color (blue for Team A, red for Team B)
+                );
+
+                // Optional: Draw direction indicator (small white cube in front of player)
+                let yaw_rad = player.rotation.y;
+                let dir_x = yaw_rad.cos() * 0.5;
+                let dir_z = yaw_rad.sin() * 0.5;
+                let height = 1.8;
+                let indicator_pos = Vector3::new(
+                    player.position.x + dir_x,
+                    player.position.y + height * 0.5,
+                    player.position.z + dir_z,
+                );
+                d3d.draw_cube(indicator_pos, 0.2, 0.2, 0.2, Color::WHITE);
+            } else {
+                // Fallback to cylinder rendering if model failed to load
+                let height = 1.8; // Player height
+                let radius = 0.3; // Player radius
+
+                // Draw body (cylinder)
+                d3d.draw_cylinder(
+                    player.position,
+                    radius,
+                    radius,
+                    height,
+                    8,
+                    player_color,
+                );
+
+                // Draw head (sphere on top)
+                let head_pos = Vector3::new(
+                    player.position.x,
+                    player.position.y + height,
+                    player.position.z,
+                );
+                d3d.draw_sphere(head_pos, radius * 0.8, player_color);
+            }
 
             // Draw direction indicator (small cube in front of player based on rotation)
-            // rotation.y is already in radians from the contract
             let yaw_rad = player.rotation.y;
             let dir_x = yaw_rad.cos() * 0.5;
             let dir_z = yaw_rad.sin() * 0.5;
 
+            let height = 1.8;
             let indicator_pos = Vector3::new(
                 player.position.x + dir_x,
                 player.position.y + height * 0.5,
