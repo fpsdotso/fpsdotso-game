@@ -722,6 +722,11 @@ impl GameState {
             .and_then(|v: &serde_json::Value| v.as_bool())
             .unwrap_or(true);
 
+        // Parse health
+        let health = player_data.get("health")
+            .and_then(|v: &serde_json::Value| v.as_u64())
+            .unwrap_or(100) as f32;
+
         let new_position = Vector3::new(pos_x, pos_y, pos_z);
         let new_rotation = Vector3::new(rot_x, rot_y, rot_z);
 
@@ -734,6 +739,9 @@ impl GameState {
                 // Convert rotation from radians (server) to degrees (Player struct)
                 player.target_yaw = rot_y.to_degrees(); // rotationY is the yaw
                 player.target_pitch = rot_x.to_degrees(); // rotationX is the pitch
+
+                // Update health from blockchain
+                player.health = health;
             }
             return; // Don't add local player to other_players list
         }
