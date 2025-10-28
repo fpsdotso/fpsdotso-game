@@ -22,6 +22,7 @@ import { initGameBridge, onGameMessage } from "./game-bridge";
 import EphemeralWalletPanel from "./components/EphemeralWalletPanel";
 import LobbyBrowser from "./components/LobbyBrowser";
 import LobbyRoom from "./components/LobbyRoom";
+import Minimap from "./components/Minimap";
 
 // NOTE: This app is configured to connect to Solana LOCALNET only
 // RPC URL is hardcoded to http://127.0.0.1:8899 in solana-bridge.js
@@ -366,8 +367,8 @@ function App() {
           setPlayerData(playerInfo);
           console.log("✅ Existing player found:", playerInfo);
 
-          // Check if player is already in a game
-          await checkPlayerInGame(playerInfo);
+          // Check if player is already in a game - pass the wallet address
+          await checkPlayerInGame(playerInfo, result.publicKey);
         }
       } catch (error) {
         console.log("ℹ️ No existing player found");
@@ -376,7 +377,7 @@ function App() {
   };
 
   // Check if player is already in a game and auto-open lobby
-  const checkPlayerInGame = async (playerInfo) => {
+  const checkPlayerInGame = async (playerInfo, currentWalletAddress) => {
     try {
       const currentGamePubkey = await getPlayerCurrentGame();
       if (currentGamePubkey) {
@@ -407,12 +408,13 @@ function App() {
 
           // Determine if current player is the leader
           const createdByString = gameData.createdBy?.toString();
-          console.log('👑 Leadership check:', {
+          const currentWalletString = currentWalletAddress; // Use passed wallet address
+          console.log('👑 Leadership check (auto-rejoin):', {
             createdBy: createdByString,
-            walletAddress: walletAddress,
-            isLeader: createdByString === walletAddress
+            currentWallet: currentWalletString,
+            isLeader: createdByString === currentWalletString
           });
-          const isLeader = createdByString === walletAddress;
+          const isLeader = createdByString === currentWalletString;
 
           // Set lobby state
           setInLobby(true);
@@ -1055,26 +1057,8 @@ function App() {
               </div>
             </div>
 
-            {/* Minimap placeholder */}
-            <div style={{
-              position: 'fixed',
-              top: '100px',
-              right: '20px',
-              width: '200px',
-              height: '200px',
-              background: 'rgba(13, 13, 17, 0.8)',
-              backdropFilter: 'blur(10px)',
-              border: '2px solid rgba(0, 242, 148, 0.3)',
-              borderRadius: '8px',
-              pointerEvents: 'none',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: 'rgba(255, 255, 255, 0.3)',
-              fontSize: '14px'
-            }}>
-              MINIMAP
-            </div>
+            {/* Minimap - Modern web-based implementation */}
+            <Minimap gamePublicKey={currentLobbyData?.gamePublicKey} />
 
             {/* ESC to exit hint */}
             <div style={{

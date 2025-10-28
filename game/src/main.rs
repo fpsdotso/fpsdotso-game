@@ -74,6 +74,32 @@ pub extern "C" fn set_current_game_js(game_pubkey_ptr: *const std::os::raw::c_ch
     });
 }
 
+/// JavaScript-callable function to get player position for minimap
+/// Writes position data (x, y, z, yaw) to the provided pointer
+#[no_mangle]
+pub extern "C" fn get_player_position(out_ptr: *mut f32) {
+    GAME_STATE.with(|gs| {
+        if let Some(state_ptr) = *gs.borrow() {
+            unsafe {
+                let state = &*state_ptr;
+                if let Some(ref player) = state.player {
+                    // Write position and yaw to output buffer
+                    *out_ptr.offset(0) = player.position.x;
+                    *out_ptr.offset(1) = player.position.y;
+                    *out_ptr.offset(2) = player.position.z;
+                    *out_ptr.offset(3) = player.yaw;
+                } else {
+                    // No player, return zeros
+                    *out_ptr.offset(0) = 0.0;
+                    *out_ptr.offset(1) = 0.0;
+                    *out_ptr.offset(2) = 0.0;
+                    *out_ptr.offset(3) = 0.0;
+                }
+            }
+        }
+    });
+}
+
 /// Apply Solana-themed modern colors to ImGui
 pub fn apply_solana_ui_colors(_ui: &imgui::Ui) {
     // Note: Due to imgui 0.12 API limitations, we can't easily mutate the global style

@@ -2257,7 +2257,7 @@ export function getCurrentPlayerEphemeralKey() {
 /**
  * Send player input to game program (movement and rotation)
  * This uses the ephemeral wallet and ephemeral RPC for high-speed transactions
- * @param {Object} input - Player input {forward, backward, left, right, deltaX, deltaY, deltaTime, sensitivity, gameId}
+ * @param {Object} input - Player input {forward, backward, left, right, rotationX, rotationY, rotationZ, deltaTime, gameId}
  * @returns {string} Transaction signature
  */
 export async function sendPlayerInput(input) {
@@ -2296,16 +2296,17 @@ export async function sendPlayerInput(input) {
     );
 
     // Send input to game program on ephemeral rollup
+    // Now sending calculated rotation values instead of mouse deltas
     const tx = await gameProgram.methods
       .processInput(
         input.forward || false,
         input.backward || false,
         input.left || false,
         input.right || false,
-        input.deltaX || 0.0,
-        input.deltaY || 0.0,
+        input.rotationX || 0.0,  // pitch (in radians)
+        input.rotationY || 0.0,  // yaw (in radians)
+        input.rotationZ || 0.0,  // roll (in radians, usually 0 for FPS)
         input.deltaTime || 0.033, // 33ms default
-        input.sensitivity || 1.0,
         gameIdPubkey // _game_id parameter for PDA derivation
       )
       .accounts({
@@ -2316,7 +2317,7 @@ export async function sendPlayerInput(input) {
 
     return tx;
   } catch (error) {
-    console.error("❌ Failed to send player input:", error);
-    throw error;
+    //console.error("❌ Failed to send player input:", error);
+    //throw error;
   }
 }

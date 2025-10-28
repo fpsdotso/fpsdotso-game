@@ -76,12 +76,12 @@ class WebSocketGameManager {
         const subscriptionId = message.params.subscription;
         const callback = this.subscriptions.get(subscriptionId);
 
-        console.log(`🔔 WebSocket notification received for subscription ${subscriptionId}`);
+        //console.log(`🔔 WebSocket notification received for subscription ${subscriptionId}`);
 
         if (callback) {
           // Extract account data from the notification
           const accountData = message.params.result;
-          console.log("📦 Account data:", accountData);
+          //console.log("📦 Account data:", accountData);
           callback(accountData);
         } else {
           console.warn(`⚠️ No callback found for subscription ${subscriptionId}`);

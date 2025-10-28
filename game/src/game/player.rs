@@ -34,6 +34,13 @@ pub struct Player {
 
     /// Maximum health
     pub max_health: f32,
+
+    /// Target position for server reconciliation (smooth interpolation)
+    pub target_position: Vector3,
+
+    /// Target rotation for server reconciliation
+    pub target_yaw: f32,
+    pub target_pitch: f32,
 }
 
 impl Player {
@@ -63,6 +70,9 @@ impl Player {
             is_running: false,
             health: 100.0,
             max_health: 100.0,
+            target_position: position, // Initialize to current position
+            target_yaw: -90.0,
+            target_pitch: 0.0,
         }
     }
 
@@ -152,8 +162,8 @@ impl Player {
         self.position.z = self.position.z.clamp(-boundary, boundary);
 
         // Log position every frame for debugging
-        println!("📍 Position - X: {:.2}, Y: {:.2}, Z: {:.2}",
-                 self.position.x, self.position.y, self.position.z);
+        //println!("📍 Position - X: {:.2}, Y: {:.2}, Z: {:.2}",
+        //         self.position.x, self.position.y, self.position.z);
 
         // Calculate effective height based on crouching
         let effective_height = if self.is_crouching {

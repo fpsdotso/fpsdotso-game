@@ -317,6 +317,23 @@ impl GameState {
                 player.rotation = player.rotation.lerp(player.target_rotation, delta * interp_speed);
             }
 
+            // Smoothly interpolate local player position towards server position for reconciliation
+            // This provides smooth server-authoritative movement while maintaining responsive client input
+            // NOTE: We only interpolate POSITION, not rotation (rotation stays client-side to avoid motion sickness)
+            if let Some(player) = &mut self.player {
+                let local_interp_speed = 8.0; // Smooth but responsive interpolation for local player
+
+                // Interpolate position towards server target
+                // This reconciles any differences between client prediction and server position
+                player.position = player.position.lerp(player.target_position, delta * local_interp_speed);
+
+                // Rotation (yaw/pitch) remains client-authoritative for responsiveness
+                // The server will receive rotation updates from sendPlayerInput()
+                // We update target rotation to match current rotation so they stay in sync
+                player.target_yaw = player.yaw;
+                player.target_pitch = player.pitch;
+            }
+
             // Process incoming WebSocket player updates (real-time, no polling!)
             // WebSocket notifications are pushed to us when players move
             self.process_websocket_player_updates();
@@ -338,31 +355,32 @@ impl GameState {
             }
         };
 
-        // Get mouse delta for rotation
-        let mouse_delta = rl.get_mouse_delta();
+        // Get player rotation (yaw and pitch) and convert to radians for server
+        let yaw_radians = player.yaw.to_radians();
+        let pitch_radians = player.pitch.to_radians();
 
-        // Prepare input data as JSON - now including gameId
+        // Prepare input data as JSON - now sending rotation instead of mouse deltas
         let input_json = format!(
             r#"{{
                 "forward": {},
                 "backward": {},
                 "left": {},
                 "right": {},
-                "deltaX": {},
-                "deltaY": {},
+                "rotationX": {},
+                "rotationY": {},
+                "rotationZ": {},
                 "deltaTime": {},
-                "sensitivity": {},
                 "gameId": "{}"
             }}"#,
             rl.is_key_down(KeyboardKey::KEY_W),
             rl.is_key_down(KeyboardKey::KEY_S),
             rl.is_key_down(KeyboardKey::KEY_A),
             rl.is_key_down(KeyboardKey::KEY_D),
-            mouse_delta.x,
-            -mouse_delta.y,
-            delta,  // Use actual frame delta time
-            player.mouse_sensitivity,
-            game_id  // Add the game ID (lobby public key)
+            pitch_radians,  // rotationX (pitch)
+            yaw_radians,    // rotationY (yaw) - main horizontal rotation
+            0.0,            // rotationZ (roll) - not used for FPS
+            delta,          // Use actual frame delta time
+            game_id         // Add the game ID (lobby public key)
         );
 
         // Call JavaScript function to send input
@@ -436,7 +454,7 @@ impl GameState {
                 for (_account_pubkey, update) in updates_obj {
                     // First try to get the parsed data (already decoded by JavaScript)
                     if let Some(parsed) = update.get("parsed") {
-                        println!("📡 Processing WebSocket update (pre-parsed)");
+                        //println!("📡 Processing WebSocket update (pre-parsed)");
                         self.process_single_player_update(parsed);
                     }
                     // Fallback: try to parse from raw account data
@@ -444,7 +462,7 @@ impl GameState {
                         if let Some(value) = account_data.get("value") {
                             if let Some(data) = value.get("data") {
                                 if let Some(parsed) = data.get("parsed") {
-                                    println!("📡 Processing WebSocket update (fallback parsing)");
+                                    //println!("📡 Processing WebSocket update (fallback parsing)");
                                     self.process_single_player_update(parsed);
                                 }
                             }
@@ -462,12 +480,9 @@ impl GameState {
             .and_then(|v: &serde_json::Value| v.as_str())
             .unwrap_or("");
 
-        // Get current player's ephemeral key to skip ourselves
-        // (We trust client-side input for our own player)
+        // Get current player's ephemeral key for local player reconciliation
         let current_ephemeral_key = self.get_current_ephemeral_key();
-        if authority == current_ephemeral_key {
-            return; // Don't sync our own position from blockchain
-        }
+        let is_local_player = authority == current_ephemeral_key;
 
         // Parse position
         let pos_x = player_data.get("positionX")
@@ -480,7 +495,7 @@ impl GameState {
             .and_then(|v: &serde_json::Value| v.as_f64())
             .unwrap_or(0.0) as f32;
 
-        // Parse rotation
+        // Parse rotation (WebSocket sends radians, use directly)
         let rot_x = player_data.get("rotationX")
             .and_then(|v: &serde_json::Value| v.as_f64())
             .unwrap_or(0.0) as f32;
@@ -509,7 +524,20 @@ impl GameState {
         let new_position = Vector3::new(pos_x, pos_y, pos_z);
         let new_rotation = Vector3::new(rot_x, rot_y, rot_z);
 
-        // Update or create the player
+        // Handle local player reconciliation
+        if is_local_player {
+            if let Some(player) = &mut self.player {
+                // Update target position for smooth server reconciliation
+                // This allows the local player to interpolate towards the server's position
+                player.target_position = new_position;
+                // Convert rotation from radians (server) to degrees (Player struct)
+                player.target_yaw = rot_y.to_degrees(); // rotationY is the yaw
+                player.target_pitch = rot_x.to_degrees(); // rotationX is the pitch
+            }
+            return; // Don't add local player to other_players list
+        }
+
+        // Update or create remote player
         if let Some(existing) = self.other_players.iter_mut().find(|p| p.authority == authority) {
             // Update target position and rotation for smooth interpolation
             existing.target_position = new_position;
@@ -784,11 +812,12 @@ impl GameState {
             Self::draw_gun_viewmodel(&mut d3d, &player);
         }
 
-        // Draw 2D UI elements (crosshair, minimap, health bar) after 3D rendering
+        // Draw 2D UI elements (crosshair, health bar) after 3D rendering
+        // Note: Minimap is now rendered in web UI for a modern look
         Self::draw_crosshair(d);
 
         if let Some(ref player) = self.player {
-            Self::draw_minimap(d, player);
+            // Self::draw_minimap(d, player); // Disabled - now using web-based minimap
             Self::draw_health_bar(d, player);
         }
 

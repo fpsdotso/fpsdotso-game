@@ -6,6 +6,36 @@
 
 import * as solanaBridge from "./solana-bridge";
 import websocketGameManager from "./websocket-game-manager";
+import { publicKey, u64, bool } from '@solana/buffer-layout-utils';
+import * as BufferLayout from '@solana/buffer-layout';
+
+const { u32, u8, struct, f32 } = BufferLayout;
+
+// Track last logged positions to avoid duplicate logs
+const lastLoggedPositions = {};
+
+/**
+ * GamePlayer account layout for Borsh deserialization
+ * Matches the Rust struct from the game program
+ */
+const GamePlayerLayout = struct([
+  publicKey('authority'),        // 32 bytes
+  publicKey('gameId'),            // 32 bytes
+  f32('position_x'),              // 4 bytes
+  f32('position_y'),              // 4 bytes
+  f32('position_z'),              // 4 bytes
+  f32('rotation_x'),              // 4 bytes
+  f32('rotation_y'),              // 4 bytes
+  f32('rotation_z'),              // 4 bytes
+  u8('health'),                   // 1 byte
+  bool('is_alive'),               // 1 byte
+  u8('team'),                     // 1 byte
+  u32('kills'),                   // 4 bytes
+  u32('deaths'),                  // 4 bytes
+  u32('score'),                   // 4 bytes
+  u64('last_update'),             // 8 bytes
+  u8('bump'),                     // 1 byte
+]);
 
 /**
  * Initialize the game bridge
@@ -270,8 +300,6 @@ export function initGameBridge() {
 
         // Subscribe to all GamePlayer accounts via WebSocket
         await websocketGameManager.subscribeToGamePlayers(gamePlayerPubkeys, async (accountPubkey, accountData) => {
-          console.log("[Game Bridge] 📡 Received WebSocket update for:", accountPubkey);
-
           // Store the updated player data in a global variable that Rust can read
           if (!window.___websocket_player_updates) {
             window.___websocket_player_updates = {};
@@ -286,30 +314,64 @@ export function initGameBridge() {
               // The data is base64 encoded, decode it
               const accountDataRaw = accountData.value.data;
 
-              // If data is an array (binary), convert to Buffer
+              // If data is an array, it's in format: [base64String, 'base64']
               let decodedData;
               if (Array.isArray(accountDataRaw)) {
-                decodedData = Buffer.from(accountDataRaw);
+                // Extract the base64 string from the array (first element)
+                decodedData = Buffer.from(accountDataRaw[0], 'base64');
               } else if (typeof accountDataRaw === 'string') {
-                // Base64 encoded
+                // Base64 encoded string
                 decodedData = Buffer.from(accountDataRaw, 'base64');
               }
 
               if (decodedData) {
                 try {
-                  // Try to decode using Anchor's type coder instead of account coder
-                  // The GamePlayer schema is in the "types" section of the IDL, not "accounts"
-                  const gamePlayerData = gameProgram.coder.types.decode('GamePlayer', decodedData.slice(8)); // Skip 8-byte discriminator
-                  console.log("[Game Bridge] ✅ Decoded GamePlayer data:", gamePlayerData);
+                  // Deserialize using @solana/buffer-layout
+                  // Skip 8-byte discriminator, then decode the rest using our layout
+                  const dataWithoutDiscriminator = decodedData.slice(8);
+                  const rawData = GamePlayerLayout.decode(dataWithoutDiscriminator);
+
+                  // Convert BigInt to Number and use camelCase for Rust compatibility
+                  const gamePlayerData = {
+                    authority: rawData.authority.toString(), // Convert PublicKey to string
+                    gameId: rawData.gameId.toString(),
+                    positionX: rawData.position_x, // camelCase for Rust
+                    positionY: rawData.position_y,
+                    positionZ: rawData.position_z,
+                    rotationX: rawData.rotation_x,
+                    rotationY: rawData.rotation_y,
+                    rotationZ: rawData.rotation_z,
+                    health: rawData.health,
+                    isAlive: rawData.is_alive, // camelCase for Rust
+                    team: rawData.team,
+                    kills: rawData.kills,
+                    deaths: rawData.deaths,
+                    score: rawData.score,
+                    lastUpdate: Number(rawData.last_update), // Convert BigInt to Number
+                    bump: rawData.bump,
+                  };
+
+                  // 🎯 CHECK IF DATA CHANGED (compare position to reduce console spam)
+                  const posKey = `${gamePlayerData.positionX.toFixed(2)},${gamePlayerData.positionY.toFixed(2)},${gamePlayerData.positionZ.toFixed(2)}`;
+                  const lastPos = lastLoggedPositions[accountPubkey];
+                  const dataChanged = lastPos !== posKey;
+
+                  if (dataChanged) {
+                    lastLoggedPositions[accountPubkey] = posKey;
+                    const totalPlayers = Object.keys(window.___websocket_player_updates).length;
+                    console.log(`[WebSocket] 📡 Player ${accountPubkey.slice(0, 8)} | Pos(${gamePlayerData.positionX.toFixed(1)}, ${gamePlayerData.positionY.toFixed(1)}, ${gamePlayerData.positionZ.toFixed(1)}) | Rot(${gamePlayerData.rotationY.toFixed(2)}) | Team ${gamePlayerData.team} | HP ${gamePlayerData.health} | Alive: ${gamePlayerData.isAlive} | Total: ${totalPlayers} players`);
+                  }
 
                   // Store the decoded data
                   window.___websocket_player_updates[accountPubkey] = {
                     timestamp: Date.now(),
                     data: accountData,
-                    parsed: gamePlayerData, // Include parsed data
+                    parsed: gamePlayerData, // Include parsed data (with BigInt converted to Number)
                   };
-                } catch (typeDecodeError) {
-                  console.warn("[Game Bridge] ⚠️ Type decoder failed, storing raw data:", typeDecodeError.message);
+                } catch (decodeError) {
+                  console.error("[Game Bridge] ⚠️ Decoder failed:", decodeError.message);
+                  console.error("[Game Bridge] Stack:", decodeError.stack);
+                  console.error("[Game Bridge] Data length:", decodedData?.length, "bytes");
                   // Fallback: store raw data
                   window.___websocket_player_updates[accountPubkey] = {
                     timestamp: Date.now(),
@@ -361,10 +423,37 @@ export function initGameBridge() {
     },
 
     getWebSocketPlayerUpdates: () => {
-      // Return all pending WebSocket player updates and clear the queue
+      // Return all pending WebSocket player updates (but DON'T clear them)
+      // The web minimap also needs this data, so we keep it available
       const updates = window.___websocket_player_updates || {};
-      window.___websocket_player_updates = {};
       return JSON.stringify(updates);
+    },
+
+    // Debug function to log all current player positions
+    logAllPlayerPositions: () => {
+      console.log("📍 === ALL PLAYER POSITIONS (WebSocket) ===");
+      const updates = window.___websocket_player_updates || {};
+      const playerCount = Object.keys(updates).length;
+
+      if (playerCount === 0) {
+        console.log("  No player updates available");
+        return;
+      }
+
+      console.log(`  Total players tracked: ${playerCount}`);
+      for (const [accountPubkey, update] of Object.entries(updates)) {
+        if (update.parsed) {
+          const p = update.parsed;
+          console.log(`  Player ${accountPubkey.slice(0, 8)}...`);
+          console.log(`    Pos: (${p.positionX || p.position_x}, ${p.positionY || p.position_y}, ${p.positionZ || p.position_z})`);
+          console.log(`    Rot: (${p.rotationX || p.rotation_x}, ${p.rotationY || p.rotation_y}, ${p.rotationZ || p.rotation_z})`);
+          console.log(`    Health: ${p.health}, Team: ${p.team}, Alive: ${p.isAlive || p.is_alive}`);
+          console.log(`    Age: ${((Date.now() - update.timestamp) / 1000).toFixed(1)}s ago`);
+        } else {
+          console.log(`  Player ${accountPubkey.slice(0, 8)}... (not decoded)`);
+        }
+      }
+      console.log("==========================================");
     },
   };
 

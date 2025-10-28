@@ -411,19 +411,19 @@
           "type": "bool"
         },
         {
-          "name": "delta_x",
+          "name": "rotation_x",
           "type": "f32"
         },
         {
-          "name": "delta_y",
+          "name": "rotation_y",
+          "type": "f32"
+        },
+        {
+          "name": "rotation_z",
           "type": "f32"
         },
         {
           "name": "delta_time",
-          "type": "f32"
-        },
-        {
-          "name": "sensitivity",
           "type": "f32"
         },
         {
