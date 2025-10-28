@@ -2322,3 +2322,198 @@ export async function sendPlayerInput(input) {
     //throw error;
   }
 }
+
+/**
+ * Shoot and check for hits on other players
+ * @param {number} damage - Amount of damage to deal (typically 25)
+ * @param {string} gameIdPubkey - Game ID public key
+ * @param {string[]} otherPlayerPdas - Array of other player PDAs to check for hits
+ * @returns {Promise<{transaction: string, hit: boolean, killedPlayer: string|null}>}
+ */
+export async function shootPlayer(damage, gameIdPubkey, otherPlayerPdas = []) {
+  try {
+    console.log(`🔫 Shooting with damage: ${damage}, checking ${otherPlayerPdas.length} players`);
+
+    const ephemeralKeypair = EphemeralWallet.getEphemeralKeypair();
+    if (!ephemeralKeypair) {
+      throw new Error("Ephemeral wallet not initialized");
+    }
+
+    // Initialize game program if not already done
+    if (!gameProgram) {
+      if (!ephemeralConnection) {
+        throw new Error("Ephemeral connection not initialized");
+      }
+
+      ephemeralProvider = new AnchorProvider(
+        ephemeralConnection,
+        new NodeWallet(ephemeralKeypair),
+        { commitment: "confirmed" }
+      );
+      gameProgram = new Program(gameIdl, ephemeralProvider);
+      console.log("✅ Game program initialized for shooting");
+    }
+
+    const ephemeralPublicKey = ephemeralKeypair.publicKey;
+
+    // Derive shooter's GamePlayer PDA
+    const [gamePlayerPda] = PublicKey.findProgramAddressSync(
+      [
+        Buffer.from("game_player"),
+        ephemeralPublicKey.toBuffer(),
+        new PublicKey(gameIdPubkey).toBuffer(),
+      ],
+      GAME_PROGRAM_ID
+    );
+
+    // Convert other player PDA strings to AccountMeta format
+    const remainingAccounts = otherPlayerPdas.map(pdaString => ({
+      pubkey: new PublicKey(pdaString),
+      isSigner: false,
+      isWritable: true
+    }));
+
+    console.log(`🎯 Shooting at ${remainingAccounts.length} potential targets`);
+    console.log(`🎯 Shooter PDA: ${gamePlayerPda.toString()}`);
+    console.log(`🎯 Available methods:`, Object.keys(gameProgram.methods));
+
+    // Call shoot instruction
+    const tx = await gameProgram.methods
+      .shoot(damage)
+      .accounts({
+        shooter: gamePlayerPda,
+        authority: ephemeralPublicKey,
+      })
+      .remainingAccounts(remainingAccounts)
+      .rpc({ skipPreflight: true });
+
+    console.log(`✅ Shoot transaction:`, tx);
+
+    return {
+      transaction: tx,
+      hit: true, // We don't know if we hit until we check health changes
+      killedPlayer: null // Would need to query player accounts to determine this
+    };
+  } catch (error) {
+    console.error("❌ Failed to shoot:", error);
+    throw error;
+  }
+}
+
+/**
+ * Award a kill to the shooter
+ * @param {number} scorePoints - Score points to award (typically 100)
+ * @param {string} gameIdPubkey - Game ID public key
+ * @returns {Promise<string>} Transaction signature
+ */
+export async function awardKill(scorePoints, gameIdPubkey) {
+  try {
+    console.log(`🏆 Awarding kill: ${scorePoints} points`);
+
+    const ephemeralKeypair = EphemeralWallet.getEphemeralKeypair();
+    if (!ephemeralKeypair) {
+      throw new Error("Ephemeral wallet not initialized");
+    }
+
+    // Initialize game program if not already done
+    if (!gameProgram) {
+      if (!ephemeralConnection) {
+        throw new Error("Ephemeral connection not initialized");
+      }
+
+      ephemeralProvider = new AnchorProvider(
+        ephemeralConnection,
+        new NodeWallet(ephemeralKeypair),
+        { commitment: "confirmed" }
+      );
+      gameProgram = new Program(gameIdl, ephemeralProvider);
+    }
+
+    const ephemeralPublicKey = ephemeralKeypair.publicKey;
+
+    // Derive shooter's GamePlayer PDA (same order as processInput)
+    const [gamePlayerPda] = PublicKey.findProgramAddressSync(
+      [
+        Buffer.from("game_player"),
+        ephemeralPublicKey.toBuffer(),
+        new PublicKey(gameIdPubkey).toBuffer(),
+      ],
+      GAME_PROGRAM_ID
+    );
+
+    // Call award_kill instruction
+    const tx = await gameProgram.methods
+      .awardKill(scorePoints)
+      .accounts({
+        shooter: gamePlayerPda,
+        authority: ephemeralPublicKey,
+      })
+      .rpc({ skipPreflight: true });
+
+    console.log(`✅ Kill awarded, transaction:`, tx);
+    return tx;
+  } catch (error) {
+    console.error("❌ Failed to award kill:", error);
+    throw error;
+  }
+}
+
+/**
+ * Respawn a dead player at spawn point
+ * @param {string} gameIdPubkey - Game ID public key
+ * @param {number} spawnX - Spawn X coordinate
+ * @param {number} spawnY - Spawn Y coordinate
+ * @param {number} spawnZ - Spawn Z coordinate
+ * @returns {Promise<string>} Transaction signature
+ */
+export async function respawnPlayer(gameIdPubkey, spawnX, spawnY, spawnZ) {
+  try {
+    console.log(`♻️ Respawning player at (${spawnX}, ${spawnY}, ${spawnZ})`);
+
+    const ephemeralKeypair = EphemeralWallet.getEphemeralKeypair();
+    if (!ephemeralKeypair) {
+      throw new Error("Ephemeral wallet not initialized");
+    }
+
+    // Initialize game program if not already done
+    if (!gameProgram) {
+      if (!ephemeralConnection) {
+        throw new Error("Ephemeral connection not initialized");
+      }
+
+      ephemeralProvider = new AnchorProvider(
+        ephemeralConnection,
+        new NodeWallet(ephemeralKeypair),
+        { commitment: "confirmed" }
+      );
+      gameProgram = new Program(gameIdl, ephemeralProvider);
+    }
+
+    const ephemeralPublicKey = ephemeralKeypair.publicKey;
+
+    // Derive GamePlayer PDA (same order as processInput)
+    const [gamePlayerPda] = PublicKey.findProgramAddressSync(
+      [
+        Buffer.from("game_player"),
+        ephemeralPublicKey.toBuffer(),
+        new PublicKey(gameIdPubkey).toBuffer(),
+      ],
+      GAME_PROGRAM_ID
+    );
+
+    // Call respawn_player instruction
+    const tx = await gameProgram.methods
+      .respawnPlayer(spawnX, spawnY, spawnZ)
+      .accounts({
+        gamePlayer: gamePlayerPda,
+        authority: ephemeralPublicKey,
+      })
+      .rpc({ skipPreflight: true });
+
+    console.log(`✅ Player respawned, transaction:`, tx);
+    return tx;
+  } catch (error) {
+    console.error("❌ Failed to respawn player:", error);
+    throw error;
+  }
+}

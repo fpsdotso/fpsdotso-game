@@ -1074,20 +1074,56 @@ function App() {
               currentGameState={currentGameState}
             />
 
-            {/* ESC to exit hint */}
-            <div style={{
-              position: 'fixed',
-              top: '20px',
-              left: '50%',
-              transform: 'translateX(-50%)',
-              color: 'rgba(255, 255, 255, 0.5)',
-              fontSize: '14px',
-              textAlign: 'center',
-              pointerEvents: 'none',
-              zIndex: 1000
-            }}>
-              Press <span style={{ color: '#9c51ff', fontWeight: 'bold' }}>ESC</span> to exit fullscreen
-            </div>
+            {/* Fullscreen toggle button - only show when in game but not fullscreen */}
+            {currentGameState === 1 && !isFullscreen && (
+              <button
+                onClick={enterFullscreen}
+                style={{
+                  position: 'fixed',
+                  bottom: '20px',
+                  right: '20px',
+                  padding: '12px 24px',
+                  backgroundColor: 'rgba(156, 81, 255, 0.9)',
+                  color: 'white',
+                  border: '2px solid #9c51ff',
+                  borderRadius: '8px',
+                  fontSize: '14px',
+                  fontWeight: 'bold',
+                  cursor: 'pointer',
+                  zIndex: 1000,
+                  boxShadow: '0 4px 15px rgba(156, 81, 255, 0.4)',
+                  transition: 'all 0.2s ease',
+                  pointerEvents: 'auto'
+                }}
+                onMouseEnter={(e) => {
+                  e.target.style.backgroundColor = 'rgba(156, 81, 255, 1)';
+                  e.target.style.transform = 'scale(1.05)';
+                }}
+                onMouseLeave={(e) => {
+                  e.target.style.backgroundColor = 'rgba(156, 81, 255, 0.9)';
+                  e.target.style.transform = 'scale(1)';
+                }}
+              >
+                ⛶ Enter Fullscreen
+              </button>
+            )}
+
+            {/* ESC to exit hint - only show when in fullscreen */}
+            {isFullscreen && (
+              <div style={{
+                position: 'fixed',
+                top: '20px',
+                left: '50%',
+                transform: 'translateX(-50%)',
+                color: 'rgba(255, 255, 255, 0.5)',
+                fontSize: '14px',
+                textAlign: 'center',
+                pointerEvents: 'none',
+                zIndex: 1000
+              }}>
+                Press <span style={{ color: '#9c51ff', fontWeight: 'bold' }}>ESC</span> to exit fullscreen
+              </div>
+            )}
           </>
         )}
       </div>

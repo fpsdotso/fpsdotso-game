@@ -208,6 +208,22 @@ export function initGameBridge() {
       return await solanaBridge.sendPlayerInput(input);
     },
 
+    // Shooting functions
+    shootPlayer: async (damage, gameId, otherPlayerPdas) => {
+      console.log(`[Game Bridge] shootPlayer called: damage=${damage}, targets=${otherPlayerPdas?.length || 0}`);
+      return await solanaBridge.shootPlayer(damage, gameId, otherPlayerPdas);
+    },
+
+    awardKill: async (scorePoints, gameId) => {
+      console.log(`[Game Bridge] awardKill called: points=${scorePoints}`);
+      return await solanaBridge.awardKill(scorePoints, gameId);
+    },
+
+    respawnPlayer: async (gameId, spawnX, spawnY, spawnZ) => {
+      console.log(`[Game Bridge] respawnPlayer called: spawn=(${spawnX}, ${spawnY}, ${spawnZ})`);
+      return await solanaBridge.respawnPlayer(gameId, spawnX, spawnY, spawnZ);
+    },
+
     // Get all players in game for synchronization
     getGamePlayers: async (gamePublicKey) => {
       return await solanaBridge.getGamePlayers(gamePublicKey);
@@ -221,6 +237,32 @@ export function initGameBridge() {
     // Get current player's ephemeral wallet public key (for GamePlayer matching)
     getCurrentPlayerEphemeralKey: () => {
       return solanaBridge.getCurrentPlayerEphemeralKey();
+    },
+
+    // Get all other player PDAs for shooting detection
+    getOtherPlayerPDAs: async (gamePublicKey) => {
+      try {
+        const currentEphemeralKey = solanaBridge.getCurrentPlayerEphemeralKey();
+        const allPlayers = await solanaBridge.getGamePlayers(gamePublicKey);
+
+        if (!allPlayers || allPlayers.length === 0) {
+          console.log('[Game Bridge] No players found in game');
+          return [];
+        }
+
+        // Filter out current player and return PDAs (using publicKey property)
+        const otherPlayers = allPlayers
+          .filter(player => player.authority !== currentEphemeralKey)
+          .map(player => player.publicKey);
+
+        console.log(`[Game Bridge] Found ${otherPlayers.length} other players for shooting detection`);
+        console.log(`[Game Bridge] Current player key: ${currentEphemeralKey}`);
+        console.log(`[Game Bridge] Other player PDAs:`, otherPlayers);
+        return otherPlayers;
+      } catch (error) {
+        console.error('[Game Bridge] Error getting other player PDAs:', error);
+        return [];
+      }
     },
 
     // Game mode control functions

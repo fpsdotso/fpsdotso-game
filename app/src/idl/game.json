@@ -8,6 +8,38 @@
   },
   "instructions": [
     {
+      "name": "award_kill",
+      "docs": [
+        "Award a kill to the shooter (called after successful kill)"
+      ],
+      "discriminator": [
+        56,
+        198,
+        166,
+        79,
+        6,
+        232,
+        75,
+        48
+      ],
+      "accounts": [
+        {
+          "name": "shooter",
+          "writable": true
+        },
+        {
+          "name": "authority",
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "score_points",
+          "type": "u32"
+        }
+      ]
+    },
+    {
       "name": "commit_player_state",
       "docs": [
         "Manual commit player state back to mainnet"
@@ -466,6 +498,81 @@
           "type": {
             "vec": "bytes"
           }
+        }
+      ]
+    },
+    {
+      "name": "respawn_player",
+      "docs": [
+        "Respawn a dead player at spawn point"
+      ],
+      "discriminator": [
+        93,
+        210,
+        196,
+        21,
+        134,
+        131,
+        118,
+        120
+      ],
+      "accounts": [
+        {
+          "name": "game_player",
+          "writable": true
+        },
+        {
+          "name": "authority",
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "spawn_x",
+          "type": "f32"
+        },
+        {
+          "name": "spawn_y",
+          "type": "f32"
+        },
+        {
+          "name": "spawn_z",
+          "type": "f32"
+        }
+      ]
+    },
+    {
+      "name": "shoot",
+      "docs": [
+        "Shoot and check for hits on other players",
+        "Pass other player accounts in remaining_accounts to check for hits"
+      ],
+      "discriminator": [
+        41,
+        43,
+        22,
+        19,
+        8,
+        30,
+        7,
+        103
+      ],
+      "accounts": [
+        {
+          "name": "shooter",
+          "docs": [
+            "The player shooting"
+          ]
+        },
+        {
+          "name": "authority",
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "damage",
+          "type": "u8"
         }
       ]
     },

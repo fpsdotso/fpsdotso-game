@@ -108,7 +108,7 @@ impl GameState {
     }
 
     /// Handle shooting - play sound and trigger visual effects
-    pub fn shoot(&mut self, audio: &mut RaylibAudio) {
+    pub fn shoot(&mut self) {
         // Use emscripten to play the sound via Web Audio API
         // This is more reliable than raylib's audio system for WASM
         use std::os::raw::c_char;
@@ -196,11 +196,51 @@ impl GameState {
             println!("🔫 Bang! Trail from {:?} to {:?}", muzzle_pos, hit_pos);
         }
 
+        // Call blockchain shooting function
+        if let Some(ref game_pubkey) = self.current_game_pubkey {
+            self.call_blockchain_shoot(game_pubkey);
+        }
+
         // Trigger muzzle flash (lasts 0.05 seconds)
         self.muzzle_flash_timer = 0.05;
 
         // Trigger screen flash (lasts 0.1 seconds)
         self.screen_flash_timer = 0.1;
+    }
+
+    /// Call blockchain shoot instruction via JavaScript
+    fn call_blockchain_shoot(&self, game_pubkey: &str) {
+        use std::os::raw::c_char;
+        use std::ffi::CString;
+
+        let js_code = format!(
+            r#"
+            (async () => {{
+                try {{
+                    if (window.gameBridge && window.gameBridge.shootPlayer && window.gameBridge.getOtherPlayerPDAs) {{
+                        // Get all other player PDAs for hit detection
+                        const otherPlayerPdas = await window.gameBridge.getOtherPlayerPDAs('{}');
+
+                        // Call shoot instruction with 25 damage
+                        const result = await window.gameBridge.shootPlayer(25, '{}', otherPlayerPdas);
+                        console.log('🎯 Shoot result:', result);
+
+                        // TODO: Check if we got a kill and call awardKill if needed
+                        // This would require checking health changes in the returned data
+                    }}
+                }} catch (error) {{
+                    console.error('Error calling blockchain shoot:', error);
+                }}
+            }})();
+            "#,
+            game_pubkey,
+            game_pubkey
+        );
+
+        unsafe {
+            let c_str = CString::new(js_code).unwrap();
+            emscripten_run_script(c_str.as_ptr());
+        }
     }
 
     /// Set the current game for blockchain synchronization
@@ -423,7 +463,7 @@ impl GameState {
                 self.touch_controls.as_ref().map_or(false, |tc| tc.get_shoot_pressed());
 
             if should_shoot {
-                self.shoot(audio);
+                self.shoot();
             }
 
             // Update effect timers
