@@ -23,6 +23,7 @@ import EphemeralWalletPanel from "./components/EphemeralWalletPanel";
 import LobbyBrowser from "./components/LobbyBrowser";
 import LobbyRoom from "./components/LobbyRoom";
 import Minimap from "./components/Minimap";
+import MatchStatus from "./components/MatchStatus";
 
 // NOTE: This app is configured to connect to Solana LOCALNET only
 // RPC URL is hardcoded to http://127.0.0.1:8899 in solana-bridge.js
@@ -808,8 +809,11 @@ function App() {
 
       {/* Web UI overlay */}
       <div className="web-ui-overlay" style={{ pointerEvents: activeTab === 'mapeditor' ? 'none' : 'auto' }}>
-        {/* Top Navigation Bar with Tabs */}
-        <nav className="game-nav" style={{ pointerEvents: 'auto' }}>
+        {/* Top Navigation Bar with Tabs - Hidden when in active game */}
+        <nav className="game-nav" style={{
+          pointerEvents: 'auto',
+          display: currentGameState === 1 ? 'none' : 'flex'
+        }}>
           {/* Left: Logo and Tabs */}
           <div className="hud-top-left">
             <h1 className="game-title">
@@ -880,8 +884,10 @@ function App() {
           </div>
         </nav>
 
-        {/* Bottom Left - Player Info */}
-        <div className="hud-bottom-left">
+        {/* Bottom Left - Player Info - Hidden when in active game */}
+        <div className="hud-bottom-left" style={{
+          display: currentGameState === 1 ? 'none' : 'block'
+        }}>
           {playerInitialized && playerData ? (
             <div className="player-card">
               <div className="player-header">
@@ -932,8 +938,10 @@ function App() {
           ) : null}
         </div>
 
-        {/* Bottom Right - Ephemeral Wallet */}
-        <div className="hud-bottom-right">
+        {/* Bottom Right - Ephemeral Wallet - Hidden when in active game */}
+        <div className="hud-bottom-right" style={{
+          display: currentGameState === 1 ? 'none' : 'block'
+        }}>
           {walletConnected && window.gameBridge && (
             <EphemeralWalletPanel gameBridge={window.gameBridge} />
           )}
@@ -1059,6 +1067,12 @@ function App() {
 
             {/* Minimap - Modern web-based implementation */}
             <Minimap gamePublicKey={currentLobbyData?.gamePublicKey} />
+
+            {/* Match Status - Shows team scores during gameplay */}
+            <MatchStatus
+              gamePublicKey={currentLobbyData?.gamePublicKey}
+              currentGameState={currentGameState}
+            />
 
             {/* ESC to exit hint */}
             <div style={{
