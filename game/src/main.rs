@@ -146,11 +146,6 @@ fn main() {
     // Create game state
     let mut game_state = GameState::new();
 
-    // Initialize touch controls based on current screen size
-    let screen_w = rl.get_screen_width() as f32;
-    let screen_h = rl.get_screen_height() as f32;
-    game_state.init_touch_controls(screen_w, screen_h);
-
     // Set the game state pointer for JavaScript interop
     set_game_state_ptr(&mut game_state as *mut GameState);
     println!("✅ Game state pointer set for JavaScript interop");

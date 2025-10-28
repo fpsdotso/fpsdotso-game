@@ -1,7 +1,6 @@
 use raylib::prelude::*;
 use crate::map::Map;
 use super::Player;
-use crate::game::touch_controls::TouchControls;
 
 // Emscripten bindings for JavaScript interop
 extern "C" {
@@ -58,8 +57,6 @@ pub struct GameState {
     /// Other players in the game (from blockchain)
     other_players: Vec<OtherPlayer>,
 
-    /// Optional touch controls for mobile
-    pub touch_controls: Option<TouchControls>,
 }
 
 impl GameState {
@@ -75,13 +72,7 @@ impl GameState {
             current_game_pubkey: None,
             current_player_authority: None,
             other_players: Vec::new(),
-            touch_controls: None,
         }
-    }
-
-    /// Initialize touch controls
-    pub fn init_touch_controls(&mut self, screen_width: f32, screen_height: f32) {
-        self.touch_controls = Some(TouchControls::new(screen_width, screen_height));
     }
 
     /// Set the current game for blockchain synchronization
@@ -153,24 +144,8 @@ impl GameState {
         // Update player if in playing mode
         if self.mode == GameMode::Playing {
             if let Some(ref mut player) = self.player {
-                // Update from touch controls if available and active
-                if let Some(tc) = &mut self.touch_controls {
-                    tc.update(rl);
-                    if tc.is_active() {
-                        let (fwd, back, left, right) = tc.get_movement_input();
-                        let look = tc.get_look_input();
-                        let mut mv = Vector2::zero();
-                        if fwd { mv.y -= 1.0; }
-                        if back { mv.y += 1.0; }
-                        if left { mv.x -= 1.0; }
-                        if right { mv.x += 1.0; }
-                        player.apply_mobile_input(mv, look, delta);
-                    } else {
-                        player.update(rl, delta);
-                    }
-                } else {
-                    player.update(rl, delta);
-                }
+                // Update player (keyboard/mouse input)
+                player.update(rl, delta);
             }
 
             // Send player input every frame for maximum responsiveness
@@ -179,12 +154,7 @@ impl GameState {
             }
 
             // Handle shoot (no-op on chain yet)
-            if let Some(tc) = &self.touch_controls {
-                if tc.get_shoot_pressed() {
-                    // Placeholder: print only
-                    println!("🔫 Shoot pressed (no-op)");
-                }
-            }
+            // Note: Touch controls are now handled in JavaScript via VirtualJoystick
 
             // Fetch other players' positions every 33ms (30 ticks/sec) to reduce network load
             self.sync_timer += delta;
@@ -651,10 +621,6 @@ impl GameState {
         if let Some(ref player) = self.player {
             Self::draw_minimap(d, player);
             Self::draw_health_bar(d, player);
-        }
-
-        if let Some(tc) = &self.touch_controls {
-            tc.draw(d);
         }
     }
 

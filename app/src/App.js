@@ -22,6 +22,7 @@ import { initGameBridge, onGameMessage } from "./game-bridge";
 import EphemeralWalletPanel from "./components/EphemeralWalletPanel";
 import LobbyBrowser from "./components/LobbyBrowser";
 import LobbyRoom from "./components/LobbyRoom";
+import VirtualJoystick from "./components/VirtualJoystick";
 
 // NOTE: This app is configured to connect to Solana LOCALNET only
 // RPC URL is hardcoded to http://127.0.0.1:8899 in solana-bridge.js
@@ -61,7 +62,7 @@ function App() {
   const [isLobbyLeader, setIsLobbyLeader] = useState(false);
 
   // Tab navigation state
-  const [activeTab, setActiveTab] = useState('mapeditor'); // 'lobby', 'store', 'mapeditor' - default to map editor so game loads
+  const [activeTab, setActiveTab] = useState("mapeditor"); // 'lobby', 'store', 'mapeditor' - default to map editor so game loads
 
   // Game state tracking
   const [currentGameState, setCurrentGameState] = useState(null); // 0=waiting, 1=active, 2=ended, 3=paused
@@ -152,31 +153,38 @@ function App() {
 
     const refreshLobbyData = async () => {
       try {
-        const players = await getAllPlayersInGame(currentLobbyData.gamePublicKey);
+        const players = await getAllPlayersInGame(
+          currentLobbyData.gamePublicKey
+        );
 
-        console.log('🔄 Refreshing lobby data, players:', players);
+        console.log("🔄 Refreshing lobby data, players:", players);
 
         const teamAPlayers = players
-          .filter(p => p.team === 'A')
-          .map(p => p.username);
+          .filter((p) => p.team === "A")
+          .map((p) => p.username);
         const teamBPlayers = players
-          .filter(p => p.team === 'B')
-          .map(p => p.username);
+          .filter((p) => p.team === "B")
+          .map((p) => p.username);
         const teamAReady = players
-          .filter(p => p.team === 'A')
-          .map(p => p.isReady);
+          .filter((p) => p.team === "A")
+          .map((p) => p.isReady);
         const teamBReady = players
-          .filter(p => p.team === 'B')
-          .map(p => p.isReady);
+          .filter((p) => p.team === "B")
+          .map((p) => p.isReady);
 
-        console.log('🔄 Ready states - Team A:', teamAReady, 'Team B:', teamBReady);
+        console.log(
+          "🔄 Ready states - Team A:",
+          teamAReady,
+          "Team B:",
+          teamBReady
+        );
 
-        setCurrentLobbyData(prev => ({
+        setCurrentLobbyData((prev) => ({
           ...prev,
           teamA: teamAPlayers,
           teamB: teamBPlayers,
           teamAReady: teamAReady,
-          teamBReady: teamBReady
+          teamBReady: teamBReady,
         }));
       } catch (error) {
         console.warn("⚠️ Failed to refresh lobby data:", error);
@@ -199,49 +207,68 @@ function App() {
     const checkGameState = async () => {
       try {
         const gameState = await getGameState(currentLobbyData.gamePublicKey);
-        console.log('🎮 Current game state:', gameState);
+        console.log("🎮 Current game state:", gameState);
 
         if (gameState !== null && gameState !== currentGameState) {
           setCurrentGameState(gameState);
 
           // Game state 1 = active (game has started)
           if (gameState === 1) {
-            console.log('🎮 Game has started! Switching to fullscreen gameplay...');
+            console.log(
+              "🎮 Game has started! Switching to fullscreen gameplay..."
+            );
 
             // Exit lobby view
             setInLobby(false);
 
             // Switch to map editor tab (where game canvas is)
-            setActiveTab('mapeditor');
+            setActiveTab("mapeditor");
 
             // Set the current game in Raylib for multiplayer sync
-            if (window.gameBridge && window.gameBridge.setCurrentGame && currentLobbyData?.gamePublicKey) {
+            if (
+              window.gameBridge &&
+              window.gameBridge.setCurrentGame &&
+              currentLobbyData?.gamePublicKey
+            ) {
               window.gameBridge.setCurrentGame(currentLobbyData.gamePublicKey);
-              console.log('✅ Set current game pubkey in Raylib');
+              console.log("✅ Set current game pubkey in Raylib");
             }
 
             // Load the map data from blockchain
-            if (window.gameBridge && window.gameBridge.getMapDataById && currentLobbyData?.mapName) {
-              console.log('🗺️ Loading map from blockchain:', currentLobbyData.mapName);
-              window.gameBridge.getMapDataById(currentLobbyData.mapName).then(mapData => {
-                if (mapData) {
-                  console.log('✅ Map data loaded, length:', mapData ? mapData.length : 0);
-                  // The Rust side will handle loading the map
-                } else {
-                  console.warn('⚠️ No map data returned');
-                }
-              }).catch(err => {
-                console.error('❌ Failed to load map:', err);
-              });
+            if (
+              window.gameBridge &&
+              window.gameBridge.getMapDataById &&
+              currentLobbyData?.mapName
+            ) {
+              console.log(
+                "🗺️ Loading map from blockchain:",
+                currentLobbyData.mapName
+              );
+              window.gameBridge
+                .getMapDataById(currentLobbyData.mapName)
+                .then((mapData) => {
+                  if (mapData) {
+                    console.log(
+                      "✅ Map data loaded, length:",
+                      mapData ? mapData.length : 0
+                    );
+                    // The Rust side will handle loading the map
+                  } else {
+                    console.warn("⚠️ No map data returned");
+                  }
+                })
+                .catch((err) => {
+                  console.error("❌ Failed to load map:", err);
+                });
             }
 
             // Tell Raylib game to switch to playing mode AFTER setting up the game
             setTimeout(() => {
               if (window.gameBridge && window.gameBridge.startGameMode) {
                 window.gameBridge.startGameMode();
-                console.log('✅ Called startGameMode');
+                console.log("✅ Called startGameMode");
               } else {
-                console.warn('⚠️ gameBridge.startGameMode not available');
+                console.warn("⚠️ gameBridge.startGameMode not available");
               }
             }, 500); // Wait 500ms for map to load
 
@@ -250,7 +277,7 @@ function App() {
           }
           // Game state 2 = ended
           else if (gameState === 2) {
-            console.log('🏁 Game has ended');
+            console.log("🏁 Game has ended");
 
             // Tell Raylib game to switch back to menu mode
             if (window.gameBridge && window.gameBridge.stopGameMode) {
@@ -278,22 +305,28 @@ function App() {
 
   // Fullscreen functions
   const enterFullscreen = () => {
-    const container = document.getElementById('container');
+    const container = document.getElementById("container");
     if (container && !isFullscreen) {
       if (container.requestFullscreen) {
-        container.requestFullscreen().then(() => {
-          setIsFullscreen(true);
-          console.log('✅ Entered fullscreen mode');
-        }).catch(err => {
-          console.error('❌ Failed to enter fullscreen:', err);
-        });
-      } else if (container.webkitRequestFullscreen) { // Safari
+        container
+          .requestFullscreen()
+          .then(() => {
+            setIsFullscreen(true);
+            console.log("✅ Entered fullscreen mode");
+          })
+          .catch((err) => {
+            console.error("❌ Failed to enter fullscreen:", err);
+          });
+      } else if (container.webkitRequestFullscreen) {
+        // Safari
         container.webkitRequestFullscreen();
         setIsFullscreen(true);
-      } else if (container.mozRequestFullScreen) { // Firefox
+      } else if (container.mozRequestFullScreen) {
+        // Firefox
         container.mozRequestFullScreen();
         setIsFullscreen(true);
-      } else if (container.msRequestFullscreen) { // IE/Edge
+      } else if (container.msRequestFullscreen) {
+        // IE/Edge
         container.msRequestFullscreen();
         setIsFullscreen(true);
       }
@@ -303,19 +336,25 @@ function App() {
   const exitFullscreen = () => {
     if (isFullscreen) {
       if (document.exitFullscreen) {
-        document.exitFullscreen().then(() => {
-          setIsFullscreen(false);
-          console.log('✅ Exited fullscreen mode');
-        }).catch(err => {
-          console.error('❌ Failed to exit fullscreen:', err);
-        });
-      } else if (document.webkitExitFullscreen) { // Safari
+        document
+          .exitFullscreen()
+          .then(() => {
+            setIsFullscreen(false);
+            console.log("✅ Exited fullscreen mode");
+          })
+          .catch((err) => {
+            console.error("❌ Failed to exit fullscreen:", err);
+          });
+      } else if (document.webkitExitFullscreen) {
+        // Safari
         document.webkitExitFullscreen();
         setIsFullscreen(false);
-      } else if (document.mozCancelFullScreen) { // Firefox
+      } else if (document.mozCancelFullScreen) {
+        // Firefox
         document.mozCancelFullScreen();
         setIsFullscreen(false);
-      } else if (document.msExitFullscreen) { // IE/Edge
+      } else if (document.msExitFullscreen) {
+        // IE/Edge
         document.msExitFullscreen();
         setIsFullscreen(false);
       }
@@ -325,28 +364,39 @@ function App() {
   // Listen for fullscreen changes (user pressing ESC)
   useEffect(() => {
     const handleFullscreenChange = () => {
-      const isCurrentlyFullscreen = !!(document.fullscreenElement ||
+      const isCurrentlyFullscreen = !!(
+        document.fullscreenElement ||
         document.webkitFullscreenElement ||
         document.mozFullScreenElement ||
-        document.msFullscreenElement);
+        document.msFullscreenElement
+      );
 
       setIsFullscreen(isCurrentlyFullscreen);
 
       if (!isCurrentlyFullscreen && currentGameState === 1) {
-        console.log('⚠️ User exited fullscreen during gameplay');
+        console.log("⚠️ User exited fullscreen during gameplay");
       }
     };
 
-    document.addEventListener('fullscreenchange', handleFullscreenChange);
-    document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
-    document.addEventListener('mozfullscreenchange', handleFullscreenChange);
-    document.addEventListener('MSFullscreenChange', handleFullscreenChange);
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
+    document.addEventListener("webkitfullscreenchange", handleFullscreenChange);
+    document.addEventListener("mozfullscreenchange", handleFullscreenChange);
+    document.addEventListener("MSFullscreenChange", handleFullscreenChange);
 
     return () => {
-      document.removeEventListener('fullscreenchange', handleFullscreenChange);
-      document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
-      document.removeEventListener('mozfullscreenchange', handleFullscreenChange);
-      document.removeEventListener('MSFullscreenChange', handleFullscreenChange);
+      document.removeEventListener("fullscreenchange", handleFullscreenChange);
+      document.removeEventListener(
+        "webkitfullscreenchange",
+        handleFullscreenChange
+      );
+      document.removeEventListener(
+        "mozfullscreenchange",
+        handleFullscreenChange
+      );
+      document.removeEventListener(
+        "MSFullscreenChange",
+        handleFullscreenChange
+      );
     };
   }, [currentGameState]);
 
@@ -393,24 +443,24 @@ function App() {
 
           // Separate players into teams
           const teamAPlayers = players
-            .filter(p => p.team === 'A')
-            .map(p => p.username);
+            .filter((p) => p.team === "A")
+            .map((p) => p.username);
           const teamBPlayers = players
-            .filter(p => p.team === 'B')
-            .map(p => p.username);
+            .filter((p) => p.team === "B")
+            .map((p) => p.username);
           const teamAReady = players
-            .filter(p => p.team === 'A')
-            .map(p => p.isReady);
+            .filter((p) => p.team === "A")
+            .map((p) => p.isReady);
           const teamBReady = players
-            .filter(p => p.team === 'B')
-            .map(p => p.isReady);
+            .filter((p) => p.team === "B")
+            .map((p) => p.isReady);
 
           // Determine if current player is the leader
           const createdByString = gameData.createdBy?.toString();
-          console.log('👑 Leadership check:', {
+          console.log("👑 Leadership check:", {
             createdBy: createdByString,
             walletAddress: walletAddress,
-            isLeader: createdByString === walletAddress
+            isLeader: createdByString === walletAddress,
           });
           const isLeader = createdByString === walletAddress;
 
@@ -430,7 +480,7 @@ function App() {
           });
 
           // Switch to lobby tab
-          setActiveTab('lobby');
+          setActiveTab("lobby");
           console.log("✅ Auto-opened lobby for existing game");
         }
       }
@@ -571,29 +621,29 @@ function App() {
           const gameData = await getGame(gamePubkey);
           const players = await getAllPlayersInGame(gamePubkey);
 
-          console.log('📊 Created game data:', gameData);
-          console.log('👥 Players after creation:', players);
+          console.log("📊 Created game data:", gameData);
+          console.log("👥 Players after creation:", players);
 
           const teamAPlayers = players
-            .filter(p => p.team === 'A')
-            .map(p => p.username);
+            .filter((p) => p.team === "A")
+            .map((p) => p.username);
           const teamBPlayers = players
-            .filter(p => p.team === 'B')
-            .map(p => p.username);
+            .filter((p) => p.team === "B")
+            .map((p) => p.username);
           const teamAReady = players
-            .filter(p => p.team === 'A')
-            .map(p => p.isReady);
+            .filter((p) => p.team === "A")
+            .map((p) => p.isReady);
           const teamBReady = players
-            .filter(p => p.team === 'B')
-            .map(p => p.isReady);
+            .filter((p) => p.team === "B")
+            .map((p) => p.isReady);
 
           // Verify leadership against blockchain
           const createdByString = gameData.createdBy?.toString();
           const isLeader = createdByString === walletAddress;
-          console.log('👑 Leadership check (create room):', {
+          console.log("👑 Leadership check (create room):", {
             createdBy: createdByString,
             walletAddress: walletAddress,
-            isLeader: isLeader
+            isLeader: isLeader,
           });
 
           setCurrentLobbyData({
@@ -601,10 +651,13 @@ function App() {
             lobbyName: roomName,
             mapName: mapName,
             maxPlayers: maxPlayers,
-            teamA: teamAPlayers.length > 0 ? teamAPlayers : [playerData?.username || walletAddress.slice(0, 8)],
+            teamA:
+              teamAPlayers.length > 0
+                ? teamAPlayers
+                : [playerData?.username || walletAddress.slice(0, 8)],
             teamB: teamBPlayers,
             teamAReady: teamAReady.length > 0 ? teamAReady : [false],
-            teamBReady: teamBReady
+            teamBReady: teamBReady,
           });
 
           // Enter the lobby
@@ -619,7 +672,7 @@ function App() {
             teamA: [playerData?.username || walletAddress.slice(0, 8)],
             teamB: [],
             teamAReady: [false],
-            teamBReady: []
+            teamBReady: [],
           });
 
           // Enter the lobby - assume leader if we created it
@@ -644,19 +697,24 @@ function App() {
       console.log(`🎮 Joining room: ${gamePublicKey}`);
       const result = await joinGame(gamePublicKey);
 
-      console.log('🔍 Join game result:', result);
+      console.log("🔍 Join game result:", result);
 
       if (result?.error === "PlayerAlreadyInGame") {
         console.warn("⚠️ Player already in game:", result.currentGame);
-        alert(`You are already in a game (${result.currentGame}). Please leave that game first.`);
+        alert(
+          `You are already in a game (${result.currentGame}). Please leave that game first.`
+        );
         return;
       }
 
       if (result && result.transaction) {
-        console.log("✅ Successfully joined room! Transaction:", result.transaction);
+        console.log(
+          "✅ Successfully joined room! Transaction:",
+          result.transaction
+        );
 
         // Wait a moment for transaction to be confirmed
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        await new Promise((resolve) => setTimeout(resolve, 2000));
 
         // Fetch actual game data and players from blockchain
         const gameData = await getGame(gamePublicKey);
@@ -667,24 +725,24 @@ function App() {
 
         // Separate players into teams
         const teamAPlayers = players
-          .filter(p => p.team === 'A')
-          .map(p => p.username);
+          .filter((p) => p.team === "A")
+          .map((p) => p.username);
         const teamBPlayers = players
-          .filter(p => p.team === 'B')
-          .map(p => p.username);
+          .filter((p) => p.team === "B")
+          .map((p) => p.username);
         const teamAReady = players
-          .filter(p => p.team === 'A')
-          .map(p => p.isReady);
+          .filter((p) => p.team === "A")
+          .map((p) => p.isReady);
         const teamBReady = players
-          .filter(p => p.team === 'B')
-          .map(p => p.isReady);
+          .filter((p) => p.team === "B")
+          .map((p) => p.isReady);
 
         // Determine if current player is the leader
         const createdByString = gameData.createdBy?.toString();
-        console.log('👑 Leadership check (join room):', {
+        console.log("👑 Leadership check (join room):", {
           createdBy: createdByString,
           walletAddress: walletAddress,
-          isLeader: createdByString === walletAddress
+          isLeader: createdByString === walletAddress,
         });
         const isLeader = createdByString === walletAddress;
 
@@ -699,11 +757,13 @@ function App() {
           teamA: teamAPlayers,
           teamB: teamBPlayers,
           teamAReady: teamAReady,
-          teamBReady: teamBReady
+          teamBReady: teamBReady,
         });
       } else {
         console.error("❌ Failed to join room: No transaction returned");
-        alert("Failed to join room. No transaction was created. Check console for details.");
+        alert(
+          "Failed to join room. No transaction was created. Check console for details."
+        );
       }
     } catch (error) {
       console.error("❌ Error joining room:", error);
@@ -721,7 +781,10 @@ function App() {
       const newReadyState = !playerReady;
       console.log(`🎮 Setting ready state to: ${newReadyState}`);
 
-      const result = await setReadyState(currentLobbyData.gamePublicKey, newReadyState);
+      const result = await setReadyState(
+        currentLobbyData.gamePublicKey,
+        newReadyState
+      );
 
       if (result) {
         setPlayerReady(newReadyState);
@@ -752,7 +815,7 @@ function App() {
         // Game will transition to playing mode
         setInLobby(false);
         // Switch to map editor tab where the game will load
-        setActiveTab('mapeditor');
+        setActiveTab("mapeditor");
       } else {
         console.error("❌ Failed to start game");
         alert("Failed to start game. Check console for details.");
@@ -800,26 +863,29 @@ function App() {
         id="canvas"
         onContextMenu={(e) => e.preventDefault()}
         style={{
-          display: activeTab === 'mapeditor' ? 'block' : 'none'
+          display: activeTab === "mapeditor" ? "block" : "none",
         }}
       ></canvas>
 
       {/* Web UI overlay */}
-      <div className="web-ui-overlay" style={{ pointerEvents: activeTab === 'mapeditor' ? 'none' : 'auto' }}>
+      <div
+        className="web-ui-overlay"
+        style={{ pointerEvents: activeTab === "mapeditor" ? "none" : "auto" }}
+      >
         {/* Top Navigation Bar with Tabs */}
-        <nav className="game-nav" style={{ pointerEvents: 'auto' }}>
+        <nav className="game-nav" style={{ pointerEvents: "auto" }}>
           {/* Left: Logo and Tabs */}
           <div className="hud-top-left">
             <h1 className="game-title">
-              <span style={{ color: '#9c51ff' }}>FPS</span>
-              <span style={{ color: '#00f294' }}>.SO</span>
+              <span style={{ color: "#9c51ff" }}>FPS</span>
+              <span style={{ color: "#00f294" }}>.SO</span>
             </h1>
 
             <div className="nav-tabs">
               <button
-                className={`nav-tab ${activeTab === 'lobby' ? 'active' : ''}`}
+                className={`nav-tab ${activeTab === "lobby" ? "active" : ""}`}
                 onClick={() => {
-                  setActiveTab('lobby');
+                  setActiveTab("lobby");
                   setShowGameBrowser(true);
                   if (!gamesLoading) loadGames();
                 }}
@@ -827,14 +893,16 @@ function App() {
                 🎮 Lobby
               </button>
               <button
-                className={`nav-tab ${activeTab === 'store' ? 'active' : ''}`}
-                onClick={() => setActiveTab('store')}
+                className={`nav-tab ${activeTab === "store" ? "active" : ""}`}
+                onClick={() => setActiveTab("store")}
               >
                 🛒 Store
               </button>
               <button
-                className={`nav-tab ${activeTab === 'mapeditor' ? 'active' : ''}`}
-                onClick={() => setActiveTab('mapeditor')}
+                className={`nav-tab ${
+                  activeTab === "mapeditor" ? "active" : ""
+                }`}
+                onClick={() => setActiveTab("mapeditor")}
               >
                 🗺️ Map Editor
               </button>
@@ -861,7 +929,7 @@ function App() {
                 <button
                   className="hud-button"
                   onClick={handleRefreshBalance}
-                  style={{ padding: '6px 12px', fontSize: '11px' }}
+                  style={{ padding: "6px 12px", fontSize: "11px" }}
                 >
                   Refresh
                 </button>
@@ -891,13 +959,20 @@ function App() {
               </div>
               <div className="player-stats">
                 <div className="stat-item">
-                  Matches: <span className="stat-value">{playerData.totalMatchesPlayed}</span>
+                  Matches:{" "}
+                  <span className="stat-value">
+                    {playerData.totalMatchesPlayed}
+                  </span>
                 </div>
                 <div className="stat-item">
                   Team: <span className="stat-value">{playerData.team}</span>
                 </div>
               </div>
-              <button className="hud-button" onClick={handleCheckPlayer} style={{ marginTop: '10px', width: '100%' }}>
+              <button
+                className="hud-button"
+                onClick={handleCheckPlayer}
+                style={{ marginTop: "10px", width: "100%" }}
+              >
                 Refresh
               </button>
             </div>
@@ -916,13 +991,13 @@ function App() {
                 value={playerUsername}
                 onChange={(e) => setPlayerUsername(e.target.value)}
                 className="hud-input"
-                style={{ width: '100%' }}
+                style={{ width: "100%" }}
               />
               <button
                 className="hud-button-success hud-button"
                 onClick={handleInitPlayer}
                 disabled={!playerUsername.trim()}
-                style={{ width: '100%' }}
+                style={{ width: "100%" }}
               >
                 Initialize Player
               </button>
@@ -938,18 +1013,18 @@ function App() {
         </div>
 
         {/* Tab Content */}
-        {activeTab === 'lobby' && !inLobby && (
+        {activeTab === "lobby" && !inLobby && (
           <LobbyBrowser
             games={games}
             loading={gamesLoading}
             onRefresh={loadGames}
             onCreateRoom={handleCreateRoom}
             onJoinRoom={handleJoinRoom}
-            onClose={() => setActiveTab('lobby')}
+            onClose={() => setActiveTab("lobby")}
           />
         )}
 
-        {activeTab === 'lobby' && inLobby && currentLobbyData && (
+        {activeTab === "lobby" && inLobby && currentLobbyData && (
           <LobbyRoom
             lobbyData={currentLobbyData}
             currentPlayer={playerData?.username || walletAddress.slice(0, 8)}
@@ -961,22 +1036,26 @@ function App() {
           />
         )}
 
-        {activeTab === 'store' && (
-          <div style={{
-            position: 'fixed',
-            top: '50%',
-            left: '50%',
-            transform: 'translate(-50%, -50%)',
-            background: 'rgba(13, 13, 17, 0.95)',
-            border: '2px solid rgba(156, 81, 255, 0.5)',
-            borderRadius: '16px',
-            padding: '40px',
-            color: '#fff',
-            textAlign: 'center'
-          }}>
-            <h2 style={{ color: '#9c51ff', fontSize: '32px' }}>🛒 Store</h2>
-            <p style={{ color: '#c8c8dc', marginTop: '20px' }}>Coming Soon...</p>
-            <p style={{ color: '#888', fontSize: '14px', marginTop: '10px' }}>
+        {activeTab === "store" && (
+          <div
+            style={{
+              position: "fixed",
+              top: "50%",
+              left: "50%",
+              transform: "translate(-50%, -50%)",
+              background: "rgba(13, 13, 17, 0.95)",
+              border: "2px solid rgba(156, 81, 255, 0.5)",
+              borderRadius: "16px",
+              padding: "40px",
+              color: "#fff",
+              textAlign: "center",
+            }}
+          >
+            <h2 style={{ color: "#9c51ff", fontSize: "32px" }}>🛒 Store</h2>
+            <p style={{ color: "#c8c8dc", marginTop: "20px" }}>
+              Coming Soon...
+            </p>
+            <p style={{ color: "#888", fontSize: "14px", marginTop: "10px" }}>
               Purchase skins, weapons, and exclusive items with SOL
             </p>
           </div>
@@ -988,109 +1067,169 @@ function App() {
         {isFullscreen && currentGameState === 1 && (
           <>
             {/* Crosshair */}
-            <div style={{
-              position: 'fixed',
-              top: '50%',
-              left: '50%',
-              transform: 'translate(-50%, -50%)',
-              width: '20px',
-              height: '20px',
-              pointerEvents: 'none',
-              zIndex: 1000
-            }}>
-              <div style={{
-                position: 'absolute',
-                top: '50%',
-                left: '0',
-                width: '20px',
-                height: '2px',
-                background: 'rgba(0, 242, 148, 0.8)',
-                boxShadow: '0 0 10px rgba(0, 242, 148, 0.6)'
-              }}></div>
-              <div style={{
-                position: 'absolute',
-                left: '50%',
-                top: '0',
-                width: '2px',
-                height: '20px',
-                background: 'rgba(0, 242, 148, 0.8)',
-                boxShadow: '0 0 10px rgba(0, 242, 148, 0.6)'
-              }}></div>
+            <div
+              style={{
+                position: "fixed",
+                top: "50%",
+                left: "50%",
+                transform: "translate(-50%, -50%)",
+                width: "20px",
+                height: "20px",
+                pointerEvents: "none",
+                zIndex: 1000,
+              }}
+            >
+              <div
+                style={{
+                  position: "absolute",
+                  top: "50%",
+                  left: "0",
+                  width: "20px",
+                  height: "2px",
+                  background: "rgba(0, 242, 148, 0.8)",
+                  boxShadow: "0 0 10px rgba(0, 242, 148, 0.6)",
+                }}
+              ></div>
+              <div
+                style={{
+                  position: "absolute",
+                  left: "50%",
+                  top: "0",
+                  width: "2px",
+                  height: "20px",
+                  background: "rgba(0, 242, 148, 0.8)",
+                  boxShadow: "0 0 10px rgba(0, 242, 148, 0.6)",
+                }}
+              ></div>
             </div>
 
             {/* Health and Ammo Display */}
-            <div style={{
-              position: 'fixed',
-              bottom: '20px',
-              right: '20px',
-              display: 'flex',
-              gap: '20px',
-              pointerEvents: 'none',
-              zIndex: 1000
-            }}>
+            <div
+              style={{
+                position: "fixed",
+                bottom: "20px",
+                right: "20px",
+                display: "flex",
+                gap: "20px",
+                pointerEvents: "none",
+                zIndex: 1000,
+              }}
+            >
               {/* Health */}
-              <div style={{
-                background: 'linear-gradient(135deg, rgba(156, 81, 255, 0.2), rgba(156, 81, 255, 0.1))',
-                backdropFilter: 'blur(10px)',
-                border: '2px solid rgba(156, 81, 255, 0.5)',
-                borderRadius: '8px',
-                padding: '15px 25px',
-                boxShadow: '0 4px 20px rgba(156, 81, 255, 0.3)'
-              }}>
-                <div style={{ color: '#9c51ff', fontSize: '12px', marginBottom: '5px' }}>HEALTH</div>
-                <div style={{ color: '#fff', fontSize: '32px', fontWeight: 'bold' }}>100</div>
+              <div
+                style={{
+                  background:
+                    "linear-gradient(135deg, rgba(156, 81, 255, 0.2), rgba(156, 81, 255, 0.1))",
+                  backdropFilter: "blur(10px)",
+                  border: "2px solid rgba(156, 81, 255, 0.5)",
+                  borderRadius: "8px",
+                  padding: "15px 25px",
+                  boxShadow: "0 4px 20px rgba(156, 81, 255, 0.3)",
+                }}
+              >
+                <div
+                  style={{
+                    color: "#9c51ff",
+                    fontSize: "12px",
+                    marginBottom: "5px",
+                  }}
+                >
+                  HEALTH
+                </div>
+                <div
+                  style={{
+                    color: "#fff",
+                    fontSize: "32px",
+                    fontWeight: "bold",
+                  }}
+                >
+                  100
+                </div>
               </div>
 
               {/* Ammo */}
-              <div style={{
-                background: 'linear-gradient(135deg, rgba(0, 242, 148, 0.2), rgba(0, 242, 148, 0.1))',
-                backdropFilter: 'blur(10px)',
-                border: '2px solid rgba(0, 242, 148, 0.5)',
-                borderRadius: '8px',
-                padding: '15px 25px',
-                boxShadow: '0 4px 20px rgba(0, 242, 148, 0.3)'
-              }}>
-                <div style={{ color: '#00f294', fontSize: '12px', marginBottom: '5px' }}>AMMO</div>
-                <div style={{ color: '#fff', fontSize: '32px', fontWeight: 'bold' }}>30/120</div>
+              <div
+                style={{
+                  background:
+                    "linear-gradient(135deg, rgba(0, 242, 148, 0.2), rgba(0, 242, 148, 0.1))",
+                  backdropFilter: "blur(10px)",
+                  border: "2px solid rgba(0, 242, 148, 0.5)",
+                  borderRadius: "8px",
+                  padding: "15px 25px",
+                  boxShadow: "0 4px 20px rgba(0, 242, 148, 0.3)",
+                }}
+              >
+                <div
+                  style={{
+                    color: "#00f294",
+                    fontSize: "12px",
+                    marginBottom: "5px",
+                  }}
+                >
+                  AMMO
+                </div>
+                <div
+                  style={{
+                    color: "#fff",
+                    fontSize: "32px",
+                    fontWeight: "bold",
+                  }}
+                >
+                  30/120
+                </div>
               </div>
             </div>
 
             {/* Minimap placeholder */}
-            <div style={{
-              position: 'fixed',
-              top: '100px',
-              right: '20px',
-              width: '200px',
-              height: '200px',
-              background: 'rgba(13, 13, 17, 0.8)',
-              backdropFilter: 'blur(10px)',
-              border: '2px solid rgba(0, 242, 148, 0.3)',
-              borderRadius: '8px',
-              pointerEvents: 'none',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: 'rgba(255, 255, 255, 0.3)',
-              fontSize: '14px'
-            }}>
+            <div
+              style={{
+                position: "fixed",
+                top: "100px",
+                right: "20px",
+                width: "200px",
+                height: "200px",
+                background: "rgba(13, 13, 17, 0.8)",
+                backdropFilter: "blur(10px)",
+                border: "2px solid rgba(0, 242, 148, 0.3)",
+                borderRadius: "8px",
+                pointerEvents: "none",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                color: "rgba(255, 255, 255, 0.3)",
+                fontSize: "14px",
+              }}
+            >
               MINIMAP
             </div>
 
             {/* ESC to exit hint */}
-            <div style={{
-              position: 'fixed',
-              top: '20px',
-              left: '50%',
-              transform: 'translateX(-50%)',
-              color: 'rgba(255, 255, 255, 0.5)',
-              fontSize: '14px',
-              textAlign: 'center',
-              pointerEvents: 'none',
-              zIndex: 1000
-            }}>
-              Press <span style={{ color: '#9c51ff', fontWeight: 'bold' }}>ESC</span> to exit fullscreen
+            <div
+              style={{
+                position: "fixed",
+                top: "20px",
+                left: "50%",
+                transform: "translateX(-50%)",
+                color: "rgba(255, 255, 255, 0.5)",
+                fontSize: "14px",
+                textAlign: "center",
+                pointerEvents: "none",
+                zIndex: 1000,
+              }}
+            >
+              Press{" "}
+              <span style={{ color: "#9c51ff", fontWeight: "bold" }}>ESC</span>{" "}
+              to exit fullscreen
             </div>
           </>
+        )}
+
+        {/* Virtual Joystick for mobile controls - shown when map editor tab is active */}
+        {activeTab === "mapeditor" && (
+          <VirtualJoystick
+            isPlaying={isFullscreen && currentGameState === 1}
+            gameId={currentLobbyData?.gamePublicKey}
+          />
         )}
       </div>
     </div>

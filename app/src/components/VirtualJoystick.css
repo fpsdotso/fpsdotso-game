@@ -1,0 +1,150 @@
+/* Virtual Joystick Styles */
+.virtual-joysticks {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  pointer-events: none;
+  z-index: 1000;
+}
+
+.joystick-container {
+  position: absolute;
+  width: 120px;
+  height: 120px;
+  pointer-events: auto;
+  user-select: none;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+}
+
+.joystick-background {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 120px;
+  height: 120px;
+  background: rgba(100, 100, 100, 0.15);
+  border: 2px solid rgba(200, 200, 200, 0.2);
+  border-radius: 50%;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 0 20px rgba(156, 81, 255, 0.1),
+    inset 0 0 20px rgba(0, 0, 0, 0.1);
+}
+
+.joystick-knob {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 36px;
+  height: 36px;
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.9) 0%,
+    rgba(255, 255, 255, 0.7) 50%,
+    rgba(200, 200, 200, 0.8) 100%
+  );
+  border: 2px solid rgba(255, 255, 255, 0.8);
+  border-radius: 50%;
+  box-shadow: 0 0 15px rgba(0, 242, 148, 0.4), 0 4px 8px rgba(0, 0, 0, 0.2),
+    inset 0 2px 4px rgba(255, 255, 255, 0.3);
+  transition: opacity 0.2s ease;
+}
+
+/* Left joystick specific styling */
+.left-joystick .joystick-background {
+  background: rgba(156, 81, 255, 0.1);
+  border-color: rgba(156, 81, 255, 0.3);
+  box-shadow: 0 0 20px rgba(156, 81, 255, 0.15),
+    inset 0 0 20px rgba(0, 0, 0, 0.1);
+}
+
+.left-joystick .joystick-knob {
+  background: linear-gradient(
+    135deg,
+    rgba(156, 81, 255, 0.9) 0%,
+    rgba(156, 81, 255, 0.7) 50%,
+    rgba(100, 50, 200, 0.8) 100%
+  );
+  border-color: rgba(156, 81, 255, 0.8);
+  box-shadow: 0 0 15px rgba(156, 81, 255, 0.5), 0 4px 8px rgba(0, 0, 0, 0.2),
+    inset 0 2px 4px rgba(255, 255, 255, 0.2);
+}
+
+/* Right joystick specific styling */
+.right-joystick .joystick-background {
+  background: rgba(0, 242, 148, 0.1);
+  border-color: rgba(0, 242, 148, 0.3);
+  box-shadow: 0 0 20px rgba(0, 242, 148, 0.15),
+    inset 0 0 20px rgba(0, 0, 0, 0.1);
+}
+
+.right-joystick .joystick-knob {
+  background: linear-gradient(
+    135deg,
+    rgba(0, 242, 148, 0.9) 0%,
+    rgba(0, 242, 148, 0.7) 50%,
+    rgba(0, 200, 120, 0.8) 100%
+  );
+  border-color: rgba(0, 242, 148, 0.8);
+  box-shadow: 0 0 15px rgba(0, 242, 148, 0.5), 0 4px 8px rgba(0, 0, 0, 0.2),
+    inset 0 2px 4px rgba(255, 255, 255, 0.2);
+}
+
+/* Active state animations */
+.joystick-container:active .joystick-knob {
+  transform: translate(-50%, -50%) scale(1.1);
+  box-shadow: 0 0 25px rgba(0, 242, 148, 0.6), 0 6px 12px rgba(0, 0, 0, 0.3),
+    inset 0 2px 4px rgba(255, 255, 255, 0.4);
+}
+
+.left-joystick:active .joystick-knob {
+  box-shadow: 0 0 25px rgba(156, 81, 255, 0.6), 0 6px 12px rgba(0, 0, 0, 0.3),
+    inset 0 2px 4px rgba(255, 255, 255, 0.4);
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .joystick-container {
+    width: 100px;
+    height: 100px;
+  }
+
+  .joystick-background {
+    width: 100px;
+    height: 100px;
+  }
+
+  .joystick-knob {
+    width: 30px;
+    height: 30px;
+  }
+}
+
+@media (max-width: 480px) {
+  .joystick-container {
+    width: 80px;
+    height: 80px;
+  }
+
+  .joystick-background {
+    width: 80px;
+    height: 80px;
+  }
+
+  .joystick-knob {
+    width: 24px;
+    height: 24px;
+  }
+}
+
+/* Hide joysticks on desktop */
+@media (min-width: 1000px) {
+  .virtual-joysticks {
+    display: none;
+  }
+}
