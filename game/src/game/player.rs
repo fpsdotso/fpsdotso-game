@@ -85,9 +85,9 @@ impl Player {
         self.pitch = self.pitch.clamp(-89.0, 89.0);
 
         // Log rotation every frame for debugging
-        println!("🎯 Rotation - Yaw: {:.2}°, Pitch: {:.2}° | Radians - Yaw: {:.4}, Pitch: {:.4}",
+        /*println!("🎯 Rotation - Yaw: {:.2}°, Pitch: {:.2}° | Radians - Yaw: {:.4}, Pitch: {:.4}",
                  self.yaw, self.pitch,
-                 self.yaw.to_radians(), self.pitch.to_radians());
+                 self.yaw.to_radians(), self.pitch.to_radians());*/
 
         // Calculate camera direction from yaw and pitch
         let yaw_rad = self.yaw.to_radians();

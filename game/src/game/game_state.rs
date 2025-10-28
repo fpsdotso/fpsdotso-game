@@ -46,11 +46,8 @@ pub struct GameState {
     /// Whether mouse is captured for FPS controls
     pub mouse_captured: bool,
 
-    /// Timer for blockchain synchronization (33ms = ~30 ticks per second)
-    sync_timer: f32,
-
-    /// Sync interval in seconds (0.033 = 33ms)
-    sync_interval: f32,
+    /// Whether WebSocket subscriptions are active
+    websocket_subscribed: bool,
 
     /// Current game public key (for fetching other players)
     current_game_pubkey: Option<String>,
@@ -73,8 +70,7 @@ impl GameState {
             map: None,
             player: None,
             mouse_captured: false,
-            sync_timer: 0.0,
-            sync_interval: 0.033, // Fetch other players every 33ms (30 ticks/sec)
+            websocket_subscribed: false,
             current_game_pubkey: None,
             current_player_authority: None,
             other_players: Vec::new(),
@@ -89,7 +85,70 @@ impl GameState {
 
     /// Set the current game for blockchain synchronization
     pub fn set_current_game(&mut self, game_pubkey: String) {
-        self.current_game_pubkey = Some(game_pubkey);
+        println!("🎮 Setting current game: {}", game_pubkey);
+        self.current_game_pubkey = Some(game_pubkey.clone());
+
+        // Initialize WebSocket connection and subscribe to player updates
+        self.setup_websocket_subscriptions(&game_pubkey);
+    }
+
+    /// Setup WebSocket subscriptions for real-time player updates
+    fn setup_websocket_subscriptions(&mut self, game_pubkey: &str) {
+        use std::os::raw::c_char;
+        use std::ffi::CString;
+
+        if self.websocket_subscribed {
+            println!("⚠️ Already subscribed to WebSocket updates");
+            return;
+        }
+
+        println!("🔌 ==========================================");
+        println!("🔌 SETTING UP WEBSOCKET SUBSCRIPTIONS");
+        println!("🔌 Game: {}", game_pubkey);
+        println!("🔌 This should only happen ONCE per game!");
+        println!("🔌 ==========================================" );
+
+        // Call JavaScript to connect WebSocket and subscribe to game players
+        let js_code = format!(
+            r#"
+            (async () => {{
+                try {{
+                    // Connect to WebSocket
+                    console.log('🔌 Connecting to WebSocket...');
+                    const connectResult = await window.gameBridge.connectWebSocket();
+                    if (!connectResult.success) {{
+                        console.error('❌ Failed to connect WebSocket:', connectResult.error);
+                        return;
+                    }}
+                    console.log('✅ WebSocket connected');
+
+                    // Subscribe to all players in the game
+                    console.log('📡 Subscribing to game players...');
+                    const subscribeResult = await window.gameBridge.subscribeToGamePlayers('{}');
+                    if (!subscribeResult.success) {{
+                        console.error('❌ Failed to subscribe to game players:', subscribeResult.error);
+                        return;
+                    }}
+                    console.log('✅ Subscribed to', subscribeResult.playerCount, 'players');
+                }} catch (error) {{
+                    console.error('❌ Error setting up WebSocket:', error);
+                }}
+            }})();
+            "#,
+            game_pubkey
+        );
+
+        unsafe {
+            let c_str = CString::new(js_code).unwrap();
+            emscripten_run_script(c_str.as_ptr());
+        }
+
+        self.websocket_subscribed = true;
+        println!("✅ ==========================================");
+        println!("✅ WEBSOCKET SUBSCRIPTIONS SETUP COMPLETE!");
+        println!("✅ From now on, player updates via WebSocket");
+        println!("✅ NO MORE HTTP POLLING should occur!");
+        println!("✅ ==========================================");
     }
 
     /// Set the current player authority for identifying the local player
@@ -139,6 +198,52 @@ impl GameState {
     pub fn stop_playing(&mut self) {
         self.mode = GameMode::DebugMenu;
         self.mouse_captured = false;
+
+        // Cleanup WebSocket subscriptions
+        self.cleanup_websocket_subscriptions();
+    }
+
+    /// Cleanup WebSocket subscriptions when leaving the game
+    fn cleanup_websocket_subscriptions(&mut self) {
+        use std::os::raw::c_char;
+        use std::ffi::CString;
+
+        if !self.websocket_subscribed {
+            return;
+        }
+
+        println!("🔌 Cleaning up WebSocket subscriptions");
+
+        if let Some(game_pubkey) = &self.current_game_pubkey {
+            let js_code = format!(
+                r#"
+                (async () => {{
+                    try {{
+                        if (window.gameBridge && window.gameBridge.unsubscribeFromGamePlayers) {{
+                            await window.gameBridge.unsubscribeFromGamePlayers('{}');
+                            console.log('✅ Unsubscribed from game players');
+                        }}
+                        if (window.gameBridge && window.gameBridge.disconnectWebSocket) {{
+                            window.gameBridge.disconnectWebSocket();
+                            console.log('✅ WebSocket disconnected');
+                        }}
+                    }} catch (error) {{
+                        console.error('❌ Error cleaning up WebSocket:', error);
+                    }}
+                }})();
+                "#,
+                game_pubkey
+            );
+
+            unsafe {
+                let c_str = CString::new(js_code).unwrap();
+                emscripten_run_script(c_str.as_ptr());
+            }
+        }
+
+        self.websocket_subscribed = false;
+        self.other_players.clear();
+        println!("✅ WebSocket cleanup complete");
     }
 
     /// Capture mouse if in playing mode
@@ -212,12 +317,9 @@ impl GameState {
                 player.rotation = player.rotation.lerp(player.target_rotation, delta * interp_speed);
             }
 
-            // Fetch other players' positions every 33ms (30 ticks/sec) to reduce network load
-            self.sync_timer += delta;
-            if self.sync_timer >= 0.033 {
-                self.sync_timer = 0.0;
-                self.fetch_and_sync_players();
-            }
+            // Process incoming WebSocket player updates (real-time, no polling!)
+            // WebSocket notifications are pushed to us when players move
+            self.process_websocket_player_updates();
         }
     }
 
@@ -286,164 +388,180 @@ impl GameState {
         }
     }
 
-    /// Fetch all players from blockchain and synchronize their positions
-    fn fetch_and_sync_players(&mut self) {
+    /// Process WebSocket player updates (replaces HTTP polling)
+    /// This is called every frame to check for new player position updates from WebSocket
+    fn process_websocket_player_updates(&mut self) {
         use std::os::raw::c_char;
         use std::ffi::CString;
 
-        let game_pubkey = match &self.current_game_pubkey {
-            Some(pubkey) => pubkey.clone(),
-            None => return,
-        };
+        // Check if we have WebSocket subscriptions active
+        if !self.websocket_subscribed {
+            return;
+        }
 
-        // Call JavaScript to fetch players
-        let js_code = format!(
-            r#"
-            (async () => {{
-                try {{
-                    if (window.gameBridge && window.gameBridge.getGamePlayers) {{
-                        const players = await window.gameBridge.getGamePlayers('{}');
-                        const currentEphemeralKey = window.gameBridge.getCurrentPlayerEphemeralKey();
-
-                        // Store players data for Rust to read
-                        window.___game_players_data = JSON.stringify({{
-                            players: players,
-                            currentAuthority: currentEphemeralKey
-                        }});
-                    }}
-                }} catch (error) {{
-                    console.error('Failed to fetch game players:', error);
-                    window.___game_players_data = null;
-                }}
-            }})();
-            "#,
-            game_pubkey
-        );
+        // Call JavaScript to get any pending WebSocket updates
+        let js_code = r#"
+            (() => {
+                if (window.gameBridge && window.gameBridge.getWebSocketPlayerUpdates) {
+                    return window.gameBridge.getWebSocketPlayerUpdates();
+                }
+                return '{}';
+            })();
+        "#;
 
         unsafe {
             let c_str = CString::new(js_code).unwrap();
-            emscripten_run_script(c_str.as_ptr());
-
-            // Read the result
-            let result_code = CString::new("window.___game_players_data").unwrap();
-            let result_ptr = emscripten_run_script_string(result_code.as_ptr());
+            let result_ptr = emscripten_run_script_string(c_str.as_ptr());
 
             if !result_ptr.is_null() {
                 let result_str = std::ffi::CStr::from_ptr(result_ptr)
                     .to_string_lossy()
                     .into_owned();
 
-                if result_str != "null" && !result_str.is_empty() {
-                    self.process_players_data(&result_str);
+                if !result_str.is_empty() && result_str != "{}" {
+                    self.process_websocket_updates_data(&result_str);
                 }
             }
         }
     }
 
-    /// Process fetched players data and update game state
-    fn process_players_data(&mut self, json_str: &str) {
+    /// Process WebSocket update data
+    fn process_websocket_updates_data(&mut self, json_str: &str) {
         use serde_json::Value;
 
-        // Parse the JSON
-        if let Ok(data) = serde_json::from_str::<Value>(json_str) {
-            // Get current player's authority to identify ourselves
-            let current_authority = data.get("currentAuthority")
-                .and_then(|v| v.as_str())
-                .unwrap_or("");
-
-            // Get the players array
-            if let Some(players) = data.get("players").and_then(|v| v.as_array()) {
-                // Collect all current player authorities for cleanup
-                let mut current_authorities: Vec<String> = Vec::new();
-
-                for player in players {
-                    let authority = player.get("authority")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("");
-
-                    // Parse position and rotation first (needed for both current and other players)
-                    let pos_x = player.get("positionX")
-                        .and_then(|v| v.as_f64())
-                        .unwrap_or(0.0) as f32;
-
-                    let pos_y = player.get("positionY")
-                        .and_then(|v| v.as_f64())
-                        .unwrap_or(0.0) as f32;
-
-                    let pos_z = player.get("positionZ")
-                        .and_then(|v| v.as_f64())
-                        .unwrap_or(0.0) as f32;
-
-                    let rot_x = player.get("rotationX")
-                        .and_then(|v| v.as_f64())
-                        .unwrap_or(0.0) as f32;
-
-                    let rot_y = player.get("rotationY")
-                        .and_then(|v| v.as_f64())
-                        .unwrap_or(0.0) as f32;
-
-                    let rot_z = player.get("rotationZ")
-                        .and_then(|v| v.as_f64())
-                        .unwrap_or(0.0) as f32;
-
-                    // If this is the current player, skip syncing from blockchain
-                    // We trust client-side input completely for smooth, responsive movement
-                    // The blockchain is only authoritative for OTHER players
-                    if authority == current_authority {
-                        continue; // Don't add ourselves to other_players list or sync our position
+        // Parse the JSON containing WebSocket updates
+        if let Ok(updates) = serde_json::from_str::<Value>(json_str) {
+            // Updates is a map of accountPubkey -> { timestamp, data, parsed }
+            if let Some(updates_obj) = updates.as_object() {
+                for (_account_pubkey, update) in updates_obj {
+                    // First try to get the parsed data (already decoded by JavaScript)
+                    if let Some(parsed) = update.get("parsed") {
+                        println!("📡 Processing WebSocket update (pre-parsed)");
+                        self.process_single_player_update(parsed);
                     }
-
-                    // Track this authority
-                    current_authorities.push(authority.to_string());
-
-                    // Parse other player data
-                    let username = player.get("username")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("Unknown")
-                        .to_string();
-
-                    // Parse team (0 = Team A, 1 = Team B)
-                    let team_num = player.get("team")
-                        .and_then(|v| v.as_u64())
-                        .unwrap_or(0);
-                    let team = if team_num == 0 { "A" } else { "B" }.to_string();
-
-                    let is_alive = player.get("isAlive")
-                        .and_then(|v| v.as_bool())
-                        .unwrap_or(true);
-
-                    let new_position = Vector3::new(pos_x, pos_y, pos_z);
-                    let new_rotation = Vector3::new(rot_x, rot_y, rot_z);
-
-                    // Check if this player already exists in our list for interpolation
-                    if let Some(existing) = self.other_players.iter_mut().find(|p| p.authority == authority) {
-                        // Update target position and rotation for smooth interpolation
-                        existing.target_position = new_position;
-                        existing.target_rotation = new_rotation;
-                        existing.username = username;
-                        existing.team = team;
-                        existing.is_alive = is_alive;
-                    } else {
-                        // New player - create with current position as both start and target
-                        let other_player = OtherPlayer {
-                            authority: authority.to_string(),
-                            username,
-                            team,
-                            position: new_position,
-                            rotation: new_rotation,
-                            is_alive,
-                            target_position: new_position,
-                            target_rotation: new_rotation,
-                        };
-                        self.other_players.push(other_player);
+                    // Fallback: try to parse from raw account data
+                    else if let Some(account_data) = update.get("data") {
+                        if let Some(value) = account_data.get("value") {
+                            if let Some(data) = value.get("data") {
+                                if let Some(parsed) = data.get("parsed") {
+                                    println!("📡 Processing WebSocket update (fallback parsing)");
+                                    self.process_single_player_update(parsed);
+                                }
+                            }
+                        }
                     }
                 }
-
-                // Remove players who are no longer in the game
-                self.other_players.retain(|p| current_authorities.contains(&p.authority));
             }
         }
     }
+
+    /// Process a single player update from WebSocket
+    fn process_single_player_update(&mut self, player_data: &serde_json::Value) {
+        // Extract player information
+        let authority = player_data.get("authority")
+            .and_then(|v: &serde_json::Value| v.as_str())
+            .unwrap_or("");
+
+        // Get current player's ephemeral key to skip ourselves
+        // (We trust client-side input for our own player)
+        let current_ephemeral_key = self.get_current_ephemeral_key();
+        if authority == current_ephemeral_key {
+            return; // Don't sync our own position from blockchain
+        }
+
+        // Parse position
+        let pos_x = player_data.get("positionX")
+            .and_then(|v: &serde_json::Value| v.as_f64())
+            .unwrap_or(0.0) as f32;
+        let pos_y = player_data.get("positionY")
+            .and_then(|v: &serde_json::Value| v.as_f64())
+            .unwrap_or(0.0) as f32;
+        let pos_z = player_data.get("positionZ")
+            .and_then(|v: &serde_json::Value| v.as_f64())
+            .unwrap_or(0.0) as f32;
+
+        // Parse rotation
+        let rot_x = player_data.get("rotationX")
+            .and_then(|v: &serde_json::Value| v.as_f64())
+            .unwrap_or(0.0) as f32;
+        let rot_y = player_data.get("rotationY")
+            .and_then(|v: &serde_json::Value| v.as_f64())
+            .unwrap_or(0.0) as f32;
+        let rot_z = player_data.get("rotationZ")
+            .and_then(|v: &serde_json::Value| v.as_f64())
+            .unwrap_or(0.0) as f32;
+
+        // Parse other data
+        let username = player_data.get("username")
+            .and_then(|v: &serde_json::Value| v.as_str())
+            .unwrap_or("Unknown")
+            .to_string();
+
+        let team_num = player_data.get("team")
+            .and_then(|v: &serde_json::Value| v.as_u64())
+            .unwrap_or(0);
+        let team = if team_num == 0 { "A" } else { "B" }.to_string();
+
+        let is_alive = player_data.get("isAlive")
+            .and_then(|v: &serde_json::Value| v.as_bool())
+            .unwrap_or(true);
+
+        let new_position = Vector3::new(pos_x, pos_y, pos_z);
+        let new_rotation = Vector3::new(rot_x, rot_y, rot_z);
+
+        // Update or create the player
+        if let Some(existing) = self.other_players.iter_mut().find(|p| p.authority == authority) {
+            // Update target position and rotation for smooth interpolation
+            existing.target_position = new_position;
+            existing.target_rotation = new_rotation;
+            existing.username = username;
+            existing.team = team;
+            existing.is_alive = is_alive;
+        } else {
+            // New player - create with current position as both start and target
+            let other_player = OtherPlayer {
+                authority: authority.to_string(),
+                username: username.clone(),
+                team,
+                position: new_position,
+                rotation: new_rotation,
+                is_alive,
+                target_position: new_position,
+                target_rotation: new_rotation,
+            };
+            println!("➕ Added new player: {} ({})", username, authority);
+            self.other_players.push(other_player);
+        }
+    }
+
+    /// Get current player's ephemeral key for comparison
+    fn get_current_ephemeral_key(&self) -> String {
+        use std::os::raw::c_char;
+        use std::ffi::CString;
+
+        let js_code = r#"
+            (() => {
+                if (window.gameBridge && window.gameBridge.getCurrentPlayerEphemeralKey) {
+                    return window.gameBridge.getCurrentPlayerEphemeralKey();
+                }
+                return '';
+            })();
+        "#;
+
+        unsafe {
+            let c_str = CString::new(js_code).unwrap();
+            let result_ptr = emscripten_run_script_string(c_str.as_ptr());
+
+            if !result_ptr.is_null() {
+                return std::ffi::CStr::from_ptr(result_ptr)
+                    .to_string_lossy()
+                    .into_owned();
+            }
+        }
+
+        String::new()
+    }
+
 
     /// Draw the Solana logo in the sky (visible when looking down)
     fn draw_solana_logo(d3d: &mut RaylibMode3D<RaylibDrawHandle>) {

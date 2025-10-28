@@ -5,6 +5,7 @@
  */
 
 import * as solanaBridge from "./solana-bridge";
+import websocketGameManager from "./websocket-game-manager";
 
 /**
  * Initialize the game bridge
@@ -237,6 +238,133 @@ export function initGameBridge() {
       } else {
         console.warn("⚠️ Module._set_current_game_js not available");
       }
+    },
+
+    // WebSocket real-time game state functions
+    connectWebSocket: async () => {
+      console.log("[Game Bridge] connectWebSocket called");
+      try {
+        await websocketGameManager.connect();
+        return { success: true };
+      } catch (error) {
+        console.error("[Game Bridge] Failed to connect WebSocket:", error);
+        return { success: false, error: error.message };
+      }
+    },
+
+    disconnectWebSocket: () => {
+      console.log("[Game Bridge] disconnectWebSocket called");
+      websocketGameManager.disconnect();
+      return { success: true };
+    },
+
+    subscribeToGamePlayers: async (gamePubkey) => {
+      console.log("[Game Bridge] subscribeToGamePlayers called:", gamePubkey);
+      try {
+        // First, get all players in the game
+        const players = await solanaBridge.getGamePlayers(gamePubkey);
+        console.log("[Game Bridge] Found", players.length, "players to subscribe to");
+
+        // Extract GamePlayer account public keys
+        const gamePlayerPubkeys = players.map(p => p.publicKey);
+
+        // Subscribe to all GamePlayer accounts via WebSocket
+        await websocketGameManager.subscribeToGamePlayers(gamePlayerPubkeys, async (accountPubkey, accountData) => {
+          console.log("[Game Bridge] 📡 Received WebSocket update for:", accountPubkey);
+
+          // Store the updated player data in a global variable that Rust can read
+          if (!window.___websocket_player_updates) {
+            window.___websocket_player_updates = {};
+          }
+
+          // We need to decode the account data from the WebSocket notification
+          // The accountData contains the raw account info, we need to parse it using Anchor
+          try {
+            // Get the game program to decode the account
+            const gameProgram = solanaBridge.getGameProgram();
+            if (gameProgram && accountData?.value?.data) {
+              // The data is base64 encoded, decode it
+              const accountDataRaw = accountData.value.data;
+
+              // If data is an array (binary), convert to Buffer
+              let decodedData;
+              if (Array.isArray(accountDataRaw)) {
+                decodedData = Buffer.from(accountDataRaw);
+              } else if (typeof accountDataRaw === 'string') {
+                // Base64 encoded
+                decodedData = Buffer.from(accountDataRaw, 'base64');
+              }
+
+              if (decodedData) {
+                try {
+                  // Try to decode using Anchor's type coder instead of account coder
+                  // The GamePlayer schema is in the "types" section of the IDL, not "accounts"
+                  const gamePlayerData = gameProgram.coder.types.decode('GamePlayer', decodedData.slice(8)); // Skip 8-byte discriminator
+                  console.log("[Game Bridge] ✅ Decoded GamePlayer data:", gamePlayerData);
+
+                  // Store the decoded data
+                  window.___websocket_player_updates[accountPubkey] = {
+                    timestamp: Date.now(),
+                    data: accountData,
+                    parsed: gamePlayerData, // Include parsed data
+                  };
+                } catch (typeDecodeError) {
+                  console.warn("[Game Bridge] ⚠️ Type decoder failed, storing raw data:", typeDecodeError.message);
+                  // Fallback: store raw data
+                  window.___websocket_player_updates[accountPubkey] = {
+                    timestamp: Date.now(),
+                    data: accountData,
+                  };
+                }
+              }
+            } else {
+              // Fallback: store raw data
+              window.___websocket_player_updates[accountPubkey] = {
+                timestamp: Date.now(),
+                data: accountData,
+              };
+            }
+          } catch (error) {
+            console.error("[Game Bridge] ❌ Failed to decode account data:", error);
+            // Store raw data as fallback
+            window.___websocket_player_updates[accountPubkey] = {
+              timestamp: Date.now(),
+              data: accountData,
+            };
+          }
+        });
+
+        console.log("[Game Bridge] Subscribed to all GamePlayer accounts");
+        return { success: true, playerCount: players.length };
+      } catch (error) {
+        console.error("[Game Bridge] Failed to subscribe to game players:", error);
+        return { success: false, error: error.message };
+      }
+    },
+
+    unsubscribeFromGamePlayers: async (gamePubkey) => {
+      console.log("[Game Bridge] unsubscribeFromGamePlayers called:", gamePubkey);
+      try {
+        // Get all players in the game
+        const players = await solanaBridge.getGamePlayers(gamePubkey);
+        const gamePlayerPubkeys = players.map(p => p.publicKey);
+
+        // Unsubscribe from all GamePlayer accounts
+        await websocketGameManager.unsubscribeFromGamePlayers(gamePlayerPubkeys);
+
+        console.log("[Game Bridge] Unsubscribed from all GamePlayer accounts");
+        return { success: true };
+      } catch (error) {
+        console.error("[Game Bridge] Failed to unsubscribe from game players:", error);
+        return { success: false, error: error.message };
+      }
+    },
+
+    getWebSocketPlayerUpdates: () => {
+      // Return all pending WebSocket player updates and clear the queue
+      const updates = window.___websocket_player_updates || {};
+      window.___websocket_player_updates = {};
+      return JSON.stringify(updates);
     },
   };
 
