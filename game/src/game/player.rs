@@ -62,7 +62,7 @@ impl Player {
             position,
             camera,
             move_speed: 5.0, // 5 units per second
-            mouse_sensitivity: 0.01,
+            mouse_sensitivity: 0.1,
             yaw: -90.0, // Start facing forward (negative Z)
             pitch: 0.0,
             height,

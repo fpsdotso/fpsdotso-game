@@ -9,6 +9,7 @@ import mapRegistryIdl from "./idl/map_registry.json";
 import matchmakingIdl from "./idl/matchmaking.json";
 import gameIdl from "./idl/game.json";
 import * as EphemeralWallet from "./ephemeral-wallet.js";
+import websocketGameManager from "./websocket-game-manager.js";
 
 // Program IDs from the IDLs
 const PROGRAM_ID = new PublicKey(mapRegistryIdl.address);
@@ -2295,8 +2296,9 @@ export async function sendPlayerInput(input) {
       GAME_PROGRAM_ID
     );
 
-    // Send input to game program on ephemeral rollup
+    // Send input to game program on ephemeral rollup (using HTTP RPC)
     // Now sending calculated rotation values instead of mouse deltas
+    // Note: We use .rpc() which sends to the ephemeral RPC endpoint for fast processing
     const tx = await gameProgram.methods
       .processInput(
         input.forward || false,
@@ -2313,7 +2315,7 @@ export async function sendPlayerInput(input) {
         gamePlayer: gamePlayerPda,
         authority: getEphemeralPublicKey,
       })
-      .rpc();
+      .rpc({ skipPreflight: true }); // Skip preflight checks for maximum speed
 
     return tx;
   } catch (error) {
