@@ -142,8 +142,8 @@ const Minimap = ({ gamePublicKey }) => {
 
       const pos = worldToMinimap(player.x, player.z);
 
-      // Determine player color based on team
-      const playerColor = player.team === 0 ? 'rgba(0, 150, 255, 0.8)' : 'rgba(255, 50, 50, 0.8)';
+      // Determine player color based on team (Team 1 = Blue, Team 2 = Red)
+      const playerColor = player.team === 1 ? 'rgba(0, 150, 255, 0.8)' : 'rgba(255, 50, 50, 0.8)';
 
       // Draw player dot
       ctx.fillStyle = playerColor;
@@ -152,10 +152,10 @@ const Minimap = ({ gamePublicKey }) => {
       ctx.fill();
 
       // Draw player direction indicator
-      const yawRad = player.yaw * Math.PI / 180;
+      // Note: yaw is already in radians from WebSocket
       const dirLength = 12;
-      const dirEndX = pos.x + Math.cos(yawRad) * dirLength;
-      const dirEndY = pos.y + Math.sin(yawRad) * dirLength;
+      const dirEndX = pos.x + Math.cos(player.yaw) * dirLength;
+      const dirEndY = pos.y + Math.sin(player.yaw) * dirLength;
 
       ctx.strokeStyle = playerColor;
       ctx.lineWidth = 2;
@@ -165,31 +165,47 @@ const Minimap = ({ gamePublicKey }) => {
       ctx.stroke();
     });
 
-    // Draw current player (highlighted)
+    // Draw current player (highlighted with team color + white border)
     if (currentPlayer) {
       const pos = worldToMinimap(currentPlayer.x, currentPlayer.z);
 
-      // Draw pulsing ring around current player
+      // Get current player's team color
+      // We need to get the team from WebSocket data for the current player
+      const currentPlayerEphemeralKey = window.gameBridge?.getCurrentPlayerEphemeralKey?.();
+      let currentPlayerTeam = 1; // Default to team 1 (blue)
+
+      if (currentPlayerEphemeralKey && window.___websocket_player_updates) {
+        for (const [accountPubkey, update] of Object.entries(window.___websocket_player_updates)) {
+          if (update.parsed?.authority === currentPlayerEphemeralKey) {
+            currentPlayerTeam = update.parsed.team || 1;
+            break;
+          }
+        }
+      }
+
+      const teamColor = currentPlayerTeam === 1 ? 'rgba(0, 150, 255, 1)' : 'rgba(255, 50, 50, 1)';
+
+      // Draw pulsing white ring around current player
       const pulse = Math.sin(Date.now() / 200) * 0.3 + 0.7;
-      ctx.strokeStyle = `rgba(0, 242, 148, ${pulse})`;
-      ctx.lineWidth = 2;
+      ctx.strokeStyle = `rgba(255, 255, 255, ${pulse})`;
+      ctx.lineWidth = 3;
       ctx.beginPath();
       ctx.arc(pos.x, pos.y, 10, 0, Math.PI * 2);
       ctx.stroke();
 
-      // Draw player dot
-      ctx.fillStyle = 'rgba(0, 242, 148, 1)';
+      // Draw player dot with team color
+      ctx.fillStyle = teamColor;
       ctx.beginPath();
       ctx.arc(pos.x, pos.y, 6, 0, Math.PI * 2);
       ctx.fill();
 
-      // Draw direction indicator
-      const yawRad = currentPlayer.yaw * Math.PI / 180;
+      // Draw direction indicator with team color
+      // Note: yaw is already in radians from Rust
       const dirLength = 15;
-      const dirEndX = pos.x + Math.cos(yawRad) * dirLength;
-      const dirEndY = pos.y + Math.sin(yawRad) * dirLength;
+      const dirEndX = pos.x + Math.cos(currentPlayer.yaw) * dirLength;
+      const dirEndY = pos.y + Math.sin(currentPlayer.yaw) * dirLength;
 
-      ctx.strokeStyle = 'rgba(0, 242, 148, 1)';
+      ctx.strokeStyle = teamColor;
       ctx.lineWidth = 3;
       ctx.beginPath();
       ctx.moveTo(pos.x, pos.y);
@@ -198,8 +214,8 @@ const Minimap = ({ gamePublicKey }) => {
 
       // Draw arrowhead
       const arrowSize = 5;
-      const angle1 = yawRad + Math.PI * 0.75;
-      const angle2 = yawRad - Math.PI * 0.75;
+      const angle1 = currentPlayer.yaw + Math.PI * 0.75;
+      const angle2 = currentPlayer.yaw - Math.PI * 0.75;
       ctx.beginPath();
       ctx.moveTo(dirEndX, dirEndY);
       ctx.lineTo(dirEndX + Math.cos(angle1) * arrowSize, dirEndY + Math.sin(angle1) * arrowSize);
