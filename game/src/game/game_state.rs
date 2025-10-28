@@ -1277,19 +1277,85 @@ impl GameState {
             // Note: draw_text_3d doesn't exist in raylib, so we'll skip this for now
             // In a real game, you'd use billboard text or UI overlays
 
-            // Draw direction indicator (small cube in front of player based on rotation)
-            // rotation.y is already in radians from the contract
-            let yaw_rad = player.rotation.y;
-            let dir_x = yaw_rad.cos() * 0.5;
-            let dir_z = yaw_rad.sin() * 0.5;
+            // Draw gun held by other player
+            Self::draw_other_player_gun(d3d, player, height);
+        }
+    }
 
-            let indicator_pos = Vector3::new(
-                player.position.x + dir_x,
-                player.position.y + height * 0.5,
-                player.position.z + dir_z,
-            );
+    /// Draw gun held by another player (third-person view)
+    fn draw_other_player_gun(d3d: &mut RaylibMode3D<RaylibDrawHandle>, player: &OtherPlayer, player_height: f32) {
+        // rotation.y is yaw in radians from the contract
+        // rotation.x is pitch in radians
+        let yaw_rad = player.rotation.y;
+        let pitch_rad = player.rotation.x;
 
-            d3d.draw_cube(indicator_pos, 0.2, 0.2, 0.2, Color::WHITE);
+        // Direction the player is facing (horizontal only for base direction)
+        let forward_horizontal = Vector3::new(
+            yaw_rad.cos(),
+            0.0,
+            yaw_rad.sin(),
+        );
+
+        // Right vector (perpendicular to forward, horizontal)
+        let right = Vector3::new(
+            (yaw_rad + std::f32::consts::PI / 2.0).cos(),
+            0.0,
+            (yaw_rad + std::f32::consts::PI / 2.0).sin(),
+        );
+
+        // Up vector (world up)
+        let up = Vector3::new(0.0, 1.0, 0.0);
+
+        // Calculate actual direction including pitch (same as first-person calculation)
+        let direction = Vector3::new(
+            yaw_rad.cos() * pitch_rad.cos(),
+            pitch_rad.sin(),
+            yaw_rad.sin() * pitch_rad.cos(),
+        ).normalized();
+
+        // Gun position (in front and to the right of player, at chest height)
+        let gun_base = Vector3::new(
+            player.position.x,
+            player.position.y + player_height * 0.55, // Chest height
+            player.position.z,
+        ) + direction * 0.4 + right * 0.2 + up * -0.1;
+
+        // Helper function to transform local gun coordinates to world space
+        let to_world = |local_x: f32, local_y: f32, local_z: f32| -> Vector3 {
+            gun_base + right * local_x + up * local_y + direction * local_z
+        };
+
+        // Gun color (same as first-person view)
+        let gun_color = Color::new(80, 80, 90, 255);
+
+        // Gun body - series of spheres along the forward axis
+        for i in 0..8 {
+            let z = (i as f32 - 4.0) * 0.08;
+            let pos = to_world(0.0, 0.0, z);
+            d3d.draw_sphere(pos, 0.06, gun_color);
+        }
+
+        // Barrel extension - forward from gun body
+        for i in 0..5 {
+            let z = 0.32 + i as f32 * 0.05;
+            let pos = to_world(0.0, 0.0, z);
+            d3d.draw_sphere(pos, 0.03, Color::new(60, 60, 70, 255));
+        }
+
+        // Handle - downward and back from gun body
+        for i in 0..4 {
+            let y = -0.05 * i as f32;
+            let z = -0.2;
+            let pos = to_world(0.0, y, z);
+            d3d.draw_sphere(pos, 0.05, Color::new(70, 50, 40, 255));
+        }
+
+        // Trigger guard - downward from center
+        for i in 0..2 {
+            let y = -0.08 - i as f32 * 0.03;
+            let z = -0.1;
+            let pos = to_world(0.0, y, z);
+            d3d.draw_sphere(pos, 0.03, Color::new(156, 81, 255, 255)); // Solana purple
         }
     }
 
