@@ -27,6 +27,9 @@ pub struct OtherPlayer {
     pub position: Vector3,
     pub rotation: Vector3,
     pub is_alive: bool,
+    // Interpolation fields for smooth movement
+    pub target_position: Vector3,
+    pub target_rotation: Vector3,
 }
 
 /// Main game state that manages the FPS game
@@ -113,10 +116,22 @@ impl GameState {
         self.mode = GameMode::Playing;
     }
 
-    /// Start the game (mark state); cursor capture can be handled by caller
+    /// Start the game and switch to Playing mode
     pub fn start_playing(&mut self) {
-        if self.mode == GameMode::Playing {
-            self.mouse_captured = true;
+        println!("🎮 Switching to Playing mode");
+        self.mode = GameMode::Playing;
+        self.mouse_captured = false; // Will be captured in next frame by capture_mouse_if_playing
+
+        // If no player exists yet, create one at origin
+        // Map loading will update the position to spawn point
+        if self.player.is_none() {
+            println!("⚠️ No player exists, creating default player at origin");
+            self.player = Some(Player::new(Vector3::new(0.0, 0.0, 0.0)));
+        }
+
+        // If no map exists, log a warning
+        if self.map.is_none() {
+            println!("⚠️ No map loaded, game will render without map geometry");
         }
     }
 
@@ -184,6 +199,17 @@ impl GameState {
                     // Placeholder: print only
                     println!("🔫 Shoot pressed (no-op)");
                 }
+            }
+
+            // Smoothly interpolate other players toward their target positions
+            // This runs every frame for buttery smooth movement
+            let interp_speed = 10.0; // Higher = faster interpolation
+            for player in &mut self.other_players {
+                // Interpolate position
+                player.position = player.position.lerp(player.target_position, delta * interp_speed);
+
+                // Interpolate rotation (handle angle wrapping for smooth rotation)
+                player.rotation = player.rotation.lerp(player.target_rotation, delta * interp_speed);
             }
 
             // Fetch other players' positions every 33ms (30 ticks/sec) to reduce network load
@@ -327,8 +353,8 @@ impl GameState {
 
             // Get the players array
             if let Some(players) = data.get("players").and_then(|v| v.as_array()) {
-                // Clear the previous player list
-                self.other_players.clear();
+                // Collect all current player authorities for cleanup
+                let mut current_authorities: Vec<String> = Vec::new();
 
                 for player in players {
                     let authority = player.get("authority")
@@ -360,37 +386,15 @@ impl GameState {
                         .and_then(|v| v.as_f64())
                         .unwrap_or(0.0) as f32;
 
-                    // If this is the current player, update from blockchain (with smooth interpolation)
+                    // If this is the current player, skip syncing from blockchain
+                    // We trust client-side input completely for smooth, responsive movement
+                    // The blockchain is only authoritative for OTHER players
                     if authority == current_authority {
-                        if let Some(ref mut local_player) = self.player {
-                            let blockchain_pos = Vector3::new(pos_x, pos_y, pos_z);
-                            let blockchain_yaw = rot_y.to_degrees();
-                            let blockchain_pitch = rot_x.to_degrees();
-
-                            // Calculate distance between local and blockchain positions
-                            let distance = (local_player.position - blockchain_pos).length();
-
-                            // Always sync position with smooth interpolation
-                            // Use higher factor for small distances, lower for large (smoother at close range)
-                            let lerp_factor = if distance > 1.0 {
-                                0.5 // Faster correction for large desyncs
-                            } else {
-                                0.2 // Subtle correction for small desyncs
-                            };
-
-                            local_player.position = local_player.position.lerp(blockchain_pos, lerp_factor);
-
-                            // Sync rotation with smooth interpolation
-                            // Use smaller factor to keep rotation feeling responsive to mouse
-                            let angle_lerp = 0.3;
-                            local_player.yaw = local_player.yaw + (blockchain_yaw - local_player.yaw) * angle_lerp;
-                            local_player.pitch = local_player.pitch + (blockchain_pitch - local_player.pitch) * angle_lerp;
-
-                            // Update camera
-                            local_player.update_camera();
-                        }
-                        continue; // Don't add ourselves to other_players list
+                        continue; // Don't add ourselves to other_players list or sync our position
                     }
+
+                    // Track this authority
+                    current_authorities.push(authority.to_string());
 
                     // Parse other player data
                     let username = player.get("username")
@@ -408,18 +412,35 @@ impl GameState {
                         .and_then(|v| v.as_bool())
                         .unwrap_or(true);
 
-                    // Create OtherPlayer struct
-                    let other_player = OtherPlayer {
-                        authority: authority.to_string(),
-                        username,
-                        team,
-                        position: Vector3::new(pos_x, pos_y, pos_z),
-                        rotation: Vector3::new(rot_x, rot_y, rot_z),
-                        is_alive,
-                    };
+                    let new_position = Vector3::new(pos_x, pos_y, pos_z);
+                    let new_rotation = Vector3::new(rot_x, rot_y, rot_z);
 
-                    self.other_players.push(other_player);
+                    // Check if this player already exists in our list for interpolation
+                    if let Some(existing) = self.other_players.iter_mut().find(|p| p.authority == authority) {
+                        // Update target position and rotation for smooth interpolation
+                        existing.target_position = new_position;
+                        existing.target_rotation = new_rotation;
+                        existing.username = username;
+                        existing.team = team;
+                        existing.is_alive = is_alive;
+                    } else {
+                        // New player - create with current position as both start and target
+                        let other_player = OtherPlayer {
+                            authority: authority.to_string(),
+                            username,
+                            team,
+                            position: new_position,
+                            rotation: new_rotation,
+                            is_alive,
+                            target_position: new_position,
+                            target_rotation: new_rotation,
+                        };
+                        self.other_players.push(other_player);
+                    }
                 }
+
+                // Remove players who are no longer in the game
+                self.other_players.retain(|p| current_authorities.contains(&p.authority));
             }
         }
     }

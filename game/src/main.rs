@@ -240,6 +240,9 @@ fn main() {
         // Update game state if playing
         game_state.update(&mut rl, delta);
 
+        // Capture mouse if in playing mode
+        game_state.capture_mouse_if_playing(&mut rl);
+
         // Show map editor UI when in editor mode
         if game_state.mode == game::GameMode::DebugMenu && menu_state.current_tab == MenuTab::MapEditor {
             mouse_over_ui = draw_editor_ui(ui, &mut map_builder, viewport_width as f32, &mut style_applied);
