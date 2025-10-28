@@ -36,6 +36,14 @@ pub struct OtherPlayer {
     pub last_update_time: f64,       // Timestamp of last server update
 }
 
+/// Represents a bullet trail/tracer effect
+#[derive(Debug, Clone)]
+pub struct BulletTrail {
+    pub start: Vector3,
+    pub end: Vector3,
+    pub timer: f32, // Time remaining for trail visibility
+}
+
 /// Main game state that manages the FPS game
 pub struct GameState {
     /// Current game mode
@@ -70,6 +78,9 @@ pub struct GameState {
 
     /// Screen flash timer (time remaining for screen flash)
     screen_flash_timer: f32,
+
+    /// Active bullet trails
+    bullet_trails: Vec<BulletTrail>,
 }
 
 impl GameState {
@@ -87,6 +98,7 @@ impl GameState {
             touch_controls: None,
             muzzle_flash_timer: 0.0,
             screen_flash_timer: 0.0,
+            bullet_trails: Vec::new(),
         }
     }
 
@@ -97,14 +109,91 @@ impl GameState {
 
     /// Handle shooting - play sound and trigger visual effects
     pub fn shoot(&mut self, audio: &mut RaylibAudio) {
-        // Load and immediately play the gunshot sound
-        // Note: The sound plays asynchronously, so even though the Sound object
-        // is dropped after this scope, the audio continues playing in raylib's audio thread
-        if let Ok(mut sound) = audio.new_sound("assets/gun/audio/submachinegun-gunshot.mp3") {
-            sound.set_volume(0.3); // Set volume to 30%
-            sound.play();
-            // Important: Don't drop immediately - keep in scope for a moment
-            std::mem::forget(sound); // Leak the sound so it stays alive during playback
+        // Use emscripten to play the sound via Web Audio API
+        // This is more reliable than raylib's audio system for WASM
+        use std::os::raw::c_char;
+        use std::ffi::CString;
+
+        let js_code = r#"
+            (function() {
+                try {
+                    // Create or get cached audio element
+                    if (!window.gunshotAudioElement) {
+                        window.gunshotAudioElement = new Audio('/assets/gun/audio/submachinegun-gunshot.mp3');
+                        window.gunshotAudioElement.volume = 0.3;
+                        // Preload the audio
+                        window.gunshotAudioElement.load();
+                    }
+                    // Clone to allow overlapping sounds
+                    const audio = window.gunshotAudioElement.cloneNode();
+                    audio.volume = 0.3;
+                    audio.play().catch(e => console.error('Gunshot play error:', e));
+                } catch (error) {
+                    console.error('Gunshot audio error:', error);
+                }
+            })();
+        "#;
+
+        unsafe {
+            let c_str = CString::new(js_code).unwrap();
+            emscripten_run_script(c_str.as_ptr());
+        }
+
+        // Create bullet trail from gun muzzle
+        if let Some(ref player) = self.player {
+            // Calculate gun muzzle position (in front of camera)
+            let yaw_rad = player.yaw.to_radians();
+            let pitch_rad = player.pitch.to_radians();
+
+            // Direction the gun is pointing
+            let direction = Vector3::new(
+                yaw_rad.cos() * pitch_rad.cos(),
+                pitch_rad.sin(),
+                yaw_rad.sin() * pitch_rad.cos(),
+            );
+
+            // Right vector for gun offset
+            let right = Vector3::new(
+                (yaw_rad + 90.0_f32.to_radians()).cos(),
+                0.0,
+                (yaw_rad + 90.0_f32.to_radians()).sin(),
+            );
+
+            // Up vector
+            let up = right.cross(direction).normalized();
+
+            // Calculate effective height based on crouching
+            let effective_height = if player.is_crouching {
+                player.height * 0.6
+            } else {
+                player.height
+            };
+
+            // Camera/eye position
+            let camera_pos = Vector3::new(
+                player.position.x,
+                player.position.y + effective_height,
+                player.position.z,
+            );
+
+            // Gun muzzle position (in front and to the right, at barrel end)
+            let muzzle_pos = camera_pos + direction * 0.8 + right * 0.35 + up * -0.3 + direction * 0.6;
+
+            // Raycast to find where bullet hits
+            let max_distance = 100.0; // Maximum bullet travel distance
+            let hit_pos = muzzle_pos + direction * max_distance;
+
+            // TODO: Add collision detection with map and players here
+            // For now, just draw the trail to max distance
+
+            // Create bullet trail
+            self.bullet_trails.push(BulletTrail {
+                start: muzzle_pos,
+                end: hit_pos,
+                timer: 0.1, // Trail visible for 0.1 seconds
+            });
+
+            println!("🔫 Bang! Trail from {:?} to {:?}", muzzle_pos, hit_pos);
         }
 
         // Trigger muzzle flash (lasts 0.05 seconds)
@@ -112,8 +201,6 @@ impl GameState {
 
         // Trigger screen flash (lasts 0.1 seconds)
         self.screen_flash_timer = 0.1;
-
-        println!("🔫 Bang!");
     }
 
     /// Set the current game for blockchain synchronization
@@ -346,6 +433,13 @@ impl GameState {
             if self.screen_flash_timer > 0.0 {
                 self.screen_flash_timer -= delta;
             }
+
+            // Update bullet trails
+            for trail in &mut self.bullet_trails {
+                trail.timer -= delta;
+            }
+            // Remove expired trails
+            self.bullet_trails.retain(|trail| trail.timer > 0.0);
 
             // Smoothly interpolate other players with dead reckoning for latency compensation
             // This runs every frame for buttery smooth movement
@@ -879,6 +973,9 @@ impl GameState {
             // Draw other players from blockchain
             Self::draw_other_players(&mut d3d, &self.other_players);
 
+            // Draw bullet trails
+            Self::draw_bullet_trails(&mut d3d, &self.bullet_trails);
+
             // Draw some simple point lights as visual spheres (for ambient lighting effect)
             // Top light
             d3d.draw_sphere(
@@ -1193,6 +1290,56 @@ impl GameState {
             );
 
             d3d.draw_cube(indicator_pos, 0.2, 0.2, 0.2, Color::WHITE);
+        }
+    }
+
+    /// Draw bullet trails/tracers
+    fn draw_bullet_trails(d3d: &mut RaylibMode3D<RaylibDrawHandle>, trails: &[BulletTrail]) {
+        for trail in trails {
+            // Calculate alpha based on remaining time (fade out effect)
+            let alpha = ((trail.timer / 0.1) * 255.0) as u8;
+
+            // Draw trail as a bright yellow/orange line
+            let trail_color = Color::new(255, 220, 100, alpha);
+
+            // Draw the main trail line
+            d3d.draw_line_3D(trail.start, trail.end, trail_color);
+
+            // Draw a thicker glow around the trail for better visibility
+            // We do this by drawing multiple slightly offset lines
+            let direction = (trail.end - trail.start).normalized();
+            let perpendicular1 = Vector3::new(-direction.z, 0.0, direction.x).normalized();
+            let perpendicular2 = direction.cross(perpendicular1).normalized();
+
+            let offset = 0.02; // Small offset for glow effect
+
+            // Draw glow lines with lower alpha
+            let glow_alpha = alpha / 3;
+            let glow_color = Color::new(255, 180, 50, glow_alpha);
+
+            d3d.draw_line_3D(
+                trail.start + perpendicular1 * offset,
+                trail.end + perpendicular1 * offset,
+                glow_color
+            );
+            d3d.draw_line_3D(
+                trail.start - perpendicular1 * offset,
+                trail.end - perpendicular1 * offset,
+                glow_color
+            );
+            d3d.draw_line_3D(
+                trail.start + perpendicular2 * offset,
+                trail.end + perpendicular2 * offset,
+                glow_color
+            );
+            d3d.draw_line_3D(
+                trail.start - perpendicular2 * offset,
+                trail.end - perpendicular2 * offset,
+                glow_color
+            );
+
+            // Draw impact point (small sphere at the end)
+            d3d.draw_sphere(trail.end, 0.05, Color::new(255, 100, 0, alpha));
         }
     }
 }
