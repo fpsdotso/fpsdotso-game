@@ -1,6 +1,7 @@
 use raylib::prelude::*;
 use crate::map::Map;
 use super::Player;
+use crate::game::touch_controls::TouchControls;
 
 // Emscripten bindings for JavaScript interop
 extern "C" {
@@ -57,14 +58,8 @@ pub struct GameState {
     /// Other players in the game (from blockchain)
     other_players: Vec<OtherPlayer>,
 
-    /// Player character model (cyber.obj)
-    player_model: Option<Model>,
-
-    /// Animation index for the walk animation
-    anim_frame_counter: i32,
-
-    /// Screen flash timer for shooting effect
-    screen_flash_timer: f32,
+    /// Optional touch controls for mobile
+    pub touch_controls: Option<TouchControls>,
 }
 
 impl GameState {
@@ -80,10 +75,13 @@ impl GameState {
             current_game_pubkey: None,
             current_player_authority: None,
             other_players: Vec::new(),
-            player_model: None,
-            anim_frame_counter: 0,
-            screen_flash_timer: 0.0,
+            touch_controls: None,
         }
+    }
+
+    /// Initialize touch controls
+    pub fn init_touch_controls(&mut self, screen_width: f32, screen_height: f32) {
+        self.touch_controls = Some(TouchControls::new(screen_width, screen_height));
     }
 
     /// Set the current game for blockchain synchronization
@@ -94,63 +92,6 @@ impl GameState {
     /// Set the current player authority for identifying the local player
     pub fn set_player_authority(&mut self, authority: String) {
         self.current_player_authority = Some(authority);
-    }
-
-    /// Load the player character model
-    pub fn load_player_model(&mut self, rl: &mut RaylibHandle, thread: &RaylibThread) {
-        // Try to load the OBJ model (OBJ format - excellent Raylib support)
-        let possible_paths = [
-            "/assets/characters/cyber.obj",       // WASM preloaded path
-            "assets/characters/cyber.obj",         // Relative path for native
-            "game/assets/characters/cyber.obj",    // From project root
-            "../assets/characters/cyber.obj",      // Parent directory
-        ];
-
-        for path in &possible_paths {
-            println!("🔍 Trying to load OBJ model from: {}", path);
-            match rl.load_model(thread, path) {
-                Ok(model) => {
-                    println!("✅ Successfully loaded cyber.obj model from: {}", path);
-                    println!("📊 OBJ Model loaded - OBJ format has excellent Raylib support!");
-
-                    self.player_model = Some(model);
-                    return;
-                }
-                Err(e) => {
-                    println!("⚠️ Failed to load from {}: {:?}", path, e);
-                }
-            }
-        }
-
-        println!("❌ Could not load cyber.obj model from any path, will use fallback cylinder rendering");
-        println!("💡 Make sure cyber.obj exists in game/assets/characters/");
-    }
-
-    /// Switch game mode to Playing (for when game starts from lobby)
-    pub fn start_playing(&mut self) {
-        println!("🎮 Switching to Playing mode");
-        self.mode = GameMode::Playing;
-        self.mouse_captured = true;
-
-        // If no player exists, create one at origin
-        if self.player.is_none() {
-            println!("⚠️ No player exists, creating default player at origin");
-            self.player = Some(Player::new(Vector3::new(0.0, 0.0, 0.0)));
-        }
-
-        // If no map exists, log a warning
-        if self.map.is_none() {
-            println!("⚠️ No map loaded, gameplay will have no map geometry");
-        } else {
-            println!("✅ Map is loaded and ready");
-        }
-    }
-
-    /// Switch game mode to DebugMenu (for when returning to editor/menu)
-    pub fn stop_playing(&mut self) {
-        println!("🛑 Switching to DebugMenu mode");
-        self.mode = GameMode::DebugMenu;
-        self.mouse_captured = false;
     }
 
     /// Load a map and spawn the player
@@ -172,7 +113,20 @@ impl GameState {
         self.mode = GameMode::Playing;
     }
 
-    /// Capture mouse for gameplay (called from update loop)
+    /// Start the game (mark state); cursor capture can be handled by caller
+    pub fn start_playing(&mut self) {
+        if self.mode == GameMode::Playing {
+            self.mouse_captured = true;
+        }
+    }
+
+    /// Stop the game and release cursor state
+    pub fn stop_playing(&mut self) {
+        self.mode = GameMode::DebugMenu;
+        self.mouse_captured = false;
+    }
+
+    /// Capture mouse if in playing mode
     pub fn capture_mouse_if_playing(&mut self, rl: &mut RaylibHandle) {
         if self.mode == GameMode::Playing && !self.mouse_captured {
             rl.disable_cursor();
@@ -188,12 +142,7 @@ impl GameState {
     }
 
     /// Update game logic
-    pub fn update(&mut self, rl: &mut RaylibHandle, audio: &mut RaylibAudio, delta: f32) {
-        // Update screen flash timer
-        if self.screen_flash_timer > 0.0 {
-            self.screen_flash_timer -= delta;
-        }
-
+    pub fn update(&mut self, rl: &mut RaylibHandle, delta: f32) {
         // ESC to toggle between menu and game
         if rl.is_key_pressed(KeyboardKey::KEY_ESCAPE) {
             if self.mode == GameMode::Playing {
@@ -203,29 +152,38 @@ impl GameState {
 
         // Update player if in playing mode
         if self.mode == GameMode::Playing {
-            let player_shot = if let Some(ref mut player) = self.player {
-                let was_shooting = player.is_shooting;
-                player.update(rl, delta);
-                !was_shooting && player.is_shooting // Detect new shot
-            } else {
-                false
-            };
-
-            // Handle shooting - play sound and trigger effects
-            if player_shot {
-                // Play gun sound using audio handle
-                let _ = audio.new_sound("/assets/gun/audio/submachinegun-gunshot.mp3")
-                    .or_else(|_| audio.new_sound("assets/gun/audio/submachinegun-gunshot.mp3"))
-                    .or_else(|_| audio.new_sound("game/assets/gun/audio/submachinegun-gunshot.mp3"))
-                    .map(|mut sound| sound.play());
-
-                // Trigger screen flash
-                self.screen_flash_timer = 0.08; // 80ms flash
+            if let Some(ref mut player) = self.player {
+                // Update from touch controls if available and active
+                if let Some(tc) = &mut self.touch_controls {
+                    tc.update(rl);
+                    if tc.is_active() {
+                        let (fwd, back, left, right) = tc.get_movement_input();
+                        let look = tc.get_look_input();
+                        let mut mv = Vector2::zero();
+                        if fwd { mv.y -= 1.0; }
+                        if back { mv.y += 1.0; }
+                        if left { mv.x -= 1.0; }
+                        if right { mv.x += 1.0; }
+                        player.apply_mobile_input(mv, look, delta);
+                    } else {
+                        player.update(rl, delta);
+                    }
+                } else {
+                    player.update(rl, delta);
+                }
             }
 
             // Send player input every frame for maximum responsiveness
             if let Some(ref player) = self.player {
                 self.send_player_input(rl, player, delta);
+            }
+
+            // Handle shoot (no-op on chain yet)
+            if let Some(tc) = &self.touch_controls {
+                if tc.get_shoot_pressed() {
+                    // Placeholder: print only
+                    println!("🔫 Shoot pressed (no-op)");
+                }
             }
 
             // Fetch other players' positions every 33ms (30 ticks/sec) to reduce network load
@@ -673,7 +631,7 @@ impl GameState {
             }
 
             // Draw other players from blockchain
-            Self::draw_other_players(&mut d3d, &self.other_players, &self.player_model);
+            Self::draw_other_players(&mut d3d, &self.other_players);
 
             // Draw some simple point lights as visual spheres (for ambient lighting effect)
             // Top light
@@ -695,17 +653,8 @@ impl GameState {
             Self::draw_health_bar(d, player);
         }
 
-        // Draw screen flash effect when shooting
-        if self.screen_flash_timer > 0.0 {
-            let flash_intensity = (self.screen_flash_timer / 0.08).min(1.0);
-            let flash_alpha = (flash_intensity * 50.0) as u8; // Max 50 alpha for subtle effect
-            d.draw_rectangle(
-                0,
-                0,
-                d.get_screen_width(),
-                d.get_screen_height(),
-                Color::new(255, 220, 100, flash_alpha), // Orange flash
-            );
+        if let Some(tc) = &self.touch_controls {
+            tc.draw(d);
         }
     }
 
@@ -785,27 +734,6 @@ impl GameState {
             let z = -0.1;
             let pos = to_world(0.0, y, z);
             d3d.draw_sphere(pos, 0.03, Color::new(156, 81, 255, 255)); // Solana purple
-        }
-
-        // MUZZLE FLASH - Draw if player is shooting
-        if player.muzzle_flash_timer > 0.0 {
-            // Position at end of barrel
-            let muzzle_pos = to_world(0.0, 0.0, 0.55);
-
-            // Draw bright flash sphere
-            let flash_intensity = (player.muzzle_flash_timer / 0.05).min(1.0);
-            let flash_size = 0.15 * flash_intensity;
-            let flash_color = Color::new(
-                255,
-                (220.0 * flash_intensity) as u8,
-                (100.0 * flash_intensity) as u8,
-                (200.0 * flash_intensity) as u8,
-            );
-
-            d3d.draw_sphere(muzzle_pos, flash_size, flash_color);
-
-            // Draw outer glow
-            d3d.draw_sphere(muzzle_pos, flash_size * 1.5, Color::new(255, 180, 50, 100));
         }
     }
 
@@ -902,11 +830,10 @@ impl GameState {
         let bar_x = (screen_width - bar_width) / 2;
         let bar_y = screen_height - bar_height - 30;
 
-        /* Background (dark)
+        // Background (dark)
         d.draw_rectangle(bar_x - 2, bar_y - 2, bar_width + 4, bar_height + 4, Color::new(0, 0, 0, 180));
         d.draw_rectangle(bar_x, bar_y, bar_width, bar_height, Color::new(40, 40, 50, 200));
 
-        
         // Health fill (gradient from green to red based on health percentage)
         let health_percent = player.health / player.max_health;
         let fill_width = (bar_width as f32 * health_percent) as i32;
@@ -937,38 +864,11 @@ impl GameState {
         );
 
         // "HEALTH" label
-        d.draw_text("HEALTH", bar_x + 5, bar_y - 20, 12, Color::new(200, 200, 220, 255));*/
+        d.draw_text("HEALTH", bar_x + 5, bar_y - 20, 12, Color::new(200, 200, 220, 255));
     }
 
     /// Draw other players in the game (from blockchain sync)
-    fn draw_other_players(d3d: &mut RaylibMode3D<RaylibDrawHandle>, other_players: &[OtherPlayer], player_model: &Option<Model>) {
-        // Debug: Log if model is available and player count
-        static mut MODEL_LOGGED: bool = false;
-        static mut FRAME_COUNT: u32 = 0;
-
-        unsafe {
-            FRAME_COUNT += 1;
-
-            if !MODEL_LOGGED {
-                if player_model.is_some() {
-                    println!("🎭 Using cyber.obj model for player rendering");
-                } else {
-                    println!("⚠️ Using fallback cylinder for player rendering (model not loaded)");
-                }
-                MODEL_LOGGED = true;
-            }
-
-            // Log every 60 frames (once per second at 60fps)
-            if FRAME_COUNT % 60 == 0 {
-                println!("👥 Drawing {} other players (Frame {})", other_players.len(), FRAME_COUNT);
-            }
-        }
-
-        if other_players.is_empty() {
-            // No other players to draw
-            return;
-        }
-
+    fn draw_other_players(d3d: &mut RaylibMode3D<RaylibDrawHandle>, other_players: &[OtherPlayer]) {
         for player in other_players {
             // Skip dead players
             if !player.is_alive {
@@ -982,84 +882,38 @@ impl GameState {
                 Color::new(255, 100, 100, 255) // Red for Team B
             };
 
-            // Draw player model if available, otherwise fallback to cylinder
-            if let Some(model) = player_model {
-                // Scale the model to proper character height (~1.8 units)
-                // The yellow wireframe is the target size (0.6 x 1.8 x 0.6)
-                let model_scale = 2.0; // Much smaller than 10.0, try 2.0
+            // Draw player as a capsule (cylinder + spheres)
+            let height = 1.8; // Player height
+            let radius = 0.3; // Player radius
 
-                // Log first time we draw the model
-                static mut DRAW_LOGGED: bool = false;
-                unsafe {
-                    if !DRAW_LOGGED {
-                        println!("🎨 Drawing OBJ model at position: {:?}, scale: {}", player.position, model_scale);
-                        DRAW_LOGGED = true;
-                    }
-                }
+            // Draw body (cylinder)
+            d3d.draw_cylinder(
+                player.position,
+                radius,
+                radius,
+                height,
+                8,
+                player_color,
+            );
 
-                // Calculate rotation from player yaw
-                let yaw_degrees = player.rotation.y.to_degrees();
+            // Draw head (sphere on top)
+            let head_pos = Vector3::new(
+                player.position.x,
+                player.position.y + height,
+                player.position.z,
+            );
+            d3d.draw_sphere(head_pos, radius * 0.8, player_color);
 
-                // Adjust position so feet are on ground
-                // player.position is at "eye level" (head), so we need to offset down
-                // With scale 2.0, the model height is different, adjust offset
-                let model_position = Vector3::new(
-                    player.position.x,
-                    player.position.y - 0.9, // Lower model so feet are on ground (try 0.9 instead of 1.7)
-                    player.position.z,
-                );
-
-                // Draw the model with rotation and team color
-                d3d.draw_model_ex(
-                    model,
-                    model_position,
-                    Vector3::new(0.0, 1.0, 0.0), // Rotate around Y axis
-                    yaw_degrees,
-                    Vector3::new(model_scale, model_scale, model_scale),
-                    player_color, // Team color (blue for Team A, red for Team B)
-                );
-
-                // Optional: Draw direction indicator (small white cube in front of player)
-                let yaw_rad = player.rotation.y;
-                let dir_x = yaw_rad.cos() * 0.5;
-                let dir_z = yaw_rad.sin() * 0.5;
-                let height = 1.8;
-                let indicator_pos = Vector3::new(
-                    player.position.x + dir_x,
-                    player.position.y + height * 0.5,
-                    player.position.z + dir_z,
-                );
-                d3d.draw_cube(indicator_pos, 0.2, 0.2, 0.2, Color::WHITE);
-            } else {
-                // Fallback to cylinder rendering if model failed to load
-                let height = 1.8; // Player height
-                let radius = 0.3; // Player radius
-
-                // Draw body (cylinder)
-                d3d.draw_cylinder(
-                    player.position,
-                    radius,
-                    radius,
-                    height,
-                    8,
-                    player_color,
-                );
-
-                // Draw head (sphere on top)
-                let head_pos = Vector3::new(
-                    player.position.x,
-                    player.position.y + height,
-                    player.position.z,
-                );
-                d3d.draw_sphere(head_pos, radius * 0.8, player_color);
-            }
+            // Draw username above player
+            // Note: draw_text_3d doesn't exist in raylib, so we'll skip this for now
+            // In a real game, you'd use billboard text or UI overlays
 
             // Draw direction indicator (small cube in front of player based on rotation)
+            // rotation.y is already in radians from the contract
             let yaw_rad = player.rotation.y;
             let dir_x = yaw_rad.cos() * 0.5;
             let dir_z = yaw_rad.sin() * 0.5;
 
-            let height = 1.8;
             let indicator_pos = Vector3::new(
                 player.position.x + dir_x,
                 player.position.y + height * 0.5,

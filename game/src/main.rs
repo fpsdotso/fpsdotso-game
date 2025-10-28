@@ -140,14 +140,16 @@ fn main() {
     // Initialize imgui
     let mut gui = RaylibGui::new(&mut rl, &thread);
 
-    // Create menu state
+    // Create menu state (not used when auto-starting)
     let mut menu_state = MenuState::new();
 
     // Create game state
     let mut game_state = GameState::new();
 
-    // Load player character model
-    game_state.load_player_model(&mut rl, &thread);
+    // Initialize touch controls based on current screen size
+    let screen_w = rl.get_screen_width() as f32;
+    let screen_h = rl.get_screen_height() as f32;
+    game_state.init_touch_controls(screen_w, screen_h);
 
     // Set the game state pointer for JavaScript interop
     set_game_state_ptr(&mut game_state as *mut GameState);
@@ -236,7 +238,7 @@ fn main() {
         }
 
         // Update game state if playing
-        game_state.update(&mut rl, &mut audio, delta);
+        game_state.update(&mut rl, delta);
 
         // Show map editor UI when in editor mode
         if game_state.mode == game::GameMode::DebugMenu && menu_state.current_tab == MenuTab::MapEditor {

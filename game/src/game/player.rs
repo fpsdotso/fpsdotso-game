@@ -34,18 +34,6 @@ pub struct Player {
 
     /// Maximum health
     pub max_health: f32,
-
-    /// Is player currently shooting
-    pub is_shooting: bool,
-
-    /// Muzzle flash timer (for visual effect)
-    pub muzzle_flash_timer: f32,
-
-    /// Time since last shot (for fire rate limiting)
-    pub shot_cooldown: f32,
-
-    /// Fire rate (time between shots in seconds)
-    pub fire_rate: f32,
 }
 
 impl Player {
@@ -75,32 +63,11 @@ impl Player {
             is_running: false,
             health: 100.0,
             max_health: 100.0,
-            is_shooting: false,
-            muzzle_flash_timer: 0.0,
-            shot_cooldown: 0.0,
-            fire_rate: 0.1, // 10 shots per second (submachine gun)
         }
     }
 
     /// Update player movement and camera based on input
     pub fn update(&mut self, rl: &RaylibHandle, delta: f32) {
-        // Update timers
-        if self.shot_cooldown > 0.0 {
-            self.shot_cooldown -= delta;
-        }
-        if self.muzzle_flash_timer > 0.0 {
-            self.muzzle_flash_timer -= delta;
-        }
-
-        // Check for shooting (left mouse button)
-        if rl.is_mouse_button_down(MouseButton::MOUSE_BUTTON_LEFT) && self.shot_cooldown <= 0.0 {
-            self.is_shooting = true;
-            self.shot_cooldown = self.fire_rate;
-            self.muzzle_flash_timer = 0.05; // 50ms flash duration
-        } else {
-            self.is_shooting = false;
-        }
-
         // Check for running (Shift key)
         self.is_running = rl.is_key_down(KeyboardKey::KEY_LEFT_SHIFT) || rl.is_key_down(KeyboardKey::KEY_RIGHT_SHIFT);
 
@@ -250,5 +217,40 @@ impl Player {
             Vector3::new(0.0, 1.0, 0.0),
             70.0,
         );
+    }
+
+    /// Apply mobile (touch) inputs: 2D movement vector and look delta
+    pub fn apply_mobile_input(&mut self, move_vec: Vector2, look_delta: Vector2, delta: f32) {
+        // Update yaw/pitch from right joystick look
+        self.yaw += look_delta.x * self.mouse_sensitivity * 5.0; // amplify slightly for touch
+        self.pitch -= look_delta.y * self.mouse_sensitivity * 5.0;
+        self.pitch = self.pitch.clamp(-89.0, 89.0);
+
+        // Recompute direction vectors
+        let yaw_rad = self.yaw.to_radians();
+        let pitch_rad = self.pitch.to_radians();
+        let forward = Vector3::new(yaw_rad.cos() * pitch_rad.cos(), 0.0, yaw_rad.sin() * pitch_rad.cos()).normalized();
+        let right = Vector3::new((yaw_rad + 90.0_f32.to_radians()).cos(), 0.0, (yaw_rad + 90.0_f32.to_radians()).sin());
+
+        // Map move_vec x->strafe, y->forward/back
+        let mut movement = Vector3::zero();
+        movement = movement + forward * (-move_vec.y);
+        movement = movement + right * (move_vec.x);
+
+        if movement.length() > 0.0 {
+            movement = movement.normalized();
+        }
+
+        let effective_speed = self.move_speed;
+        let velocity = movement * effective_speed * delta;
+        self.position = self.position + velocity;
+
+        // Clamp to bounds
+        let boundary = 25.0;
+        self.position.x = self.position.x.clamp(-boundary, boundary);
+        self.position.z = self.position.z.clamp(-boundary, boundary);
+
+        // Update camera
+        self.update_camera();
     }
 }
