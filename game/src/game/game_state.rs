@@ -64,6 +64,12 @@ pub struct GameState {
 
     /// Optional touch controls for mobile
     pub touch_controls: Option<TouchControls>,
+
+    /// Muzzle flash timer (time remaining for flash effect)
+    muzzle_flash_timer: f32,
+
+    /// Screen flash timer (time remaining for screen flash)
+    screen_flash_timer: f32,
 }
 
 impl GameState {
@@ -79,12 +85,35 @@ impl GameState {
             current_player_authority: None,
             other_players: Vec::new(),
             touch_controls: None,
+            muzzle_flash_timer: 0.0,
+            screen_flash_timer: 0.0,
         }
     }
 
     /// Initialize touch controls
     pub fn init_touch_controls(&mut self, screen_width: f32, screen_height: f32) {
         self.touch_controls = Some(TouchControls::new(screen_width, screen_height));
+    }
+
+    /// Handle shooting - play sound and trigger visual effects
+    pub fn shoot(&mut self, audio: &mut RaylibAudio) {
+        // Load and immediately play the gunshot sound
+        // Note: The sound plays asynchronously, so even though the Sound object
+        // is dropped after this scope, the audio continues playing in raylib's audio thread
+        if let Ok(mut sound) = audio.new_sound("assets/gun/audio/submachinegun-gunshot.mp3") {
+            sound.set_volume(0.3); // Set volume to 30%
+            sound.play();
+            // Important: Don't drop immediately - keep in scope for a moment
+            std::mem::forget(sound); // Leak the sound so it stays alive during playback
+        }
+
+        // Trigger muzzle flash (lasts 0.05 seconds)
+        self.muzzle_flash_timer = 0.05;
+
+        // Trigger screen flash (lasts 0.1 seconds)
+        self.screen_flash_timer = 0.1;
+
+        println!("🔫 Bang!");
     }
 
     /// Set the current game for blockchain synchronization
@@ -266,7 +295,7 @@ impl GameState {
     }
 
     /// Update game logic
-    pub fn update(&mut self, rl: &mut RaylibHandle, delta: f32) {
+    pub fn update(&mut self, rl: &mut RaylibHandle, audio: &mut RaylibAudio, delta: f32) {
         // ESC to toggle between menu and game
         if rl.is_key_pressed(KeyboardKey::KEY_ESCAPE) {
             if self.mode == GameMode::Playing {
@@ -302,12 +331,20 @@ impl GameState {
                 self.send_player_input(rl, player, delta);
             }
 
-            // Handle shoot (no-op on chain yet)
-            if let Some(tc) = &self.touch_controls {
-                if tc.get_shoot_pressed() {
-                    // Placeholder: print only
-                    println!("🔫 Shoot pressed (no-op)");
-                }
+            // Handle shooting - left mouse button or touch shoot button
+            let should_shoot = rl.is_mouse_button_pressed(MouseButton::MOUSE_BUTTON_LEFT) ||
+                self.touch_controls.as_ref().map_or(false, |tc| tc.get_shoot_pressed());
+
+            if should_shoot {
+                self.shoot(audio);
+            }
+
+            // Update effect timers
+            if self.muzzle_flash_timer > 0.0 {
+                self.muzzle_flash_timer -= delta;
+            }
+            if self.screen_flash_timer > 0.0 {
+                self.screen_flash_timer -= delta;
             }
 
             // Smoothly interpolate other players with dead reckoning for latency compensation
@@ -851,7 +888,7 @@ impl GameState {
             );
 
             // Draw gun model in front of camera (viewmodel)
-            Self::draw_gun_viewmodel(&mut d3d, &player);
+            Self::draw_gun_viewmodel(&mut d3d, &player, self.muzzle_flash_timer);
         }
 
         // Draw 2D UI elements (crosshair, health bar) after 3D rendering
@@ -866,10 +903,22 @@ impl GameState {
         if let Some(tc) = &self.touch_controls {
             tc.draw(d);
         }
+
+        // Screen flash effect when shooting (rendered last as overlay)
+        if self.screen_flash_timer > 0.0 {
+            let intensity = (self.screen_flash_timer / 0.1 * 80.0) as u8; // Max 80 alpha
+            d.draw_rectangle(
+                0,
+                0,
+                d.get_screen_width(),
+                d.get_screen_height(),
+                Color::new(255, 255, 255, intensity),
+            );
+        }
     }
 
     /// Draw the gun viewmodel (first-person weapon view) - SIMPLIFIED VERSION
-    fn draw_gun_viewmodel(d3d: &mut RaylibMode3D<RaylibDrawHandle>, player: &Player) {
+    fn draw_gun_viewmodel(d3d: &mut RaylibMode3D<RaylibDrawHandle>, player: &Player, muzzle_flash_timer: f32) {
         // Calculate gun position relative to camera
         let yaw_rad = player.yaw.to_radians();
         let pitch_rad = player.pitch.to_radians();
@@ -944,6 +993,19 @@ impl GameState {
             let z = -0.1;
             let pos = to_world(0.0, y, z);
             d3d.draw_sphere(pos, 0.03, Color::new(156, 81, 255, 255)); // Solana purple
+        }
+
+        // Muzzle flash effect when shooting
+        if muzzle_flash_timer > 0.0 {
+            // Flash intensity fades with timer
+            let intensity = (muzzle_flash_timer / 0.05 * 255.0) as u8;
+
+            // Bright yellow/orange flash at barrel tip
+            let flash_pos = to_world(0.0, 0.0, 0.6); // At the end of barrel
+            d3d.draw_sphere(flash_pos, 0.15, Color::new(255, 220, 100, intensity));
+
+            // Outer glow
+            d3d.draw_sphere(flash_pos, 0.25, Color::new(255, 180, 50, intensity / 2));
         }
     }
 

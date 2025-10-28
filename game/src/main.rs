@@ -10,6 +10,11 @@ use map::MapBuilder;
 use menu::{MenuState, MenuTab};
 use game::GameState;
 
+// Emscripten bindings for JavaScript interop
+extern "C" {
+    fn emscripten_run_script_string(script: *const std::os::raw::c_char) -> *const std::os::raw::c_char;
+}
+
 // Global game state for JavaScript interop
 // Using thread_local since Emscripten is single-threaded
 thread_local! {
@@ -172,10 +177,34 @@ fn main() {
     // Create game state
     let mut game_state = GameState::new();
 
-    // Initialize touch controls based on current screen size
+    // Initialize touch controls only on touch-enabled devices
     let screen_w = rl.get_screen_width() as f32;
     let screen_h = rl.get_screen_height() as f32;
-    game_state.init_touch_controls(screen_w, screen_h);
+
+    // Check if device has touch support via JavaScript
+    let is_touch_device = unsafe {
+        let js_code = std::ffi::CString::new(
+            r#"
+            (function() {
+                // Check if device has touch support
+                return ('ontouchstart' in window) ||
+                       (navigator.maxTouchPoints > 0) ||
+                       (navigator.msMaxTouchPoints > 0);
+            })()
+            "#
+        ).unwrap();
+
+        let result_ptr = emscripten_run_script_string(js_code.as_ptr());
+        let result_str = std::ffi::CStr::from_ptr(result_ptr).to_str().unwrap_or("false");
+        result_str == "true"
+    };
+
+    if is_touch_device {
+        println!("📱 Touch device detected - enabling touch controls");
+        game_state.init_touch_controls(screen_w, screen_h);
+    } else {
+        println!("🖱️ Desktop device detected - touch controls disabled");
+    }
 
     // Set the game state pointer for JavaScript interop
     set_game_state_ptr(&mut game_state as *mut GameState);
@@ -264,7 +293,7 @@ fn main() {
         }
 
         // Update game state if playing
-        game_state.update(&mut rl, delta);
+        game_state.update(&mut rl, &mut audio, delta);
 
         // Capture mouse if in playing mode
         game_state.capture_mouse_if_playing(&mut rl);
