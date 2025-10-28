@@ -325,11 +325,13 @@ impl GameState {
 
                 // Interpolate towards predicted position (not just target)
                 // This makes remote players appear smooth even with latency
-                let interp_speed = 15.0; // Higher speed for more responsive feel
-                player.position = player.position.lerp(predicted_position, delta * interp_speed);
+                let position_interp_speed = 15.0; // Higher speed for more responsive feel
+                player.position = player.position.lerp(predicted_position, delta * position_interp_speed);
 
-                // Interpolate rotation (handle angle wrapping for smooth rotation)
-                player.rotation = player.rotation.lerp(player.target_rotation, delta * interp_speed);
+                // Interpolate rotation with GENTLER speed to reduce gun jitter
+                // Rotation needs to be smoother than position for visual comfort
+                let rotation_interp_speed = 8.0; // Slower for smoother gun/direction indicator
+                player.rotation = player.rotation.lerp(player.target_rotation, delta * rotation_interp_speed);
             }
 
             // Client-side prediction for local player with minimal server reconciliation
