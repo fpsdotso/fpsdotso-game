@@ -543,8 +543,9 @@ impl GameState {
 
         let team_num = player_data.get("team")
             .and_then(|v: &serde_json::Value| v.as_u64())
-            .unwrap_or(0);
-        let team = if team_num == 0 { "A" } else { "B" }.to_string();
+            .unwrap_or(1);
+        // Team 1 = Blue (A), Team 2 = Red (B)
+        let team = if team_num == 1 { "A" } else { "B" }.to_string();
 
         let is_alive = player_data.get("isAlive")
             .and_then(|v: &serde_json::Value| v.as_bool())
