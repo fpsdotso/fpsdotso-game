@@ -25,6 +25,7 @@ import LobbyRoom from "./components/LobbyRoom";
 import Minimap from "./components/Minimap";
 import MatchStatus from "./components/MatchStatus";
 import RespawnOverlay from "./components/RespawnOverlay";
+import VirtualJoystick from "./components/VirtualJoystick";
 
 // NOTE: This app is configured to connect to Solana LOCALNET only
 // RPC URL is hardcoded to http://127.0.0.1:8899 in solana-bridge.js
@@ -807,6 +808,13 @@ function App() {
           display: activeTab === 'mapeditor' ? 'block' : 'none'
         }}
       ></canvas>
+
+      {/* Virtual Joystick for mobile */}
+      <VirtualJoystick 
+        isPlaying={currentGameState === 1 && activeTab === 'mapeditor'} 
+        gameId={currentLobbyData?.gamePublicKey}
+        onInput={(input) => console.log('Virtual joystick input:', input)}
+      />
 
       {/* Web UI overlay */}
       <div className="web-ui-overlay" style={{ pointerEvents: activeTab === 'mapeditor' ? 'none' : 'auto' }}>

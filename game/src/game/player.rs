@@ -85,7 +85,7 @@ impl Player {
     }
 
     /// Update player movement and camera based on input
-    pub fn update(&mut self, rl: &RaylibHandle, delta: f32) {
+    pub fn update(&mut self, rl: &RaylibHandle, delta: f32, joystick_input: Option<(bool, bool, bool, bool)>, mobile_camera_input: Option<(f32, f32)>) {
         // Check for running (Shift key)
         self.is_running = rl.is_key_down(KeyboardKey::KEY_LEFT_SHIFT) || rl.is_key_down(KeyboardKey::KEY_RIGHT_SHIFT);
 
@@ -98,6 +98,12 @@ impl Player {
         // Update yaw (horizontal) and pitch (vertical)
         self.yaw += mouse_delta.x * self.mouse_sensitivity;
         self.pitch -= mouse_delta.y * self.mouse_sensitivity;
+
+        // Mobile camera input (touch drag)
+        if let Some((delta_x, delta_y)) = mobile_camera_input {
+            self.yaw += delta_x;
+            self.pitch -= delta_y;
+        }
 
         // Clamp pitch to prevent camera flipping
         self.pitch = self.pitch.clamp(-89.0, 89.0);
@@ -125,24 +131,39 @@ impl Player {
             (yaw_rad + 90.0_f32.to_radians()).sin(),
         );
 
-        // WASD movement
+        // WASD movement + joystick input
         let mut movement = Vector3::zero();
 
-        if rl.is_key_down(KeyboardKey::KEY_W) {
+        // Check for forward movement (W key or joystick forward)
+        let forward_pressed = rl.is_key_down(KeyboardKey::KEY_W) || 
+            joystick_input.map_or(false, |(fwd, _, _, _)| fwd);
+        if forward_pressed {
             // Move forward (ignore Y component for ground movement)
             let forward = Vector3::new(direction.x, 0.0, direction.z).normalized();
             movement = movement + forward;
         }
-        if rl.is_key_down(KeyboardKey::KEY_S) {
+        
+        // Check for backward movement (S key or joystick backward)
+        let backward_pressed = rl.is_key_down(KeyboardKey::KEY_S) || 
+            joystick_input.map_or(false, |(_, back, _, _)| back);
+        if backward_pressed {
             // Move backward
             let forward = Vector3::new(direction.x, 0.0, direction.z).normalized();
             movement = movement - forward;
         }
-        if rl.is_key_down(KeyboardKey::KEY_A) {
+        
+        // Check for left movement (A key or joystick left)
+        let left_pressed = rl.is_key_down(KeyboardKey::KEY_A) || 
+            joystick_input.map_or(false, |(_, _, left, _)| left);
+        if left_pressed {
             // Strafe left
             movement = movement - right;
         }
-        if rl.is_key_down(KeyboardKey::KEY_D) {
+        
+        // Check for right movement (D key or joystick right)
+        let right_pressed = rl.is_key_down(KeyboardKey::KEY_D) || 
+            joystick_input.map_or(false, |(_, _, _, right)| right);
+        if right_pressed {
             // Strafe right
             movement = movement + right;
         }

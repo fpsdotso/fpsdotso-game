@@ -81,6 +81,9 @@ pub struct GameState {
 
     /// Active bullet trails
     bullet_trails: Vec<BulletTrail>,
+
+    /// Virtual joystick input state
+    joystick_input: (bool, bool, bool, bool), // (forward, backward, left, right)
 }
 
 impl GameState {
@@ -99,7 +102,60 @@ impl GameState {
             muzzle_flash_timer: 0.0,
             screen_flash_timer: 0.0,
             bullet_trails: Vec::new(),
+            joystick_input: (false, false, false, false),
         }
+    }
+
+    /// Get joystick input from JavaScript global variable
+    fn get_joystick_input_from_js(&self) -> Option<(bool, bool, bool, bool)> {
+        use std::os::raw::c_char;
+        use std::ffi::CString;
+
+        let js_code = r#"
+            (() => {
+                if (window.joystickInput) {
+                    return JSON.stringify({
+                        forward: window.joystickInput.forward,
+                        backward: window.joystickInput.backward,
+                        left: window.joystickInput.left,
+                        right: window.joystickInput.right
+                    });
+                }
+                return '{}';
+            })();
+        "#;
+
+        unsafe {
+            let c_str = CString::new(js_code).unwrap();
+            let result_ptr = emscripten_run_script_string(c_str.as_ptr());
+
+            if !result_ptr.is_null() {
+                let result_str = std::ffi::CStr::from_ptr(result_ptr)
+                    .to_string_lossy()
+                    .into_owned();
+
+                if !result_str.is_empty() && result_str != "{}" {
+                    // Parse JSON response
+                    if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&result_str) {
+                        if let (Some(forward), Some(backward), Some(left), Some(right)) = (
+                            parsed.get("forward").and_then(|v| v.as_bool()),
+                            parsed.get("backward").and_then(|v| v.as_bool()),
+                            parsed.get("left").and_then(|v| v.as_bool()),
+                            parsed.get("right").and_then(|v| v.as_bool()),
+                        ) {
+                            return Some((forward, backward, left, right));
+                        }
+                    }
+                }
+            }
+        }
+
+        None
+    }
+
+    /// Set virtual joystick input
+    pub fn set_joystick_input(&mut self, forward: bool, backward: bool, left: bool, right: bool) {
+        self.joystick_input = (forward, backward, left, right);
     }
 
     /// Initialize touch controls
@@ -489,9 +545,28 @@ impl GameState {
 
         // Update player if in playing mode
         if self.mode == GameMode::Playing {
+            // Get joystick input and mobile camera input before borrowing player
+            let joystick_input = self.get_joystick_input_from_js();
+            let mobile_camera_input = self.get_mobile_camera_input_from_js();
+            
+            // Clear camera input after processing to prevent continuous movement
+            // This makes it feel like mouse input (only moves when dragging)
+            if mobile_camera_input.is_some() {
+                use std::os::raw::c_char;
+                use std::ffi::CString;
+                
+                let js_code = r#"window.cameraInput = null;"#;
+                unsafe {
+                    let c_str = CString::new(js_code).unwrap();
+                    emscripten_run_script(c_str.as_ptr());
+                }
+            }
+            
             if let Some(ref mut player) = self.player {
                 // Update from touch controls if available and active
-                if let Some(tc) = &mut self.touch_controls {
+                // Touch controls disabled - using React VirtualJoystick instead
+                if false {
+                    if let Some(tc) = &mut self.touch_controls {
                     tc.update(rl);
                     if tc.is_active() {
                         let (fwd, back, left, right) = tc.get_movement_input();
@@ -503,10 +578,11 @@ impl GameState {
                         if right { mv.x += 1.0; }
                         player.apply_mobile_input(mv, look, delta);
                     } else {
-                        player.update(rl, delta);
+                        player.update(rl, delta, joystick_input, mobile_camera_input);
+                    }
                     }
                 } else {
-                    player.update(rl, delta);
+                    player.update(rl, delta, joystick_input, mobile_camera_input);
                 }
             }
 
@@ -515,9 +591,8 @@ impl GameState {
                 self.send_player_input(rl, player, delta);
             }
 
-            // Handle shooting - left mouse button or touch shoot button
-            let should_shoot = rl.is_mouse_button_pressed(MouseButton::MOUSE_BUTTON_LEFT) ||
-                self.touch_controls.as_ref().map_or(false, |tc| tc.get_shoot_pressed());
+            // Handle shooting - left mouse button only (touch controls disabled)
+            let should_shoot = rl.is_mouse_button_pressed(MouseButton::MOUSE_BUTTON_LEFT);
 
             if should_shoot {
                 self.shoot();
@@ -616,6 +691,19 @@ impl GameState {
         let yaw_radians = player.yaw.to_radians();
         let pitch_radians = player.pitch.to_radians();
 
+        // Get joystick input to combine with WASD for blockchain
+        let joystick_input = self.get_joystick_input_from_js();
+        
+        // Combine WASD and joystick input for blockchain
+        let forward = rl.is_key_down(KeyboardKey::KEY_W) || 
+            joystick_input.map_or(false, |(fwd, _, _, _)| fwd);
+        let backward = rl.is_key_down(KeyboardKey::KEY_S) || 
+            joystick_input.map_or(false, |(_, back, _, _)| back);
+        let left = rl.is_key_down(KeyboardKey::KEY_A) || 
+            joystick_input.map_or(false, |(_, _, left, _)| left);
+        let right = rl.is_key_down(KeyboardKey::KEY_D) || 
+            joystick_input.map_or(false, |(_, _, _, right)| right);
+
         // Prepare input data as JSON - now sending rotation instead of mouse deltas
         let input_json = format!(
             r#"{{
@@ -629,10 +717,10 @@ impl GameState {
                 "deltaTime": {},
                 "gameId": "{}"
             }}"#,
-            rl.is_key_down(KeyboardKey::KEY_W),
-            rl.is_key_down(KeyboardKey::KEY_S),
-            rl.is_key_down(KeyboardKey::KEY_A),
-            rl.is_key_down(KeyboardKey::KEY_D),
+            forward,
+            backward,
+            left,
+            right,
             pitch_radians,  // rotationX (pitch)
             yaw_radians,    // rotationY (yaw) - main horizontal rotation
             0.0,            // rotationZ (roll) - not used for FPS
@@ -1153,9 +1241,10 @@ impl GameState {
             Self::draw_health_bar(d, player);
         }
 
-        if let Some(tc) = &self.touch_controls {
-            tc.draw(d);
-        }
+        // Touch controls disabled - using React VirtualJoystick instead
+        // if let Some(tc) = &self.touch_controls {
+        //     tc.draw(d);
+        // }
 
         // Screen flash effect when shooting (rendered last as overlay)
         if self.screen_flash_timer > 0.0 {

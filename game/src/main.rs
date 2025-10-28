@@ -147,7 +147,6 @@ fn draw_editor_ui(
     map_builder.draw_imgui_ui(ui, viewport_width, style_applied)
 }
 
-
 fn main() {
     // Initialize the Raylib window with MSAA for better quality
     let (mut rl, thread) = raylib::init()
@@ -199,12 +198,8 @@ fn main() {
         result_str == "true"
     };
 
-    if is_touch_device {
-        println!("📱 Touch device detected - enabling touch controls");
-        game_state.init_touch_controls(screen_w, screen_h);
-    } else {
-        println!("🖱️ Desktop device detected - touch controls disabled");
-    }
+    // Disable built-in touch controls - we use React VirtualJoystick instead
+    println!("🎮 Using React VirtualJoystick - built-in touch controls disabled");
 
     // Set the game state pointer for JavaScript interop
     set_game_state_ptr(&mut game_state as *mut GameState);
