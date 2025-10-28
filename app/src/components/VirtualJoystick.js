@@ -32,6 +32,7 @@ const VirtualJoystick = ({ isPlaying, gameId, onInput }) => {
   const animationFrameRef = useRef(null);
   const containerRef = useRef(null);
   const joystickRef = useRef(null);
+  const shootInputSentRef = useRef(false);
 
   // Mobile detection and joystick positioning
   useEffect(() => {
@@ -446,6 +447,7 @@ const VirtualJoystick = ({ isPlaying, gameId, onInput }) => {
       isPressed: true,
       touchId: touch.identifier,
     });
+    shootInputSentRef.current = false; // Reset shoot input flag
     console.log("🔫 Shoot button pressed!");
   }, []);
 
@@ -478,6 +480,7 @@ const VirtualJoystick = ({ isPlaying, gameId, onInput }) => {
       isPressed: true,
       touchId: 999, // Use special ID for mouse
     });
+    shootInputSentRef.current = false; // Reset shoot input flag
     console.log("🔫 Shoot button mouse down!");
   }, []);
 
@@ -656,14 +659,19 @@ const VirtualJoystick = ({ isPlaying, gameId, onInput }) => {
     }
   }, [isPlaying, cameraTouch]);
 
-  // Send shoot input to Rust game engine
+  // Send shoot input to Rust game engine (only on press, not continuous)
   const sendShootInput = useCallback(() => {
     if (!isPlaying || !window.Module || !shootButton.isPressed) return;
 
+    // Only send shoot input once per button press
+    if (shootInputSentRef.current) return;
+
     try {
       // Set shoot input in global variable for Rust to read
+      // Only send once when button is pressed, not continuously
       window.shootInput = true;
-      console.log("🔫 Shoot input set for game engine");
+      shootInputSentRef.current = true; // Mark as sent
+      console.log("🔫 Shoot input set for game engine (single shot)");
     } catch (error) {
       console.error("❌ Failed to set shoot input:", error);
     }
@@ -759,11 +767,11 @@ const VirtualJoystick = ({ isPlaying, gameId, onInput }) => {
           position: "absolute",
           right: "100px", // Right margin
           bottom: "100px", // Bottom margin
-          width: "90px",
-          height: "90px",
+          width: "80px",
+          height: "80px",
           borderRadius: "50%",
           backgroundColor: shootButton.isPressed ? "#cc3333" : "#e74c3c",
-          border: "4px solid #ffffff",
+          border: "3px solid #ffffff",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
@@ -771,7 +779,7 @@ const VirtualJoystick = ({ isPlaying, gameId, onInput }) => {
           userSelect: "none",
           opacity: shootButton.isPressed ? 0.85 : 1.0,
           transition: "all 0.15s ease",
-          boxShadow: "0 6px 12px rgba(0, 0, 0, 0.4)",
+          boxShadow: "0 4px 8px rgba(0, 0, 0, 0.4)",
           // Add inner shadow for depth
           background: shootButton.isPressed
             ? "radial-gradient(circle, #cc3333 0%, #aa2222 100%)"
@@ -786,8 +794,8 @@ const VirtualJoystick = ({ isPlaying, gameId, onInput }) => {
           src="/bullet.png"
           alt="Shoot"
           style={{
-            width: "50px",
-            height: "50px",
+            width: "45px",
+            height: "45px",
             objectFit: "contain",
             // Remove filter to show original bullet colors
           }}
