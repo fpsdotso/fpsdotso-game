@@ -4,12 +4,11 @@
  */
 
 import { AnchorProvider, Program, web3 } from "@coral-xyz/anchor";
-import { Connection, PublicKey, Transaction } from "@solana/web3.js";
+import { Connection, PublicKey } from "@solana/web3.js";
 import mapRegistryIdl from "./idl/map_registry.json";
 import matchmakingIdl from "./idl/matchmaking.json";
 import gameIdl from "./idl/game.json";
 import * as EphemeralWallet from "./ephemeral-wallet.js";
-import websocketGameManager from "./websocket-game-manager.js";
 
 // Program IDs from the IDLs
 const PROGRAM_ID = new PublicKey(mapRegistryIdl.address);

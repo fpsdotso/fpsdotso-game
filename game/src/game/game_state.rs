@@ -7,6 +7,7 @@ use crate::game::touch_controls::TouchControls;
 extern "C" {
     fn emscripten_run_script(script: *const std::os::raw::c_char);
     fn emscripten_run_script_string(script: *const std::os::raw::c_char) -> *const std::os::raw::c_char;
+    fn emscripten_get_now() -> f64; // Returns current time in milliseconds
 }
 
 /// Represents the current state of the game
@@ -30,6 +31,9 @@ pub struct OtherPlayer {
     // Interpolation fields for smooth movement
     pub target_position: Vector3,
     pub target_rotation: Vector3,
+    // Dead reckoning fields for latency compensation
+    pub velocity: Vector3,           // Estimated velocity for prediction
+    pub last_update_time: f64,       // Timestamp of last server update
 }
 
 /// Main game state that manages the FPS game
@@ -306,30 +310,53 @@ impl GameState {
                 }
             }
 
-            // Smoothly interpolate other players toward their target positions
+            // Smoothly interpolate other players with dead reckoning for latency compensation
             // This runs every frame for buttery smooth movement
-            let interp_speed = 10.0; // Higher = faster interpolation
+            let current_time = unsafe { emscripten_get_now() / 1000.0 };
             for player in &mut self.other_players {
-                // Interpolate position
-                player.position = player.position.lerp(player.target_position, delta * interp_speed);
+                // Dead reckoning: predict position based on velocity
+                // This compensates for network latency by extrapolating movement
+                let time_since_update = (current_time - player.last_update_time) as f32;
+
+                // Extrapolate position based on velocity (but limit to prevent overshooting)
+                let max_extrapolation_time = 0.2; // Max 200ms of extrapolation
+                let extrapolation_time = time_since_update.min(max_extrapolation_time);
+                let predicted_position = player.target_position + player.velocity * extrapolation_time;
+
+                // Interpolate towards predicted position (not just target)
+                // This makes remote players appear smooth even with latency
+                let interp_speed = 15.0; // Higher speed for more responsive feel
+                player.position = player.position.lerp(predicted_position, delta * interp_speed);
 
                 // Interpolate rotation (handle angle wrapping for smooth rotation)
                 player.rotation = player.rotation.lerp(player.target_rotation, delta * interp_speed);
             }
 
-            // Smoothly interpolate local player position towards server position for reconciliation
-            // This provides smooth server-authoritative movement while maintaining responsive client input
-            // NOTE: We only interpolate POSITION, not rotation (rotation stays client-side to avoid motion sickness)
+            // Client-side prediction for local player with minimal server reconciliation
+            // The local player movement is purely client-side for maximum responsiveness
+            // We only reconcile if there's a significant mismatch with the server
             if let Some(player) = &mut self.player {
-                let local_interp_speed = 8.0; // Smooth but responsive interpolation for local player
+                // Calculate distance between client prediction and server position
+                let position_error = (player.position - player.target_position).length();
 
-                // Interpolate position towards server target
-                // This reconciles any differences between client prediction and server position
-                player.position = player.position.lerp(player.target_position, delta * local_interp_speed);
+                // Only reconcile if error is significant (> 0.5 units)
+                // This prevents rubber-banding while still correcting major desyncs
+                let error_threshold = 0.5;
 
-                // Rotation (yaw/pitch) remains client-authoritative for responsiveness
-                // The server will receive rotation updates from sendPlayerInput()
-                // We update target rotation to match current rotation so they stay in sync
+                if position_error > error_threshold {
+                    // Snap correction for large errors (teleportation/major desync)
+                    if position_error > 5.0 {
+                        player.position = player.target_position;
+                        println!("⚠️ Large position error detected ({:.2}), snapping to server position", position_error);
+                    } else {
+                        // Gentle correction for small errors
+                        let correction_speed = 3.0;
+                        player.position = player.position.lerp(player.target_position, delta * correction_speed);
+                    }
+                }
+
+                // Rotation remains purely client-authoritative for responsiveness
+                // The server receives and broadcasts our rotation, no reconciliation needed
                 player.target_yaw = player.yaw;
                 player.target_pitch = player.pitch;
             }
@@ -537,14 +564,24 @@ impl GameState {
             return; // Don't add local player to other_players list
         }
 
+        // Get current time for dead reckoning
+        let current_time = unsafe { emscripten_get_now() / 1000.0 }; // Convert ms to seconds
+
         // Update or create remote player
         if let Some(existing) = self.other_players.iter_mut().find(|p| p.authority == authority) {
+            // Calculate velocity for dead reckoning (change in position / time)
+            let time_delta = current_time - existing.last_update_time;
+            if time_delta > 0.001 { // Avoid division by zero
+                existing.velocity = (new_position - existing.target_position) / time_delta as f32;
+            }
+
             // Update target position and rotation for smooth interpolation
             existing.target_position = new_position;
             existing.target_rotation = new_rotation;
             existing.username = username;
             existing.team = team;
             existing.is_alive = is_alive;
+            existing.last_update_time = current_time;
         } else {
             // New player - create with current position as both start and target
             let other_player = OtherPlayer {
@@ -556,6 +593,8 @@ impl GameState {
                 is_alive,
                 target_position: new_position,
                 target_rotation: new_rotation,
+                velocity: Vector3::zero(), // Start with no velocity
+                last_update_time: current_time,
             };
             println!("➕ Added new player: {} ({})", username, authority);
             self.other_players.push(other_player);
