@@ -243,6 +243,63 @@ impl GameState {
         }
     }
 
+    /// Call blockchain respawn instruction via JavaScript
+    fn call_respawn(&mut self, game_pubkey: &str) {
+        use std::os::raw::c_char;
+        use std::ffi::CString;
+
+        // Default spawn position (center of map, slightly elevated)
+        let spawn_x = 0.0_f32;
+        let spawn_y = 1.0_f32;
+        let spawn_z = 0.0_f32;
+
+        let js_code = format!(
+            r#"
+            (async () => {{
+                try {{
+                    if (window.gameBridge && window.gameBridge.respawnPlayer) {{
+                        console.log('♻️ Calling respawn transaction...');
+                        const result = await window.gameBridge.respawnPlayer('{}', {}, {}, {});
+                        console.log('✅ Respawn transaction sent:', result);
+                    }}
+                }} catch (error) {{
+                    console.error('Error calling respawn:', error);
+                }}
+            }})();
+            "#,
+            game_pubkey,
+            spawn_x,
+            spawn_y,
+            spawn_z
+        );
+
+        unsafe {
+            let c_str = CString::new(js_code).unwrap();
+            emscripten_run_script(c_str.as_ptr());
+        }
+
+        // Mark that we've attempted respawn (to avoid spamming)
+        if let Some(ref mut player) = self.player {
+            player.death_timestamp = -1.0; // Negative means respawn requested
+        }
+    }
+
+    /// Expose death state to JavaScript for React overlay
+    fn update_death_state_js(&self, is_dead: bool, timestamp: f64) {
+        use std::os::raw::c_char;
+        use std::ffi::CString;
+
+        let js_code = format!(
+            r#"window.gameDeathState = {{ dead: {}, timestamp: {} }};"#,
+            is_dead, timestamp
+        );
+
+        unsafe {
+            let c_str = CString::new(js_code).unwrap();
+            emscripten_run_script(c_str.as_ptr());
+        }
+    }
+
     /// Set the current game for blockchain synchronization
     pub fn set_current_game(&mut self, game_pubkey: String) {
         println!("🎮 Setting current game: {}", game_pubkey);
@@ -732,6 +789,12 @@ impl GameState {
 
         // Handle local player reconciliation
         if is_local_player {
+            // Variables to track state changes
+            let mut just_died = false;
+            let mut should_respawn = false;
+            let mut just_respawned = false;
+            let mut death_time = 0.0;
+
             if let Some(player) = &mut self.player {
                 // Update target position for smooth server reconciliation
                 // This allows the local player to interpolate towards the server's position
@@ -742,7 +805,52 @@ impl GameState {
 
                 // Update health from blockchain
                 player.health = health;
+
+                // Check for death
+                if player.health <= 0.0 && !player.is_dead {
+                    // Player just died
+                    player.is_dead = true;
+                    let current_time = unsafe { emscripten_get_now() / 1000.0 }; // Convert ms to seconds
+                    player.death_timestamp = current_time;
+                    println!("💀 Player died! Respawn available in 3 seconds...");
+
+                    just_died = true;
+                    death_time = current_time;
+                }
+
+                // Check for respawn
+                if player.is_dead && !is_alive {
+                    let current_time = unsafe { emscripten_get_now() / 1000.0 };
+                    let time_since_death = current_time - player.death_timestamp;
+
+                    if time_since_death >= 3.0 {
+                        should_respawn = true;
+                    }
+                } else if is_alive && player.is_dead {
+                    // Player respawned successfully
+                    player.is_dead = false;
+                    player.death_timestamp = 0.0;
+                    println!("✅ Player respawned!");
+
+                    just_respawned = true;
+                }
             }
+
+            // Handle state changes after releasing the borrow
+            if just_died {
+                self.update_death_state_js(true, death_time);
+            }
+
+            if should_respawn {
+                if let Some(game_pubkey) = self.current_game_pubkey.clone() {
+                    self.call_respawn(&game_pubkey);
+                }
+            }
+
+            if just_respawned {
+                self.update_death_state_js(false, 0.0);
+            }
+
             return; // Don't add local player to other_players list
         }
 

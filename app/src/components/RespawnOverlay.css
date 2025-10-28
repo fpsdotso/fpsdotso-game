@@ -1,0 +1,149 @@
+/* Respawn Overlay Styles */
+
+.respawn-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0, 0, 0, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000; /* Above everything else */
+  pointer-events: none; /* Don't block game input */
+  animation: fadeIn 0.3s ease-in;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.respawn-overlay-content {
+  text-align: center;
+  animation: slideUp 0.5s ease-out;
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(30px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.death-title {
+  font-size: 72px;
+  font-weight: bold;
+  color: #ff3333;
+  text-shadow:
+    0 0 20px rgba(255, 51, 51, 0.8),
+    0 0 40px rgba(255, 51, 51, 0.5),
+    0 4px 8px rgba(0, 0, 0, 0.8);
+  margin: 0 0 40px 0;
+  letter-spacing: 8px;
+  animation: pulseDeath 2s ease-in-out infinite;
+}
+
+@keyframes pulseDeath {
+  0%, 100% {
+    text-shadow:
+      0 0 20px rgba(255, 51, 51, 0.8),
+      0 0 40px rgba(255, 51, 51, 0.5),
+      0 4px 8px rgba(0, 0, 0, 0.8);
+  }
+  50% {
+    text-shadow:
+      0 0 30px rgba(255, 51, 51, 1),
+      0 0 60px rgba(255, 51, 51, 0.7),
+      0 4px 8px rgba(0, 0, 0, 0.8);
+  }
+}
+
+.respawn-timer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.timer-label {
+  font-size: 24px;
+  color: #cccccc;
+  margin: 0;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+}
+
+.timer-value {
+  font-size: 56px;
+  font-weight: bold;
+  font-family: 'Courier New', monospace;
+  color: #00f294; /* Solana green */
+  margin: 0;
+  text-shadow:
+    0 0 20px rgba(0, 242, 148, 0.6),
+    0 0 40px rgba(0, 242, 148, 0.3);
+  animation: pulseTimer 1s ease-in-out infinite;
+}
+
+@keyframes pulseTimer {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.1);
+  }
+}
+
+.respawn-message {
+  margin-top: 20px;
+}
+
+.respawning-text {
+  font-size: 32px;
+  font-weight: bold;
+  color: #00f294;
+  margin: 0;
+  text-shadow:
+    0 0 20px rgba(0, 242, 148, 0.8),
+    0 0 40px rgba(0, 242, 148, 0.4);
+  animation: pulseRespawn 0.8s ease-in-out infinite;
+}
+
+@keyframes pulseRespawn {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .death-title {
+    font-size: 48px;
+    letter-spacing: 4px;
+  }
+
+  .timer-label {
+    font-size: 18px;
+  }
+
+  .timer-value {
+    font-size: 42px;
+  }
+
+  .respawning-text {
+    font-size: 24px;
+  }
+}

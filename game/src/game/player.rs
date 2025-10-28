@@ -35,6 +35,12 @@ pub struct Player {
     /// Maximum health
     pub max_health: f32,
 
+    /// Is player dead (health <= 0)
+    pub is_dead: bool,
+
+    /// Timestamp when player died (for respawn cooldown)
+    pub death_timestamp: f64,
+
     /// Target position for server reconciliation (smooth interpolation)
     pub target_position: Vector3,
 
@@ -70,6 +76,8 @@ impl Player {
             is_running: false,
             health: 100.0,
             max_health: 100.0,
+            is_dead: false,
+            death_timestamp: 0.0,
             target_position: position, // Initialize to current position
             target_yaw: -90.0,
             target_pitch: 0.0,

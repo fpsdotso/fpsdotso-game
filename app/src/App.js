@@ -24,6 +24,7 @@ import LobbyBrowser from "./components/LobbyBrowser";
 import LobbyRoom from "./components/LobbyRoom";
 import Minimap from "./components/Minimap";
 import MatchStatus from "./components/MatchStatus";
+import RespawnOverlay from "./components/RespawnOverlay";
 
 // NOTE: This app is configured to connect to Solana LOCALNET only
 // RPC URL is hardcoded to http://127.0.0.1:8899 in solana-bridge.js
@@ -1124,6 +1125,9 @@ function App() {
                 Press <span style={{ color: '#9c51ff', fontWeight: 'bold' }}>ESC</span> to exit fullscreen
               </div>
             )}
+
+            {/* Respawn Overlay - Shows death screen and countdown */}
+            <RespawnOverlay />
           </>
         )}
       </div>
