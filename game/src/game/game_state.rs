@@ -153,6 +153,79 @@ impl GameState {
         None
     }
 
+    /// Get mobile camera input from JavaScript global variable
+    fn get_mobile_camera_input_from_js(&self) -> Option<(f32, f32)> {
+        use std::os::raw::c_char;
+        use std::ffi::CString;
+
+        let js_code = r#"
+            (() => {
+                if (window.cameraInput) {
+                    return JSON.stringify({
+                        deltaX: window.cameraInput.deltaX,
+                        deltaY: window.cameraInput.deltaY
+                    });
+                }
+                return '{}';
+            })();
+        "#;
+
+        unsafe {
+            let c_str = CString::new(js_code).unwrap();
+            let result_ptr = emscripten_run_script_string(c_str.as_ptr());
+
+            if !result_ptr.is_null() {
+                let result_str = std::ffi::CStr::from_ptr(result_ptr)
+                    .to_string_lossy()
+                    .into_owned();
+
+                if !result_str.is_empty() && result_str != "{}" {
+                    // Parse JSON response
+                    if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&result_str) {
+                        if let (Some(delta_x), Some(delta_y)) = (
+                            parsed.get("deltaX").and_then(|v| v.as_f64()),
+                            parsed.get("deltaY").and_then(|v| v.as_f64()),
+                        ) {
+                            return Some((delta_x as f32, delta_y as f32));
+                        }
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    /// Get mobile shoot input from JavaScript global variable
+    fn get_mobile_shoot_input_from_js(&self) -> bool {
+        use std::os::raw::c_char;
+        use std::ffi::CString;
+
+        let js_code = r#"
+            (() => {
+                if (window.shootInput) {
+                    return window.shootInput;
+                }
+                return false;
+            })();
+        "#;
+
+        unsafe {
+            let c_str = CString::new(js_code).unwrap();
+            let result_ptr = emscripten_run_script_string(c_str.as_ptr());
+
+            if !result_ptr.is_null() {
+                let result_str = std::ffi::CStr::from_ptr(result_ptr)
+                    .to_string_lossy()
+                    .into_owned();
+
+                if result_str == "true" {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
     /// Set virtual joystick input
     pub fn set_joystick_input(&mut self, forward: bool, backward: bool, left: bool, right: bool) {
         self.joystick_input = (forward, backward, left, right);
@@ -549,19 +622,6 @@ impl GameState {
             let joystick_input = self.get_joystick_input_from_js();
             let mobile_camera_input = self.get_mobile_camera_input_from_js();
             
-            // Clear camera input after processing to prevent continuous movement
-            // This makes it feel like mouse input (only moves when dragging)
-            if mobile_camera_input.is_some() {
-                use std::os::raw::c_char;
-                use std::ffi::CString;
-                
-                let js_code = r#"window.cameraInput = null;"#;
-                unsafe {
-                    let c_str = CString::new(js_code).unwrap();
-                    emscripten_run_script(c_str.as_ptr());
-                }
-            }
-            
             if let Some(ref mut player) = self.player {
                 // Update from touch controls if available and active
                 // Touch controls disabled - using React VirtualJoystick instead
@@ -591,11 +651,25 @@ impl GameState {
                 self.send_player_input(rl, player, delta);
             }
 
-            // Handle shooting - left mouse button only (touch controls disabled)
-            let should_shoot = rl.is_mouse_button_pressed(MouseButton::MOUSE_BUTTON_LEFT);
+            // Handle shooting - left mouse button or mobile shoot button
+            let mouse_shoot = rl.is_mouse_button_pressed(MouseButton::MOUSE_BUTTON_LEFT);
+            let mobile_shoot = self.get_mobile_shoot_input_from_js();
+            let should_shoot = mouse_shoot || mobile_shoot;
 
             if should_shoot {
                 self.shoot();
+                
+                // Clear mobile shoot input after processing to prevent continuous shooting
+                if mobile_shoot {
+                    use std::os::raw::c_char;
+                    use std::ffi::CString;
+                    
+                    let js_code = r#"window.shootInput = false;"#;
+                    unsafe {
+                        let c_str = CString::new(js_code).unwrap();
+                        emscripten_run_script(c_str.as_ptr());
+                    }
+                }
             }
 
             // Update effect timers
