@@ -9,6 +9,7 @@ import {
   getAllGames,
   getAvailableGames,
   joinGame,
+  joinAsSpectator,
   createGame,
   getPlayerCurrentGame,
   getGame,
@@ -26,6 +27,7 @@ import Minimap from "./components/Minimap";
 import MatchStatus from "./components/MatchStatus";
 import RespawnOverlay from "./components/RespawnOverlay";
 import VirtualJoystick from "./components/VirtualJoystick";
+import VictoryDialog from "./components/VictoryDialog";
 
 // NOTE: This app is configured to connect to Solana LOCALNET only
 // RPC URL is hardcoded to http://127.0.0.1:8899 in solana-bridge.js
@@ -70,6 +72,10 @@ function App() {
   // Game state tracking
   const [currentGameState, setCurrentGameState] = useState(null); // 0=waiting, 1=active, 2=ended, 3=paused
   const [isFullscreen, setIsFullscreen] = useState(false);
+
+  // Victory dialog state
+  const [showVictoryDialog, setShowVictoryDialog] = useState(false);
+  const [victoryData, setVictoryData] = useState(null);
 
   useEffect(() => {
     async function init() {
@@ -161,16 +167,19 @@ function App() {
         console.log('🔄 Refreshing lobby data, players:', players);
 
         const teamAPlayers = players
-          .filter(p => p.team === 'A')
+          .filter(p => p.team === 'A' && !p.isSpectator)
           .map(p => p.username);
         const teamBPlayers = players
-          .filter(p => p.team === 'B')
+          .filter(p => p.team === 'B' && !p.isSpectator)
+          .map(p => p.username);
+        const spectators = players
+          .filter(p => p.isSpectator)
           .map(p => p.username);
         const teamAReady = players
-          .filter(p => p.team === 'A')
+          .filter(p => p.team === 'A' && !p.isSpectator)
           .map(p => p.isReady);
         const teamBReady = players
-          .filter(p => p.team === 'B')
+          .filter(p => p.team === 'B' && !p.isSpectator)
           .map(p => p.isReady);
 
         console.log('🔄 Ready states - Team A:', teamAReady, 'Team B:', teamBReady);
@@ -179,6 +188,7 @@ function App() {
           ...prev,
           teamA: teamAPlayers,
           teamB: teamBPlayers,
+          spectators: spectators,
           teamAReady: teamAReady,
           teamBReady: teamBReady
         }));
@@ -255,6 +265,47 @@ function App() {
           // Game state 2 = ended
           else if (gameState === 2) {
             console.log('🏁 Game has ended');
+
+            // Fetch final game data to get the winning team
+            const finalGameData = await getGame(currentLobbyData.gamePublicKey);
+            if (finalGameData && finalGameData.winningTeam !== null && finalGameData.winningTeam !== undefined) {
+              const winningTeamName = finalGameData.winningTeam === 1 ? 'Team A (Blue)' : 'Team B (Red)';
+              const winningColor = finalGameData.winningTeam === 1 ? '#00d9ff' : '#ff4444';
+              console.log(`🏆 ${winningTeamName} won the match!`);
+
+              // Show victory message
+              const victoryMessage = document.createElement('div');
+              victoryMessage.style.cssText = `
+                position: fixed;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+                background: rgba(20, 20, 30, 0.95);
+                border: 3px solid ${winningColor};
+                border-radius: 16px;
+                padding: 40px 60px;
+                z-index: 10000;
+                text-align: center;
+                box-shadow: 0 0 50px ${winningColor};
+              `;
+              victoryMessage.innerHTML = `
+                <h1 style="color: ${winningColor}; font-size: 48px; margin: 0 0 20px 0; text-shadow: 0 0 20px ${winningColor};">
+                  🏆 VICTORY! 🏆
+                </h1>
+                <p style="color: white; font-size: 32px; margin: 0;">
+                  ${winningTeamName} Wins!
+                </p>
+                <p style="color: #c8c8dc; font-size: 16px; margin: 20px 0 0 0;">
+                  Final Score: Team A ${finalGameData.teamAKills || 0} - ${finalGameData.teamBKills || 0} Team B
+                </p>
+              `;
+              document.body.appendChild(victoryMessage);
+
+              // Remove victory message after 5 seconds
+              setTimeout(() => {
+                document.body.removeChild(victoryMessage);
+              }, 5000);
+            }
 
             // Tell Raylib game to switch back to menu mode
             if (window.gameBridge && window.gameBridge.stopGameMode) {
@@ -413,18 +464,21 @@ function App() {
           const players = await getAllPlayersInGame(currentGamePubkey);
           console.log("👥 Players in game:", players);
 
-          // Separate players into teams
+          // Separate players into teams and spectators
           const teamAPlayers = players
-            .filter(p => p.team === 'A')
+            .filter(p => p.team === 'A' && !p.isSpectator)
             .map(p => p.username);
           const teamBPlayers = players
-            .filter(p => p.team === 'B')
+            .filter(p => p.team === 'B' && !p.isSpectator)
+            .map(p => p.username);
+          const spectators = players
+            .filter(p => p.isSpectator)
             .map(p => p.username);
           const teamAReady = players
-            .filter(p => p.team === 'A')
+            .filter(p => p.team === 'A' && !p.isSpectator)
             .map(p => p.isReady);
           const teamBReady = players
-            .filter(p => p.team === 'B')
+            .filter(p => p.team === 'B' && !p.isSpectator)
             .map(p => p.isReady);
 
           // Determine if current player is the leader
@@ -448,6 +502,7 @@ function App() {
             maxPlayers: gameData.maxPlayersPerTeam * 2,
             teamA: teamAPlayers,
             teamB: teamBPlayers,
+            spectators: spectators,
             teamAReady: teamAReady,
             teamBReady: teamBReady,
           });
@@ -598,16 +653,19 @@ function App() {
           console.log('👥 Players after creation:', players);
 
           const teamAPlayers = players
-            .filter(p => p.team === 'A')
+            .filter(p => p.team === 'A' && !p.isSpectator)
             .map(p => p.username);
           const teamBPlayers = players
-            .filter(p => p.team === 'B')
+            .filter(p => p.team === 'B' && !p.isSpectator)
+            .map(p => p.username);
+          const spectators = players
+            .filter(p => p.isSpectator)
             .map(p => p.username);
           const teamAReady = players
-            .filter(p => p.team === 'A')
+            .filter(p => p.team === 'A' && !p.isSpectator)
             .map(p => p.isReady);
           const teamBReady = players
-            .filter(p => p.team === 'B')
+            .filter(p => p.team === 'B' && !p.isSpectator)
             .map(p => p.isReady);
 
           // Verify leadership against blockchain
@@ -626,6 +684,7 @@ function App() {
             maxPlayers: maxPlayers,
             teamA: teamAPlayers.length > 0 ? teamAPlayers : [playerData?.username || walletAddress.slice(0, 8)],
             teamB: teamBPlayers,
+            spectators: spectators,
             teamAReady: teamAReady.length > 0 ? teamAReady : [false],
             teamBReady: teamBReady
           });
@@ -641,6 +700,7 @@ function App() {
             maxPlayers: maxPlayers,
             teamA: [playerData?.username || walletAddress.slice(0, 8)],
             teamB: [],
+            spectators: [],
             teamAReady: [false],
             teamBReady: []
           });
@@ -688,18 +748,21 @@ function App() {
         console.log("📊 Game data:", gameData);
         console.log("👥 Players in game:", players);
 
-        // Separate players into teams
+        // Separate players into teams and spectators
         const teamAPlayers = players
-          .filter(p => p.team === 'A')
+          .filter(p => p.team === 'A' && !p.isSpectator)
           .map(p => p.username);
         const teamBPlayers = players
-          .filter(p => p.team === 'B')
+          .filter(p => p.team === 'B' && !p.isSpectator)
+          .map(p => p.username);
+        const spectators = players
+          .filter(p => p.isSpectator)
           .map(p => p.username);
         const teamAReady = players
-          .filter(p => p.team === 'A')
+          .filter(p => p.team === 'A' && !p.isSpectator)
           .map(p => p.isReady);
         const teamBReady = players
-          .filter(p => p.team === 'B')
+          .filter(p => p.team === 'B' && !p.isSpectator)
           .map(p => p.isReady);
 
         // Determine if current player is the leader
@@ -721,6 +784,7 @@ function App() {
           maxPlayers: gameData.maxPlayersPerTeam * 2,
           teamA: teamAPlayers,
           teamB: teamBPlayers,
+          spectators: spectators,
           teamAReady: teamAReady,
           teamBReady: teamBReady
         });
@@ -731,6 +795,87 @@ function App() {
     } catch (error) {
       console.error("❌ Error joining room:", error);
       alert("Error joining room: " + error.message);
+    }
+  };
+
+  const handleJoinAsSpectator = async (gamePublicKey) => {
+    if (!playerInitialized) {
+      alert("Please initialize your player first");
+      return;
+    }
+
+    try {
+      console.log(`👁️ Joining as spectator: ${gamePublicKey}`);
+      const result = await joinAsSpectator(gamePublicKey);
+
+      console.log('🔍 Join as spectator result:', result);
+
+      if (result?.error === "PlayerAlreadyInGame") {
+        console.warn("⚠️ Player already in game:", result.currentGame);
+        alert(`You are already in a game (${result.currentGame}). Please leave that game first.`);
+        return;
+      }
+
+      if (result && result.transaction) {
+        console.log("✅ Successfully joined as spectator! Transaction:", result.transaction);
+
+        // Wait a moment for transaction to be confirmed
+        await new Promise(resolve => setTimeout(resolve, 2000));
+
+        // Fetch actual game data and players from blockchain
+        const gameData = await getGame(gamePublicKey);
+        const players = await getAllPlayersInGame(gamePublicKey);
+
+        console.log("📊 Game data:", gameData);
+        console.log("👥 Players in game:", players);
+
+        // Separate players into teams and spectators
+        const teamAPlayers = players
+          .filter(p => p.team === 'A' && !p.isSpectator)
+          .map(p => p.username);
+        const teamBPlayers = players
+          .filter(p => p.team === 'B' && !p.isSpectator)
+          .map(p => p.username);
+        const spectators = players
+          .filter(p => p.isSpectator)
+          .map(p => p.username);
+        const teamAReady = players
+          .filter(p => p.team === 'A' && !p.isSpectator)
+          .map(p => p.isReady);
+        const teamBReady = players
+          .filter(p => p.team === 'B' && !p.isSpectator)
+          .map(p => p.isReady);
+
+        // Determine if current player is the leader
+        const createdByString = gameData.createdBy?.toString();
+        console.log('👑 Leadership check (join as spectator):', {
+          createdBy: createdByString,
+          walletAddress: walletAddress,
+          isLeader: createdByString === walletAddress
+        });
+        const isLeader = createdByString === walletAddress;
+
+        setInLobby(true);
+        setIsLobbyLeader(isLeader);
+        setPlayerReady(false); // Spectators can't ready up
+        setCurrentLobbyData({
+          gamePublicKey: gamePublicKey,
+          lobbyName: gameData.lobbyName || "Game Lobby",
+          mapName: gameData.mapName || gameData.mapId || "Default Map",
+          maxPlayers: gameData.maxPlayersPerTeam * 2,
+          teamA: teamAPlayers,
+          teamB: teamBPlayers,
+          spectators: spectators,
+          teamAReady: teamAReady,
+          teamBReady: teamBReady
+        });
+      } else {
+        console.error("❌ Failed to join as spectator: No transaction returned");
+        alert("Failed to join as spectator. No transaction was created. Check console for details.");
+      }
+    } catch (error) {
+      console.error("❌ Error joining as spectator:", error);
+      alert("Error joining as spectator: " + error.message);
     }
   };
 
@@ -982,6 +1127,7 @@ function App() {
             onRefresh={loadGames}
             onCreateRoom={handleCreateRoom}
             onJoinRoom={handleJoinRoom}
+            onJoinAsSpectator={handleJoinAsSpectator}
             onClose={() => setActiveTab('lobby')}
           />
         )}
@@ -1099,6 +1245,11 @@ function App() {
             <MatchStatus
               gamePublicKey={currentLobbyData?.gamePublicKey}
               currentGameState={currentGameState}
+              onGameEnd={(data) => {
+                console.log('🏆 Game ended, showing victory dialog:', data);
+                setVictoryData(data);
+                setShowVictoryDialog(true);
+              }}
             />
 
             {/* Fullscreen toggle button - only show when in game but not fullscreen */}
@@ -1155,6 +1306,40 @@ function App() {
             {/* Respawn Overlay - Shows death screen and countdown */}
             <RespawnOverlay />
           </>
+        )}
+
+        {/* Victory Dialog - Shows when match ends */}
+        {showVictoryDialog && victoryData && (
+          <VictoryDialog
+            winningTeam={victoryData.winningTeam}
+            teamAScore={victoryData.teamAScore}
+            teamBScore={victoryData.teamBScore}
+            mvpPlayer={victoryData.mvpPlayer}
+            onClose={async () => {
+              setShowVictoryDialog(false);
+              setVictoryData(null);
+
+              // Leave the game on the blockchain
+              try {
+                console.log('🚪 Leaving game after victory...');
+                await leaveCurrentGame();
+                console.log('✅ Successfully left game');
+              } catch (error) {
+                console.error('❌ Error leaving game:', error);
+              }
+
+              // Exit fullscreen and return to lobby
+              exitFullscreen();
+              setCurrentGameState(null);
+              setInLobby(false);
+              setCurrentLobbyData(null);
+
+              // Stop game mode in Raylib
+              if (window.gameBridge && window.gameBridge.stopGameMode) {
+                window.gameBridge.stopGameMode();
+              }
+            }}
+          />
         )}
       </div>
     </div>

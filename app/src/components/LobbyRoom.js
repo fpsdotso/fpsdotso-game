@@ -19,6 +19,7 @@ function LobbyRoom({
     mapName = 'Unknown Map',
     teamA = [],
     teamB = [],
+    spectators = [],
     teamAReady = [],
     teamBReady = [],
     maxPlayers = 10
@@ -144,6 +145,32 @@ function LobbyRoom({
           </div>
         </div>
       </div>
+
+      {/* Spectators Section */}
+      {spectators && spectators.length > 0 && (
+        <div className="spectators-panel">
+          <div className="spectators-header">
+            <h3 className="spectators-title">
+              <span className="spectator-icon">👁️</span>
+              SPECTATORS
+            </h3>
+            <span className="spectators-count">{spectators.length} Watching</span>
+          </div>
+          <div className="spectators-list">
+            {spectators.map((spectator, index) => (
+              <div key={index} className="spectator-item">
+                <span className="spectator-avatar">👤</span>
+                <span className="spectator-name">
+                  {spectator}
+                  {spectator === currentPlayer && (
+                    <span className="you-badge"> (You)</span>
+                  )}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Actions */}
       <div className="lobby-room-actions">

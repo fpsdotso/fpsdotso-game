@@ -104,6 +104,52 @@
   animation: scoreUpdate 0.3s ease-in-out;
 }
 
+/* Progress bars */
+.score-progress-bar {
+  width: 100%;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 2px;
+  overflow: hidden;
+  margin-top: 5px;
+}
+
+.score-progress-fill {
+  height: 100%;
+  transition: width 0.5s ease;
+  border-radius: 2px;
+}
+
+.team-a-fill {
+  background: linear-gradient(90deg, #0096ff, #00d9ff);
+  box-shadow: 0 0 10px #00d9ff;
+}
+
+.team-b-fill {
+  background: linear-gradient(90deg, #ff6464, #ff4444);
+  box-shadow: 0 0 10px #ff4444;
+}
+
+/* Match ending message */
+.match-ending {
+  font-size: 11px;
+  font-weight: bold;
+  color: #ffc107;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  margin-top: 5px;
+  animation: blink 1s ease-in-out infinite;
+}
+
+@keyframes blink {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}
+
 /* Responsive Design */
 @media (max-width: 1024px) {
   .match-status-container {

@@ -1,0 +1,242 @@
+/* Victory Dialog Styles */
+
+.victory-dialog-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.85);
+  backdrop-filter: blur(10px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  animation: fadeIn 0.3s ease-out;
+  pointer-events: auto;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.victory-dialog {
+  background: linear-gradient(135deg, rgba(13, 13, 17, 0.98) 0%, rgba(20, 18, 30, 0.98) 100%);
+  border: 3px solid;
+  border-radius: 20px;
+  padding: 50px;
+  max-width: 600px;
+  width: 90%;
+  box-shadow: 0 0 60px rgba(156, 81, 255, 0.5);
+  animation: slideUp 0.4s ease-out;
+  pointer-events: auto;
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(50px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+/* Header */
+.victory-header {
+  text-align: center;
+  padding-bottom: 30px;
+  margin-bottom: 30px;
+  border-bottom: 2px solid;
+}
+
+.victory-title {
+  font-size: 56px;
+  font-weight: 900;
+  margin: 0 0 15px 0;
+  animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.05);
+  }
+}
+
+.victory-subtitle {
+  font-size: 32px;
+  font-weight: 700;
+  margin: 0;
+}
+
+/* Match Stats */
+.victory-stats {
+  margin-bottom: 30px;
+}
+
+.final-score {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 30px;
+  margin-bottom: 30px;
+  padding: 25px;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.score-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.score-label {
+  font-size: 14px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: #c8c8dc;
+}
+
+.score-value {
+  font-size: 64px;
+  font-weight: 900;
+  font-family: 'Courier New', monospace;
+  line-height: 1;
+}
+
+.score-divider {
+  font-size: 48px;
+  font-weight: 700;
+  color: #888;
+}
+
+/* MVP Section */
+.mvp-section {
+  background: linear-gradient(135deg, rgba(255, 215, 0, 0.1) 0%, rgba(255, 193, 7, 0.05) 100%);
+  border: 2px solid rgba(255, 215, 0, 0.5);
+  border-radius: 12px;
+  padding: 25px;
+  text-align: center;
+}
+
+.mvp-badge {
+  font-size: 18px;
+  font-weight: 900;
+  color: #ffd700;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  margin-bottom: 15px;
+  text-shadow: 0 0 15px rgba(255, 215, 0, 0.6);
+}
+
+.mvp-player {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.mvp-name {
+  font-size: 28px;
+  font-weight: 700;
+  color: #ffffff;
+}
+
+.mvp-stats {
+  display: flex;
+  gap: 20px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.mvp-kills,
+.mvp-deaths,
+.mvp-kd {
+  font-size: 14px;
+  font-weight: 600;
+  padding: 6px 15px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 20px;
+  color: #c8c8dc;
+}
+
+.mvp-kills {
+  color: #00f294;
+  background: rgba(0, 242, 148, 0.15);
+  border: 1px solid rgba(0, 242, 148, 0.3);
+}
+
+/* Actions */
+.victory-actions {
+  display: flex;
+  gap: 15px;
+  justify-content: center;
+}
+
+.victory-btn {
+  padding: 15px 40px;
+  font-size: 16px;
+  font-weight: 700;
+  border-radius: 8px;
+  border: 2px solid;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.victory-btn-primary {
+  background: linear-gradient(135deg, #9c51ff 0%, #00f294 100%);
+  border-color: #9c51ff;
+  color: #ffffff;
+  box-shadow: 0 4px 20px rgba(156, 81, 255, 0.4);
+}
+
+.victory-btn-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 30px rgba(156, 81, 255, 0.6);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .victory-dialog {
+    padding: 30px 20px;
+  }
+
+  .victory-title {
+    font-size: 40px;
+  }
+
+  .victory-subtitle {
+    font-size: 24px;
+  }
+
+  .score-value {
+    font-size: 48px;
+  }
+
+  .mvp-name {
+    font-size: 22px;
+  }
+
+  .final-score {
+    gap: 15px;
+    padding: 20px;
+  }
+
+  .victory-btn {
+    width: 100%;
+  }
+}

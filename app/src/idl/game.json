@@ -358,6 +358,10 @@
           "type": "u8"
         },
         {
+          "name": "is_spectator",
+          "type": "bool"
+        },
+        {
           "name": "spawn_x",
           "type": "f32"
         },
@@ -725,6 +729,13 @@
               "Team (0 or 1)"
             ],
             "type": "u8"
+          },
+          {
+            "name": "is_spectator",
+            "docs": [
+              "Is spectator (cannot shoot or be shot)"
+            ],
+            "type": "bool"
           },
           {
             "name": "kills",

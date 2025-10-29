@@ -11,6 +11,7 @@ function LobbyBrowser({
   onRefresh,
   onCreateRoom,
   onJoinRoom,
+  onJoinAsSpectator,
   onClose
 }) {
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -166,12 +167,23 @@ function LobbyBrowser({
               </div>
               <div className="room-actions">
                 {game.isJoinable !== false ? (
-                  <button
-                    className="btn btn-join"
-                    onClick={() => onJoinRoom(game.publicKey || game.id)}
-                  >
-                    JOIN →
-                  </button>
+                  <>
+                    <button
+                      className="btn btn-join"
+                      onClick={() => onJoinRoom(game.publicKey || game.id)}
+                    >
+                      JOIN →
+                    </button>
+                    {onJoinAsSpectator && (
+                      <button
+                        className="btn btn-secondary"
+                        onClick={() => onJoinAsSpectator(game.publicKey || game.id)}
+                        style={{ marginLeft: '8px' }}
+                      >
+                        👁️ SPECTATE
+                      </button>
+                    )}
+                  </>
                 ) : (
                   <span className="room-status">
                     {game.isPrivate ? '🔒 PRIVATE' : '⛔ FULL'}

@@ -143,6 +143,54 @@
       ]
     },
     {
+      "name": "join_as_spectator",
+      "discriminator": [
+        74,
+        214,
+        98,
+        242,
+        135,
+        123,
+        13,
+        95
+      ],
+      "accounts": [
+        {
+          "name": "player",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  108,
+                  97,
+                  121,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "authority"
+              }
+            ]
+          }
+        },
+        {
+          "name": "game",
+          "writable": true
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "join_game",
       "discriminator": [
         107,
@@ -404,6 +452,14 @@
             "type": "u32"
           },
           {
+            "name": "team_a_kills",
+            "type": "u32"
+          },
+          {
+            "name": "team_b_kills",
+            "type": "u32"
+          },
+          {
             "name": "match_duration",
             "type": "u32"
           },
@@ -531,6 +587,10 @@
           },
           {
             "name": "is_ready",
+            "type": "bool"
+          },
+          {
+            "name": "is_spectator",
             "type": "bool"
           },
           {

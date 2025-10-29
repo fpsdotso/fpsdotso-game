@@ -266,6 +266,77 @@
   border-color: #ea4335;
 }
 
+/* Spectators Panel */
+.spectators-panel {
+  background: rgba(255, 255, 255, 0.03);
+  border: 2px solid rgba(156, 81, 255, 0.3);
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 20px;
+}
+
+.spectators-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 15px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.spectators-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 20px;
+  font-weight: 700;
+  margin: 0;
+  color: #9c51ff;
+  text-shadow: 0 0 10px rgba(156, 81, 255, 0.5);
+}
+
+.spectator-icon {
+  font-size: 24px;
+}
+
+.spectators-count {
+  color: #c8c8dc;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.spectators-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.spectator-item {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 10px 15px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  transition: all 0.2s ease;
+}
+
+.spectator-item:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(156, 81, 255, 0.4);
+}
+
+.spectator-avatar {
+  font-size: 20px;
+}
+
+.spectator-name {
+  color: #c8c8dc;
+  font-size: 14px;
+  font-weight: 600;
+}
+
 /* Waiting Message */
 .waiting-message {
   text-align: center;

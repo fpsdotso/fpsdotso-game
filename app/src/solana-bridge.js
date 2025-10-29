@@ -1268,6 +1268,60 @@ export async function joinGame(gamePubkey) {
 }
 
 /**
+ * Join a game as a spectator
+ * @param {string} gamePubkey - The game's public key
+ */
+export async function joinAsSpectator(gamePubkey) {
+  if (!matchmakingProgram || !wallet) {
+    console.error(
+      "Matchmaking program not initialized or wallet not connected"
+    );
+    return null;
+  }
+
+  try {
+    console.log(`👁️ Joining game as spectator: ${gamePubkey}`);
+
+    // First, check if player is already in a game
+    const currentGame = await getPlayerCurrentGame();
+    if (currentGame) {
+      console.warn("⚠️ Player is already in a game:", currentGame);
+      return {
+        error: "PlayerAlreadyInGame",
+        message:
+          "You are already in a game. Please leave the current game first.",
+        currentGame: currentGame,
+      };
+    }
+
+    const gamePublicKey = new PublicKey(gamePubkey);
+
+    // Derive player PDA
+    const [playerPda] = PublicKey.findProgramAddressSync(
+      [Buffer.from("player"), wallet.publicKey.toBuffer()],
+      matchmakingProgram.programId
+    );
+
+    const tx = await matchmakingProgram.methods
+      .joinAsSpectator()
+      .accounts({
+        player: playerPda,
+        game: gamePublicKey,
+        authority: wallet.publicKey,
+      })
+      .rpc();
+
+    console.log("✅ Joined as spectator! Transaction:", tx);
+    return {
+      transaction: tx,
+    };
+  } catch (error) {
+    console.error("❌ Failed to join as spectator:", error);
+    return null;
+  }
+}
+
+/**
  * Leave the current game
  * @param {string} gamePubkey - The game's public key
  */
@@ -1396,9 +1450,10 @@ export async function setReadyState(gamePubkey, isReady) {
 
     // If setting ready to true, initialize and delegate GamePlayer
     if (isReady) {
-      // Get player's team from matchmaking
+      // Get player's team and spectator status from matchmaking
       const playerAccount = await matchmakingProgram.account.player.fetch(playerPda);
       const team = playerAccount.team;
+      const isSpectator = playerAccount.isSpectator || false;
 
       // Default spawn positions (you can customize these based on team/map)
       const spawnX = team === 0 ? -10.0 : 10.0;
@@ -1433,8 +1488,9 @@ export async function setReadyState(gamePubkey, isReady) {
       // Step 2: Initialize GamePlayer
       console.log("📝 Step 2: Initializing GamePlayer...");
       const initTx = await gameProgramWithEphemeralWalletOnMain.methods
-        .initGamePlayer(gamePublicKey, team, spawnX, spawnY, spawnZ)
+        .initGamePlayer(gamePublicKey, team, isSpectator, spawnX, spawnY, spawnZ)
         .accounts({
+          gamePlayer: gamePlayerPda,
           authority: ephemeralKeypair.publicKey,
           systemProgram: web3.SystemProgram.programId,
         })
