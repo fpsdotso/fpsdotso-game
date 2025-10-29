@@ -3,7 +3,11 @@
   top: 90px;
   right: 20px;
   width: 220px;
-  background: linear-gradient(135deg, rgba(13, 13, 17, 0.95), rgba(20, 20, 25, 0.9));
+  background: linear-gradient(
+    135deg,
+    rgba(13, 13, 17, 0.95),
+    rgba(20, 20, 25, 0.9)
+  );
   backdrop-filter: blur(15px);
   border: 2px solid rgba(0, 242, 148, 0.3);
   border-radius: 12px;
@@ -92,13 +96,14 @@
 
 /* Cyberpunk glow effect */
 .minimap-container::before {
-  content: '';
+  content: "";
   position: absolute;
   top: -2px;
   left: -2px;
   right: -2px;
   bottom: -2px;
-  background: linear-gradient(45deg,
+  background: linear-gradient(
+    45deg,
     rgba(0, 242, 148, 0.1),
     rgba(156, 81, 255, 0.1),
     rgba(0, 242, 148, 0.1)
@@ -110,7 +115,8 @@
 }
 
 @keyframes minimap-glow {
-  0%, 100% {
+  0%,
+  100% {
     opacity: 0.3;
   }
   50% {
@@ -119,7 +125,7 @@
 }
 
 /* Responsive adjustments for smaller screens */
-@media (max-width: 768px) {
+@media (max-width: 1024px) {
   .minimap-container {
     top: 80px;
     right: 10px;
