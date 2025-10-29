@@ -283,23 +283,41 @@ function App() {
   // Fullscreen functions
   const enterFullscreen = () => {
     const container = document.getElementById('container');
+    const canvas = document.getElementById('canvas');
     if (container && !isFullscreen) {
       if (container.requestFullscreen) {
         container.requestFullscreen().then(() => {
           setIsFullscreen(true);
           console.log('✅ Entered fullscreen mode');
+          // Lock the mouse pointer when entering fullscreen
+          if (canvas && canvas.requestPointerLock) {
+            canvas.requestPointerLock();
+            console.log('✅ Mouse pointer locked');
+          }
         }).catch(err => {
           console.error('❌ Failed to enter fullscreen:', err);
         });
       } else if (container.webkitRequestFullscreen) { // Safari
         container.webkitRequestFullscreen();
         setIsFullscreen(true);
+        // Lock the mouse pointer for Safari
+        if (canvas && canvas.requestPointerLock) {
+          canvas.requestPointerLock();
+        }
       } else if (container.mozRequestFullScreen) { // Firefox
         container.mozRequestFullScreen();
         setIsFullscreen(true);
+        // Lock the mouse pointer for Firefox
+        if (canvas && canvas.requestPointerLock) {
+          canvas.requestPointerLock();
+        }
       } else if (container.msRequestFullscreen) { // IE/Edge
         container.msRequestFullscreen();
         setIsFullscreen(true);
+        // Lock the mouse pointer for IE/Edge
+        if (canvas && canvas.requestPointerLock) {
+          canvas.requestPointerLock();
+        }
       }
     }
   };
@@ -1003,8 +1021,8 @@ function App() {
 
         {/* Map Editor is shown via canvas when activeTab === 'mapeditor' */}
 
-        {/* In-Game HUD (shown when in fullscreen gameplay) */}
-        {isFullscreen && currentGameState === 1 && (
+        {/* In-Game HUD (shown during active gameplay) */}
+        {currentGameState === 1 && (
           <>
             {/* Crosshair */}
             <div style={{
