@@ -934,8 +934,9 @@ impl GameState {
         let team_num = player_data.get("team")
             .and_then(|v: &serde_json::Value| v.as_u64())
             .unwrap_or(1);
-        // Team 1 = Blue (A), Team 2 = Red (B)
-        let team = if team_num == 1 { "A" } else { "B" }.to_string();
+        // Team 1 = Team A (Blue), Team 2 = Team B (Red)
+        // Store team number directly as "1" or "2" for consistent comparison
+        let team = team_num.to_string();
 
         let is_alive = player_data.get("isAlive")
             .and_then(|v: &serde_json::Value| v.as_bool())
@@ -1563,11 +1564,11 @@ impl GameState {
                 continue;
             }
 
-            // Choose color based on team
-            let player_color = if player.team == "A" {
-                Color::new(0, 150, 255, 255) // Blue for Team A
+            // Choose color based on team (Team 1 = Blue, Team 2 = Red)
+            let player_color = if player.team == "1" {
+                Color::new(0, 150, 255, 255) // Blue for Team 1
             } else {
-                Color::new(255, 100, 100, 255) // Red for Team B
+                Color::new(255, 100, 100, 255) // Red for Team 2
             };
 
             // Draw player as a capsule (cylinder + spheres)

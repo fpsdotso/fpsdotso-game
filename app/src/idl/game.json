@@ -545,7 +545,8 @@
       "name": "shoot",
       "docs": [
         "Shoot and check for hits on other players",
-        "Pass other player accounts in remaining_accounts to check for hits"
+        "Pass other player accounts in remaining_accounts to check for hits",
+        "Automatically awards kill and score if target is killed"
       ],
       "discriminator": [
         41,
@@ -561,8 +562,9 @@
         {
           "name": "shooter",
           "docs": [
-            "The player shooting"
-          ]
+            "The player shooting (mutable to update kill stats)"
+          ],
+          "writable": true
         },
         {
           "name": "authority",
@@ -573,6 +575,10 @@
         {
           "name": "damage",
           "type": "u8"
+        },
+        {
+          "name": "kill_score",
+          "type": "u32"
         }
       ]
     },
@@ -631,6 +637,18 @@
         232,
         120
       ]
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "PlayerStillAlive",
+      "msg": "Player is still alive and cannot respawn"
+    },
+    {
+      "code": 6001,
+      "name": "RespawnCooldownActive",
+      "msg": "Respawn cooldown not finished. Wait 3 seconds after death."
     }
   ],
   "types": [
@@ -727,6 +745,14 @@
             "name": "last_update",
             "docs": [
               "Last update timestamp"
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "death_timestamp",
+            "docs": [
+              "Timestamp when player died (0 if alive)",
+              "Used to enforce respawn cooldown"
             ],
             "type": "i64"
           },

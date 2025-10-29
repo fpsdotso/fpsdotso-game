@@ -2377,9 +2377,10 @@ export async function shootPlayer(damage, gameIdPubkey, otherPlayerPdas = []) {
     console.log(`🎯 Shooter PDA: ${gamePlayerPda.toString()}`);
     console.log(`🎯 Available methods:`, Object.keys(gameProgram.methods));
 
-    // Call shoot instruction
+    // Call shoot instruction with kill_score parameter (100 points per kill)
+    const killScore = 100;
     const tx = await gameProgram.methods
-      .shoot(damage)
+      .shoot(damage, killScore)
       .accounts({
         shooter: gamePlayerPda,
         authority: ephemeralPublicKey,

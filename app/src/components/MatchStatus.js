@@ -34,18 +34,23 @@ function MatchStatus({ gamePublicKey, currentGameState }) {
 
           players.forEach(player => {
             const kills = player.kills || 0;
-            if (player.team === 'A') {
+            // Team is now u8: 1 = Team A (Blue), 2 = Team B (Red)
+            const teamName = player.team === 1 ? 'A' : 'B';
+            console.log(`📊 Player ${player.username || 'Unknown'} (Team ${teamName}): ${kills} kills`);
+            if (player.team === 1) {
               teamAScore += kills;
-            } else if (player.team === 'B') {
+            } else if (player.team === 2) {
               teamBScore += kills;
             }
           });
+
+          console.log(`📊 Final Scores - Team A: ${teamAScore}, Team B: ${teamBScore}`);
 
           setMatchData({
             teamAScore,
             teamBScore,
             timeRemaining: '5:00', // TODO: Get from game contract
-            gameMode: 'Team Deathmatch'
+            gameMode: 'Team Deathmatch - First to 40'
           });
         }
       } catch (error) {
