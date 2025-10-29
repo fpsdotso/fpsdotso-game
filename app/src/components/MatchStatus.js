@@ -19,17 +19,35 @@ function MatchStatus({ gamePublicKey, currentGameState }) {
       return;
     }
 
-    // TODO: Fetch real match data from blockchain
-    // For now, using mock data that updates periodically
+    // Fetch real match data from blockchain
     const fetchMatchData = async () => {
       try {
-        // This would call the blockchain to get real-time match stats
-        // For now, we'll simulate it
         console.log('📊 Fetching match status for:', gamePublicKey);
 
-        // Mock data - replace with actual blockchain call
-        // const gameData = await window.solanaGameBridge.getGameStats(gamePublicKey);
+        // Get all players from the game
+        if (window.gameBridge && window.gameBridge.getGamePlayers) {
+          const players = await window.gameBridge.getGamePlayers(gamePublicKey);
 
+          // Calculate team scores by summing kills
+          let teamAScore = 0;
+          let teamBScore = 0;
+
+          players.forEach(player => {
+            const kills = player.kills || 0;
+            if (player.team === 'A') {
+              teamAScore += kills;
+            } else if (player.team === 'B') {
+              teamBScore += kills;
+            }
+          });
+
+          setMatchData({
+            teamAScore,
+            teamBScore,
+            timeRemaining: '5:00', // TODO: Get from game contract
+            gameMode: 'Team Deathmatch'
+          });
+        }
       } catch (error) {
         console.error('Failed to fetch match data:', error);
       }
@@ -38,8 +56,8 @@ function MatchStatus({ gamePublicKey, currentGameState }) {
     // Fetch immediately
     fetchMatchData();
 
-    // Poll for updates every 5 seconds
-    const interval = setInterval(fetchMatchData, 5000);
+    // Poll for updates every 3 seconds
+    const interval = setInterval(fetchMatchData, 3000);
 
     return () => clearInterval(interval);
   }, [gamePublicKey, currentGameState]);
