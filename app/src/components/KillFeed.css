@@ -1,0 +1,81 @@
+/* Kill Feed Styles */
+
+.kill-feed {
+  position: fixed;
+  top: 120px;
+  left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 900;
+  pointer-events: none;
+}
+
+.kill-event {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 15px;
+  background: rgba(20, 20, 30, 0.9);
+  backdrop-filter: blur(10px);
+  border-left: 3px solid rgba(255, 50, 50, 0.8);
+  border-radius: 6px;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5);
+  animation: slideInLeft 0.3s ease-out, fadeOut 0.5s ease-out 4.5s forwards;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+@keyframes slideInLeft {
+  from {
+    transform: translateX(-100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes fadeOut {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+.killer-name {
+  color: #ff4444;
+  font-weight: 700;
+  text-shadow: 0 0 8px rgba(255, 68, 68, 0.6);
+}
+
+.kill-icon {
+  font-size: 16px;
+  filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.4));
+}
+
+.victim-name {
+  color: #c8c8dc;
+  font-weight: 600;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .kill-feed {
+    top: 80px;
+    left: 10px;
+    right: 10px;
+  }
+
+  .kill-event {
+    font-size: 12px;
+    padding: 8px 12px;
+  }
+
+  .kill-icon {
+    font-size: 14px;
+  }
+}

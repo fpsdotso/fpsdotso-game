@@ -67,7 +67,7 @@ function App() {
   const [isLobbyLeader, setIsLobbyLeader] = useState(false);
 
   // Tab navigation state
-  const [activeTab, setActiveTab] = useState('mapeditor'); // 'lobby', 'store', 'mapeditor' - default to map editor so game loads
+  const [activeTab, setActiveTab] = useState('lobby'); // 'lobby', 'store', 'mapeditor'
 
   // Game state tracking
   const [currentGameState, setCurrentGameState] = useState(null); // 0=waiting, 1=active, 2=ended, 3=paused
@@ -968,19 +968,19 @@ function App() {
         id="canvas"
         onContextMenu={(e) => e.preventDefault()}
         style={{
-          display: activeTab === 'mapeditor' ? 'block' : 'none'
+          display: (activeTab === 'mapeditor' || currentGameState === 1) ? 'block' : 'none'
         }}
       ></canvas>
 
       {/* Virtual Joystick for mobile */}
-      <VirtualJoystick 
-        isPlaying={currentGameState === 1 && activeTab === 'mapeditor'} 
+      <VirtualJoystick
+        isPlaying={currentGameState === 1}
         gameId={currentLobbyData?.gamePublicKey}
         onInput={(input) => console.log('Virtual joystick input:', input)}
       />
 
       {/* Web UI overlay */}
-      <div className="web-ui-overlay" style={{ pointerEvents: activeTab === 'mapeditor' ? 'none' : 'auto' }}>
+      <div className="web-ui-overlay" style={{ pointerEvents: (activeTab === 'mapeditor' || currentGameState === 1) ? 'none' : 'auto' }}>
         {/* Top Navigation Bar with Tabs - Hidden when in active game */}
         <nav className="game-nav" style={{
           pointerEvents: 'auto',

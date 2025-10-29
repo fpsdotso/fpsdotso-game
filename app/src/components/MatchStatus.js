@@ -52,12 +52,12 @@ function MatchStatus({ gamePublicKey, currentGameState, onGameEnd }) {
             teamAScore,
             teamBScore,
             timeRemaining: '5:00', // TODO: Get from game contract
-            gameMode: 'Team Deathmatch - First to 10',
+            gameMode: 'Team Deathmatch - First to 40',
             players
           });
 
-          // Check for win condition (10 kills)
-          const WIN_THRESHOLD = 10;
+          // Check for win condition (40 kills)
+          const WIN_THRESHOLD = 40;
           if ((teamAScore >= WIN_THRESHOLD || teamBScore >= WIN_THRESHOLD) && !hasEnded) {
             setHasEnded(true);
             const winningTeam = teamAScore >= WIN_THRESHOLD ? 'A' : 'B';
@@ -102,7 +102,7 @@ function MatchStatus({ gamePublicKey, currentGameState, onGameEnd }) {
     return null;
   }
 
-  const WIN_THRESHOLD = 10;
+  const WIN_THRESHOLD = 40;
   const teamAProgress = (matchData.teamAScore / WIN_THRESHOLD) * 100;
   const teamBProgress = (matchData.teamBScore / WIN_THRESHOLD) * 100;
 
