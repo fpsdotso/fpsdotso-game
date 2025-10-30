@@ -1103,26 +1103,44 @@ impl GameState {
                 player.rotation = player.rotation.lerp(player.target_rotation, delta * rotation_interp_speed);
             }
 
-            // Client-side prediction for local player with minimal server reconciliation
+            // IMPROVED CLIENT-SIDE PREDICTION with Smart Reconciliation
             // The local player movement is purely client-side for maximum responsiveness
-            // We only reconcile if there's a significant mismatch with the server
+            // We reconcile with server position using a smart algorithm that reduces rubber-banding
             if let Some(player) = &mut self.player {
                 // Calculate distance between client prediction and server position
                 let position_error = (player.position - player.target_position).length();
 
-                // Only reconcile if error is significant (> 0.5 units)
-                // This prevents rubber-banding while still correcting major desyncs
-                let error_threshold = 0.5;
+                // Adaptive error threshold based on movement speed
+                // Moving players get more tolerance to reduce rubber-banding during lag
+                let velocity = (player.position - player.target_position).length() / delta;
+                let base_threshold = 0.3; // Reduced from 0.5 for tighter sync
+                let velocity_factor = (velocity * 0.1).min(0.5); // Allow up to 0.5 extra tolerance
+                let error_threshold = base_threshold + velocity_factor;
 
                 if position_error > error_threshold {
-                    // Snap correction for large errors (teleportation/major desync)
-                    if position_error > 5.0 {
+                    // Large errors (> 3.0 units) = teleportation or major desync
+                    // Medium errors (0.3-3.0 units) = gradual reconciliation
+                    if position_error > 3.0 {
+                        // Snap to server position for major desyncs
                         player.position = player.target_position;
                         println!("⚠️ Large position error detected ({:.2}), snapping to server position", position_error);
                     } else {
-                        // Gentle correction for small errors
-                        let correction_speed = 3.0;
-                        player.position = player.position.lerp(player.target_position, delta * correction_speed);
+                        // IMPROVED: Adaptive correction speed based on error magnitude
+                        // Larger errors = faster correction, smaller errors = smoother correction
+                        let error_factor = (position_error / 3.0).min(1.0); // Normalize error to 0-1
+                        let min_correction_speed = 5.0;  // Increased from 3.0
+                        let max_correction_speed = 15.0; // Fast correction for medium errors
+                        let correction_speed = min_correction_speed + (max_correction_speed - min_correction_speed) * error_factor;
+                        
+                        // Smooth interpolation towards server position
+                        let correction_factor = (delta * correction_speed).min(1.0);
+                        player.position = player.position.lerp(player.target_position, correction_factor);
+                        
+                        // Log reconciliation for debugging
+                        if position_error > 1.0 {
+                            println!("🔧 Reconciling position: error={:.2}, speed={:.1}, factor={:.3}", 
+                                position_error, correction_speed, correction_factor);
+                        }
                     }
                 }
 
@@ -1409,9 +1427,11 @@ impl GameState {
             let mut death_time = 0.0;
 
             if let Some(player) = &mut self.player {
-                // Update target position for smooth server reconciliation
-                // This allows the local player to interpolate towards the server's position
+                // IMPROVED CLIENT-SIDE PREDICTION:
+                // Only update target position, never directly set position from server
+                // This allows the client to predict movement freely
                 player.target_position = new_position;
+                
                 // Convert rotation from radians (server) to degrees (Player struct)
                 player.target_yaw = rot_y.to_degrees(); // rotationY is the yaw
                 player.target_pitch = rot_x.to_degrees(); // rotationX is the pitch
