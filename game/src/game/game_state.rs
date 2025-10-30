@@ -1880,6 +1880,11 @@ impl GameState {
 
     /// Draw the gun viewmodel (first-person weapon view) - SIMPLIFIED VERSION
     fn draw_gun_viewmodel(d3d: &mut RaylibMode3D<RaylibDrawHandle>, player: &Player, muzzle_flash_timer: f32, reload_progress: f32) {
+        // 🎯 CRITICAL: Use the camera's actual position directly to avoid jitter
+        // The camera position is already smoothly interpolated by the reconciliation system
+        // This ensures the gun stays perfectly locked to the view, even during server corrections
+        let camera_pos = player.camera.position;
+
         // Calculate gun position relative to camera
         let yaw_rad = player.yaw.to_radians();
         let pitch_rad = player.pitch.to_radians();
@@ -1900,20 +1905,6 @@ impl GameState {
 
         // Up vector (perpendicular to both forward and right)
         let up = right.cross(direction).normalized();
-
-        // Calculate effective height based on crouching
-        let effective_height = if player.is_crouching {
-            player.height * 0.6
-        } else {
-            player.height
-        };
-
-        // Camera position
-        let camera_pos = Vector3::new(
-            player.position.x,
-            player.position.y + effective_height,
-            player.position.z,
-        );
 
         // ENHANCED reload animation with multiple sophisticated stages
         // Stage 1 (0.0-0.25): Gun tilts and moves down/left (inspect angle)
