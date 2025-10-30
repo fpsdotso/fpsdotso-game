@@ -545,13 +545,23 @@ export async function initializeRegistry() {
   }
 
   try {
-    console.log("📝 Initializing map registry...");
-
     // Derive the registry PDA
     const [registryPda] = PublicKey.findProgramAddressSync(
       [Buffer.from("fps.so map-registry")],
       program.programId
     );
+
+    // Check if the account already exists before sending transaction
+    console.log("🔍 Checking if map registry exists...");
+    const accountInfo = await connection.getAccountInfo(registryPda);
+
+    if (accountInfo !== null) {
+      console.log("✅ Map registry already exists, skipping initialization");
+      return true;
+    }
+
+    // Account doesn't exist, proceed with initialization
+    console.log("📝 Map registry not found, initializing...");
 
     const tx = await program.methods
       .initialize()
@@ -565,9 +575,9 @@ export async function initializeRegistry() {
     console.log("✅ Registry initialized! Transaction:", tx);
     return true;
   } catch (error) {
-    // If already initialized, that's okay
+    // If already initialized (race condition), that's okay
     if (error.message.includes("already in use")) {
-      console.log("✅ Registry already initialized");
+      console.log("✅ Registry already initialized (race condition handled)");
       return true;
     }
     console.error("❌ Failed to initialize registry:", error);
