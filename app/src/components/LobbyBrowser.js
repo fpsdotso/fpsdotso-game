@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import './LobbyBrowser.css';
+import React, { useState, useEffect } from "react";
+import "./LobbyBrowser.css";
 
 /**
  * LobbyBrowser - Main lobby interface showing available games
@@ -12,10 +12,10 @@ function LobbyBrowser({
   onCreateRoom,
   onJoinRoom,
   onJoinAsSpectator,
-  onClose
+  onClose,
 }) {
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [selectedMap, setSelectedMap] = useState('');
+  const [selectedMap, setSelectedMap] = useState("");
   const [maxPlayers, setMaxPlayers] = useState(10);
   const [availableMaps, setAvailableMaps] = useState([]);
   const [loadingMaps, setLoadingMaps] = useState(false);
@@ -30,13 +30,17 @@ function LobbyBrowser({
   const loadUserMaps = async () => {
     setLoadingMaps(true);
     try {
-      console.log('🗺️ Loading user maps from blockchain...');
+      console.log("🗺️ Loading user maps from blockchain...");
       const userMapIndex = await window.solanaMapBridge.getUserMaps();
-      console.log('✅ Loaded user map index:', userMapIndex);
+      console.log("✅ Loaded user map index:", userMapIndex);
 
       // UserMapIndex has structure: { owner, map_count, map_ids: string[] }
       // In JavaScript, Anchor converts snake_case to camelCase
-      if (userMapIndex && userMapIndex.mapIds && userMapIndex.mapIds.length > 0) {
+      if (
+        userMapIndex &&
+        userMapIndex.mapIds &&
+        userMapIndex.mapIds.length > 0
+      ) {
         console.log(`📊 Found ${userMapIndex.mapIds.length} user-created maps`);
 
         // Fetch metadata for each map to get display names
@@ -48,7 +52,10 @@ function LobbyBrowser({
               name: metadata?.name || mapId, // Use metadata name if available, fallback to ID
             };
           } catch (error) {
-            console.warn(`⚠️ Could not fetch metadata for map ${mapId}:`, error);
+            console.warn(
+              `⚠️ Could not fetch metadata for map ${mapId}:`,
+              error
+            );
             // Return map with ID as name if metadata fetch fails
             return {
               id: mapId,
@@ -61,16 +68,16 @@ function LobbyBrowser({
         setAvailableMaps(resolvedMaps);
         setSelectedMap(resolvedMaps[0].id); // Set first map as default
       } else {
-        console.log('ℹ️ No user maps found');
+        console.log("ℹ️ No user maps found");
         // User has no maps - don't set any default
         setAvailableMaps([]);
-        setSelectedMap('');
+        setSelectedMap("");
       }
     } catch (error) {
-      console.error('❌ Error loading maps:', error);
+      console.error("❌ Error loading maps:", error);
       // On error, assume no maps
       setAvailableMaps([]);
-      setSelectedMap('');
+      setSelectedMap("");
     } finally {
       setLoadingMaps(false);
     }
@@ -78,7 +85,7 @@ function LobbyBrowser({
 
   const handleCreateRoom = () => {
     if (!selectedMap) {
-      alert('Please select a map');
+      alert("Please select a map");
       return;
     }
     onCreateRoom(selectedMap, maxPlayers);
@@ -109,13 +116,10 @@ function LobbyBrowser({
           onClick={onRefresh}
           disabled={loading}
         >
-          {loading ? '⏳ LOADING...' : '🔄 REFRESH'}
+          {loading ? "⏳ LOADING..." : "🔄 REFRESH"}
         </button>
         {onClose && (
-          <button
-            className="btn btn-tertiary"
-            onClick={onClose}
-          >
+          <button className="btn btn-tertiary" onClick={onClose}>
             ✕ CLOSE
           </button>
         )}
@@ -128,74 +132,106 @@ function LobbyBrowser({
             <div className="loading-spinner"></div>
             <p>Loading games from blockchain...</p>
           </div>
-        ) : games.length === 0 ? (
-          <div className="empty-state">
-            <div className="empty-icon">🎮</div>
-            <h3>No Active Games</h3>
-            <p>Be the first to create a match!</p>
-          </div>
         ) : (
-          games.map((game, index) => (
-            <div key={game.publicKey || index} className="room-card">
-              <div className="room-info">
-                <h3 className="room-name">
-                  {game.hostUsername && game.hostUsername !== "Unknown" 
-                    ? `${game.hostUsername}'s Lobby`
-                    : game.createdBy 
-                      ? `${game.createdBy.toString().slice(0, 4)}...${game.createdBy.toString().slice(-4)}'s Lobby`
-                      : `Lobby #${index + 1}`
-                  }
-                </h3>
-                <div className="room-details">
-                  <span className="room-detail">
-                    🗺️ {game.mapId || game.map_id || game.mapName || game.map || 'Default Map'}
-                  </span>
-                  <span className="room-detail">
-                    👥 {game.totalPlayers || game.current_players || 0}/{game.maxPlayers || game.max_players || 10}
-                  </span>
-                  <span className="room-detail">
-                    🎯 Host: {game.hostUsername || (game.createdBy ? `${game.createdBy.toString().slice(0, 4)}...${game.createdBy.toString().slice(-4)}` : (game.host || 'Unknown'))}
-                  </span>
-                </div>
+          (() => {
+            const visibleGames = Array.isArray(games)
+              ? games.filter(
+                  (game) =>
+                    (game?.totalPlayers || game?.current_players || 0) > 0
+                )
+              : [];
+            return visibleGames.length === 0 ? (
+              <div className="empty-state">
+                <div className="empty-icon">🎮</div>
+                <h3>No Active Games</h3>
+                <p>Be the first to create a match!</p>
               </div>
-              <div className="room-actions">
-                {game.isJoinable !== false ? (
-                  <>
-                    <button
-                      className="btn btn-join"
-                      onClick={() => onJoinRoom(game.publicKey || game.id)}
-                    >
-                      JOIN →
-                    </button>
-                    {onJoinAsSpectator && (
-                      <button
-                        className="btn btn-secondary"
-                        onClick={() => onJoinAsSpectator(game.publicKey || game.id)}
-                        style={{ marginLeft: '8px' }}
-                      >
-                        👁️ SPECTATE
-                      </button>
+            ) : (
+              visibleGames.map((game, index) => (
+                <div key={game.publicKey || index} className="room-card">
+                  <div className="room-info">
+                    <h3 className="room-name">
+                      {game.hostUsername && game.hostUsername !== "Unknown"
+                        ? `${game.hostUsername}'s Lobby`
+                        : game.createdBy
+                        ? `${game.createdBy
+                            .toString()
+                            .slice(0, 4)}...${game.createdBy
+                            .toString()
+                            .slice(-4)}'s Lobby`
+                        : `Lobby #${index + 1}`}
+                    </h3>
+                    <div className="room-details">
+                      <span className="room-detail">
+                        🗺️{" "}
+                        {game.mapId ||
+                          game.map_id ||
+                          game.mapName ||
+                          game.map ||
+                          "Default Map"}
+                      </span>
+                      <span className="room-detail">
+                        👥 {game.totalPlayers || game.current_players || 0}/
+                        {game.maxPlayers || game.max_players || 10}
+                      </span>
+                      <span className="room-detail">
+                        🎯 Host:{" "}
+                        {game.hostUsername ||
+                          (game.createdBy
+                            ? `${game.createdBy
+                                .toString()
+                                .slice(0, 4)}...${game.createdBy
+                                .toString()
+                                .slice(-4)}`
+                            : game.host || "Unknown")}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="room-actions">
+                    {game.isJoinable !== false ? (
+                      <>
+                        <button
+                          className="btn btn-join"
+                          onClick={() => onJoinRoom(game.publicKey || game.id)}
+                        >
+                          JOIN →
+                        </button>
+                        {onJoinAsSpectator && (
+                          <button
+                            className="btn btn-secondary"
+                            onClick={() =>
+                              onJoinAsSpectator(game.publicKey || game.id)
+                            }
+                            style={{ marginLeft: "8px" }}
+                          >
+                            👁️ SPECTATE
+                          </button>
+                        )}
+                      </>
+                    ) : (
+                      <span className="room-status">
+                        {game.isPrivate ? "🔒 PRIVATE" : "⛔ FULL"}
+                      </span>
                     )}
-                  </>
-                ) : (
-                  <span className="room-status">
-                    {game.isPrivate ? '🔒 PRIVATE' : '⛔ FULL'}
-                  </span>
-                )}
-              </div>
-            </div>
-          ))
+                  </div>
+                </div>
+              ))
+            );
+          })()
         )}
       </div>
 
       {/* Create Room Modal */}
       {showCreateModal && (
-        <div className="modal-overlay" onClick={() => setShowCreateModal(false)}>
+        <div
+          className="modal-overlay"
+          onClick={() => setShowCreateModal(false)}
+        >
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <h2 className="modal-title">Create New Room</h2>
 
             <div className="form-group">
-              <label>Map {loadingMaps && '⏳'}</label>
+              <label>Map {loadingMaps && "⏳"}</label>
               <select
                 value={selectedMap}
                 onChange={(e) => setSelectedMap(e.target.value)}
@@ -215,12 +251,14 @@ function LobbyBrowser({
                 )}
               </select>
               {!loadingMaps && availableMaps.length === 0 && (
-                <div style={{
-                  marginTop: '8px',
-                  fontSize: '12px',
-                  color: 'rgba(255, 193, 7, 0.9)',
-                  fontWeight: '600'
-                }}>
+                <div
+                  style={{
+                    marginTop: "8px",
+                    fontSize: "12px",
+                    color: "rgba(255, 193, 7, 0.9)",
+                    fontWeight: "600",
+                  }}
+                >
                   ⚠️ No maps found. Create a map in the Map Editor first!
                 </div>
               )}
@@ -244,8 +282,11 @@ function LobbyBrowser({
                 onClick={handleCreateRoom}
                 disabled={loadingMaps || availableMaps.length === 0}
                 style={{
-                  opacity: (loadingMaps || availableMaps.length === 0) ? 0.5 : 1,
-                  cursor: (loadingMaps || availableMaps.length === 0) ? 'not-allowed' : 'pointer'
+                  opacity: loadingMaps || availableMaps.length === 0 ? 0.5 : 1,
+                  cursor:
+                    loadingMaps || availableMaps.length === 0
+                      ? "not-allowed"
+                      : "pointer",
                 }}
               >
                 CREATE
