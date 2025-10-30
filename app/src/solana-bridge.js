@@ -1735,11 +1735,10 @@ export async function setReadyState(gamePubkey, isReady) {
       const gameProgramWithMainWallet = new Program(gameIdl, mainProvider);
 
       // Step 2: Initialize GamePlayer
-      console.log("📝 Step 2: Initializing GamePlayer...");
+      console.log("📝 Step 2: Initializing GamePlayer... with this Pda", gamePlayerPda.toString());
       const initTx = await gameProgramWithEphemeralWalletOnMain.methods
         .initGamePlayer(gamePublicKey, team, isSpectator, spawnX, spawnY, spawnZ)
         .accounts({
-          gamePlayer: gamePlayerPda,
           authority: ephemeralKeypair.publicKey,
           systemProgram: web3.SystemProgram.programId,
         })
