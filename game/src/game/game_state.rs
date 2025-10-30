@@ -322,19 +322,15 @@ impl GameState {
                 try {
                     const ephemeralKey = window.gameBridge?.getCurrentPlayerEphemeralKey();
                     if (!ephemeralKey || !window.___websocket_player_updates) {
-                        console.log('⚠️  JS: Cannot get reload timestamp - ephemeralKey or websocket not available');
                         return 0;
                     }
                     
                     for (const [accountPubkey, update] of Object.entries(window.___websocket_player_updates)) {
                         if (update.parsed && update.parsed.authority === ephemeralKey) {
                             const reloadTimestamp = update.parsed.reloadStartTimestamp || 0;
-                            console.log('📡 JS: Found reload_start_timestamp from WebSocket:', reloadTimestamp);
-                            console.log('📡 JS: Full GamePlayer data:', update.parsed);
                             return reloadTimestamp;
                         }
                     }
-                    console.log('⚠️  JS: Player not found in WebSocket updates');
                     return 0;
                 } catch (e) {
                     console.error('❌ JS: Error getting reload timestamp:', e);
@@ -374,7 +370,6 @@ impl GameState {
                     try {{
                         if (window.gameBridge && window.gameBridge.startReload) {{
                             await window.gameBridge.startReload('{}');
-                            console.log('🔄 Reload started');
                         }}
                     }} catch (e) {{
                         console.error('❌ Start reload failed:', e);
@@ -407,7 +402,6 @@ impl GameState {
                     try {{
                         if (window.gameBridge && window.gameBridge.finishReload) {{
                             await window.gameBridge.finishReload('{}');
-                            console.log('✅ Reload complete');
                         }}
                     }} catch (e) {{
                         console.error('❌ Finish reload failed:', e);
@@ -930,21 +924,16 @@ impl GameState {
                 
                 if elapsed >= 1 {
                     // Reload is already complete, finish it immediately
-                    println!("🔄 Rust: Found completed reload on rejoin (elapsed: {}s), finishing now", elapsed);
                     self.reload_initiated = true;
                     self.finish_reload();
                 } else {
                     // Reload is still in progress, sync the state
-                    println!("🔄 Rust: Found active reload on rejoin (timestamp: {}, elapsed: {}s), syncing state", reload_timestamp, elapsed);
                     self.reload_initiated = true;
                     self.reload_progress = (elapsed as f32).min(1.0);
                 }
             }
             
             if self.reload_initiated {
-                // Debug: Always print reload_timestamp when reloading
-                println!("🔄 Rust: reload_start_timestamp = {}", reload_timestamp);
-                
                 if reload_timestamp > 0 {
                     // Get current blockchain timestamp from JavaScript (Solana Clock)
                     // This is more accurate than local time since it matches the on-chain timestamp
@@ -954,9 +943,7 @@ impl GameState {
                         (() => {
                             try {
                                 // Get current Unix timestamp in seconds (matches Solana's Clock.unix_timestamp)
-                                const timestamp = Math.floor(Date.now() / 1000);
-                                console.log('🕐 JS: current_blockchain_timestamp =', timestamp);
-                                return timestamp;
+                                return Math.floor(Date.now() / 1000);
                             } catch (e) {
                                 console.error('Failed to get current timestamp:', e);
                                 return 0;
@@ -976,33 +963,23 @@ impl GameState {
                         }
                     };
                     
-                    println!("🕐 Rust: current_blockchain_timestamp = {}", current_time);
-                    
                     if current_time > 0 {
                         let elapsed = current_time.saturating_sub(reload_timestamp);
-                        
-                        println!("⏱️  Rust: elapsed time = {} seconds (need 1 second to complete)", elapsed);
                         
                         // Update reload progress (1 second duration)
                         self.reload_progress = (elapsed as f32).min(1.0);
                         
                         // Auto-finish reload after 1 second has passed
                         if elapsed >= 1 {
-                            println!("✅ Rust: 1 second passed, finishing reload automatically");
-                            println!("🔄 Rust: Calling finish_reload()...");
                             self.finish_reload();
-                        } else {
-                            println!("⏳ Rust: Waiting... {} more seconds needed", 1 - elapsed);
                         }
                     } else {
                         // Keep progress at current state if we can't get timestamp
                         self.reload_progress = 0.0;
-                        println!("⚠️  Rust: Failed to get current_time, reload_progress = 0.0");
                     }
                 } else {
                     // Reload timestamp not yet available, keep progress at 0
                     self.reload_progress = 0.0;
-                    println!("⏳ Rust: Waiting for reload_start_timestamp from blockchain...");
                 }
             }
 
