@@ -12,8 +12,39 @@ import { debug } from "./utils/debug-config";
 
 const { u32, u8, struct, f32 } = BufferLayout;
 
-// Track last logged positions to avoid duplicate logs
+// Track last logged positions to reduce spam
 const lastLoggedPositions = {};
+
+// Track previous bullet counts to detect shooting
+const previousBulletCounts = {};
+
+// Track if we've played a sound recently for a player (debounce)
+const recentSoundPlays = {};
+
+/**
+ * Play 3D positional audio for other players shooting
+ * @param {number} x - X position of the sound
+ * @param {number} y - Y position of the sound
+ * @param {number} z - Z position of the sound
+ * @param {string} playerPubkey - Player public key for debouncing
+ */
+function play3DShootingSound(x, y, z, playerPubkey) {
+  // Debounce: Don't play sound if we just played it for this player (within 100ms)
+  const now = Date.now();
+  if (recentSoundPlays[playerPubkey] && now - recentSoundPlays[playerPubkey] < 100) {
+    return;
+  }
+  recentSoundPlays[playerPubkey] = now;
+
+  // Call Rust function to play 3D sound at the player's location
+  if (window.gameBridge && window.gameBridge.play3DSound) {
+    window.gameBridge.play3DSound('shoot', x, y, z);
+    debug.log('AUDIO', `🔊 Playing 3D shooting sound at (${x.toFixed(1)}, ${y.toFixed(1)}, ${z.toFixed(1)}) for player ${playerPubkey.slice(0, 8)}`);
+  } else {
+    // Fallback: Play 2D sound if 3D audio not available
+    console.log(`🔊 Would play 3D shooting sound at (${x.toFixed(1)}, ${y.toFixed(1)}, ${z.toFixed(1)})`);
+  }
+}
 
 /**
  * GamePlayer account layout for Borsh deserialization
@@ -521,6 +552,36 @@ export function initGameBridge() {
                     debug.log('PLAYER_UPDATES', `[WebSocket] 📡 Player ${accountPubkey.slice(0, 8)} | Pos(${gamePlayerData.positionX.toFixed(1)}, ${gamePlayerData.positionY.toFixed(1)}, ${gamePlayerData.positionZ.toFixed(1)}) | Rot(${gamePlayerData.rotationY.toFixed(2)}) | Team ${gamePlayerData.team} | HP ${gamePlayerData.health} | Alive: ${gamePlayerData.isAlive} | Ammo: ${gamePlayerData.bulletCount} | Reload: ${gamePlayerData.reloadStartTimestamp} | Total: ${totalPlayers} players`);
                   }
 
+                  // 🔫 DETECT SHOOTING: Check if bullet count decreased
+                  const previousBulletCount = previousBulletCounts[accountPubkey];
+                  if (previousBulletCount !== undefined && gamePlayerData.bulletCount < previousBulletCount) {
+                    // Bullet count decreased = player shot!
+                    // Check if this is NOT the current player (we don't play sound for our own shots)
+                    try {
+                      const currentPlayerEphemeralKey = solanaBridge.getCurrentPlayerEphemeralKey();
+                      if (!currentPlayerEphemeralKey || gamePlayerData.authority !== currentPlayerEphemeralKey) {
+                        // This is another player shooting - play 3D sound at their location
+                        debug.log('AUDIO', `🔫 Player ${accountPubkey.slice(0, 8)} shot! Ammo: ${previousBulletCount} → ${gamePlayerData.bulletCount}`);
+                        play3DShootingSound(
+                          gamePlayerData.positionX,
+                          gamePlayerData.positionY,
+                          gamePlayerData.positionZ,
+                          accountPubkey
+                        );
+                      }
+                    } catch (err) {
+                      // Ephemeral wallet not initialized yet, assume it's another player
+                      play3DShootingSound(
+                        gamePlayerData.positionX,
+                        gamePlayerData.positionY,
+                        gamePlayerData.positionZ,
+                        accountPubkey
+                      );
+                    }
+                  }
+                  // Store current bullet count for next comparison
+                  previousBulletCounts[accountPubkey] = gamePlayerData.bulletCount;
+
                   // Store the decoded data
                   window.___websocket_player_updates[accountPubkey] = {
                     timestamp: Date.now(),
@@ -640,6 +701,21 @@ export function initGameBridge() {
         }
       }
       console.log("==========================================");
+    },
+
+    /**
+     * Play 3D positional audio
+     * This function should be implemented by Rust to play audio at a specific location
+     * @param {string} soundName - Name of the sound to play (e.g., 'shoot', 'reload', 'hit')
+     * @param {number} x - X position
+     * @param {number} y - Y position
+     * @param {number} z - Z position
+     */
+    play3DSound: (soundName, x, y, z) => {
+      console.log(`🔊 [Game Bridge] play3DSound stub called: ${soundName} at (${x}, ${y}, ${z})`);
+      console.log(`⚠️ This should be implemented in Rust to play actual 3D audio`);
+      // This is a stub - the actual implementation should be in Rust/raylib
+      // Rust should replace this function with a real implementation that uses raylib audio
     },
   };
 
