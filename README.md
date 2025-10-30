@@ -2,6 +2,38 @@
 
 A Rust-based FPS game with Solana blockchain integration. The game uses Raylib (compiled via Emscripten) and communicates with Solana smart contracts through a JavaScript bridge.
 
+### Problem
+
+- On-chain games today mostly focus on “earning,” not competitive, skill‑based gameplay.
+- There is a lack of live, low‑latency FPS experiences on Solana that feel Web2‑native.
+
+### Solution
+
+FPS.so is a skill‑based first‑person shooter on Solana. We stream inputs through MagicBlock’s Ephemeral Rollups to deliver Web2‑grade responsiveness while actions are verifiably committed on-chain. This game is playable on your desktop and phone!
+
+### Why Only Possible On MagicBlock (OPOMB)
+
+- Ultra‑low latency play (as low as ~10 ms) via Ephemeral Rollups.
+- Secure: inputs/actions follow a delegated, verifiable rollup path.
+- Gasless UX: movements and actions execute a program behind the scenes with no transaction fees for players.
+
+### Target Market
+
+- Web3 gamers, Web2 gamers, and NFT collectors/communities.
+- Market signal: Gaming dominance rose from 20.1% → 25% in Q3 with 7.4M daily UAW.
+
+### What’s in the Demo
+
+- Desktop (WASD/mouse) and mobile joystick controls (React overlay).
+- Wallet‑aware authority; inputs streamed to chain via ER.
+- Clear architecture across Game (WASM), Bridge (React), and Solana client.
+
+### Roadmap
+
+- Q1: More maps, game modes, and weapons; improved movement & gun physics; publish on Solana Dapp Store.
+- Q2: Ranked matchmaking with MMR; leaderboards; online tourneys.
+- Q3: Marketplace for cosmetic gun skins as NFTs.
+
 ## Architecture
 
 ```
@@ -10,6 +42,13 @@ A Rust-based FPS game with Solana blockchain integration. The game uses Raylib (
 │  (Emscripten WASM)  │ ◄─────► │  (React App)         │ ◄─────► │  (wasm-bindgen)     │
 └─────────────────────┘         └──────────────────────┘         └─────────────────────┘
 ```
+
+### How It Works (High Level)
+
+1. Raylib (Rust) compiles to WASM and renders the game in a canvas.
+2. A JavaScript bridge exposes functions both ways (game → JS → on‑chain and UI → game).
+3. Player inputs are streamed using MagicBlock Ephemeral Rollups (ephemeral wallet + ER RPC), then committed on‑chain.
+4. State (players, maps, lobbies) can be queried and synced back to the client.
 
 ## Quick Start
 
@@ -27,6 +66,7 @@ A Rust-based FPS game with Solana blockchain integration. The game uses Raylib (
 ```
 
 This builds:
+
 - Solana client (wasm-bindgen) → `app/public/solana-client/`
 - Raylib game (Emscripten) → `app/public/fpsdotso-game.js` + `.wasm`
 
@@ -39,6 +79,11 @@ pnpm run start
 ```
 
 Open http://localhost:3000
+
+### Controls
+
+- Desktop: WASD to move, mouse to look, click to shoot (where implemented).
+- Mobile: When the viewport width < 1000px, a joystick overlay is shown. Joystick inputs are streamed via the same MagicBlock ER pathway for gasless, low‑latency control.
 
 ### 3. Test the Bridge
 
@@ -82,6 +127,7 @@ fpsdotso-game/
 ### Example
 
 **In Rust game:**
+
 ```rust
 extern "C" {
     fn js_register_kill(killer: *const c_char, victim: *const c_char);
@@ -96,6 +142,7 @@ register_kill_on_chain("player1", "player2");
 ## Available Bridge Functions
 
 From the game, you can call:
+
 - `js_register_kill(killer, victim)` - Record kill on-chain
 - `js_get_player_stats(playerId)` - Fetch player stats
 - `js_send_message(message)` - Send message to UI
@@ -108,12 +155,12 @@ From the game, you can call:
 
 ```javascript
 // Check readiness
-window.gameBridge.isSolanaReady()
+window.gameBridge.isSolanaReady();
 
 // Test functions
-await window.gameBridge.connectWallet()
-await window.gameBridge.registerKill("alice", "bob")
-await window.gameBridge.getPlayerStats("alice")
+await window.gameBridge.connectWallet();
+await window.gameBridge.registerKill("alice", "bob");
+await window.gameBridge.getPlayerStats("alice");
 ```
 
 ### Test Console
@@ -165,16 +212,19 @@ pnpm run start
 ## Troubleshooting
 
 ### Build Fails
+
 - Ensure Emscripten is installed: `source emsdk_env.sh`
 - Install wasm-pack: `cargo install wasm-pack`
 - Check Rust target: `rustup target add wasm32-unknown-emscripten`
 
 ### Module Not Found
+
 - Check files exist in `app/public/`
 - Clear browser cache
 - Check browser console for errors
 
 ### Bridge Not Working
+
 - Wait for both modules to initialize
 - Check console logs for initialization sequence
 - Use test-bridge.html to debug
