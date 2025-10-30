@@ -64,8 +64,8 @@ const LatencyDisplay = ({ gamePublicKey, isPlaying }) => {
     // Measure latency immediately
     measureLatency();
     
-    // Measure latency every 1000ms (once per second)
-    pingInterval = setInterval(measureLatency, 1000);
+    // Measure latency every 2000ms (once every 2 seconds to avoid overloading)
+    pingInterval = setInterval(measureLatency, 2000);
 
     return () => {
       if (pingInterval) clearInterval(pingInterval);
