@@ -333,6 +333,43 @@ impl GameState {
         10
     }
 
+    /// Get adaptive input interval from JavaScript (adjusted based on latency)
+    fn get_current_input_interval_from_js(&self) -> f32 {
+        use std::ffi::CString;
+
+        let js_code = r#"
+            (() => {
+                try {
+                    // Check if window.currentInputInterval exists (set by adaptive rate adjustment)
+                    if (typeof window.currentInputInterval === 'number') {
+                        return window.currentInputInterval;
+                    }
+                    // Default to 50ms (0.05 seconds) if not available
+                    return 0.05;
+                } catch (e) {
+                    return 0.05;
+                }
+            })();
+        "#;
+
+        unsafe {
+            let c_str = CString::new(js_code).unwrap();
+            let result_ptr = emscripten_run_script_string(c_str.as_ptr());
+
+            if !result_ptr.is_null() {
+                let result_str = std::ffi::CStr::from_ptr(result_ptr)
+                    .to_string_lossy();
+                
+                if let Ok(interval) = result_str.parse::<f32>() {
+                    return interval;
+                }
+            }
+        }
+
+        // Default to 50ms if parsing fails
+        0.05
+    }
+
     /// Get reload timestamp from WebSocket to check if reloading
     fn get_reload_timestamp(&self) -> u64 {
         use std::ffi::CString;
@@ -924,17 +961,20 @@ impl GameState {
                 }
             }
 
-            // Send player input every 50ms (20 updates per second) for better network efficiency
-            // Accumulate time and only send when threshold is reached
+            // Send player input with adaptive rate limiting based on network latency
+            // JavaScript adjusts window.currentInputInterval based on ephemeral RPC latency
+            // Default: 50ms (20 tx/s), High latency: 100ms (10 tx/s), Very high: 150ms (~7 tx/s)
             self.input_update_timer += delta;
-            const INPUT_UPDATE_INTERVAL: f32 = 0.1; // 50ms = 0.05 seconds
+            
+            // Get adaptive interval from JavaScript (defaults to 0.05 if not available)
+            let input_interval = self.get_current_input_interval_from_js();
 
-            if self.input_update_timer >= INPUT_UPDATE_INTERVAL {
+            if self.input_update_timer >= input_interval {
                 if let Some(ref player) = self.player {
                     self.send_player_input(rl, player, delta);
                 }
                 // Reset timer, keeping any overflow for precision
-                self.input_update_timer -= INPUT_UPDATE_INTERVAL;
+                self.input_update_timer -= input_interval;
             }
 
             // Handle shooting - left mouse button or mobile shoot button

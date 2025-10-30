@@ -66,6 +66,16 @@ let matchmakingProgram = null;
 let gameProgram = null;
 let wallet = null;
 
+// Connection refresh tracking
+let lastConnectionRefresh = Date.now();
+const CONNECTION_REFRESH_INTERVAL = 60000; // Refresh every 60 seconds
+
+// Adaptive rate limiting tracking
+let recentLatencies = [];
+let currentInputInterval = 0.1; // Start at 100ms (10 tx/s)
+let lastLatencyCheck = Date.now();
+let transactionCount = 0;
+
 // Cache for Player PDA -> player data to avoid redundant fetches
 // Format: { [playerPdaString]: { signingKey: PublicKey, username: string } }
 const playerDataCache = new Map();
@@ -385,6 +395,108 @@ export function serializeMapToBorsh(mapName, mapObjects) {
 }
 
 /**
+ * Refresh the ephemeral connection to prevent latency buildup
+ * Should be called periodically (every 60 seconds)
+ */
+export async function refreshEphemeralConnection() {
+  try {
+    const timeSinceLastRefresh = Date.now() - lastConnectionRefresh;
+    
+    // Only refresh if enough time has passed
+    if (timeSinceLastRefresh < CONNECTION_REFRESH_INTERVAL) {
+      return false;
+    }
+
+    console.log("🔄 Refreshing ephemeral connection...");
+    
+    // Create new ephemeral connection
+    ephemeralConnection = new Connection(EPHEMERAL_RPC_URL, "confirmed");
+    
+    // Recreate ephemeral provider if wallet exists
+    if (wallet && wallet.publicKey) {
+      ephemeralProvider = new AnchorProvider(
+        ephemeralConnection,
+        wallet,
+        { commitment: "confirmed" }
+      );
+      
+      // Recreate game program on ephemeral
+      gameProgram = new Program(gameIdl, GAME_PROGRAM_ID, ephemeralProvider);
+      
+      console.log("✅ Ephemeral provider and game program recreated");
+    }
+    
+    // Update global reference
+    if (typeof window !== 'undefined') {
+      window.ephemeralConnection = ephemeralConnection;
+    }
+    
+    // Reset connection refresh timer
+    lastConnectionRefresh = Date.now();
+    
+    // Reset transaction counter
+    transactionCount = 0;
+    
+    console.log(`✅ Ephemeral connection refreshed (tx count reset)`);
+    return true;
+  } catch (error) {
+    console.error("❌ Failed to refresh ephemeral connection:", error);
+    return false;
+  }
+}
+
+/**
+ * Adjust input send rate based on recent latency measurements
+ * Called automatically after latency measurements
+ */
+export function adjustInputRateBasedOnLatency(latencyMs) {
+  // Add to recent latencies (keep last 10 measurements)
+  recentLatencies.push(latencyMs);
+  if (recentLatencies.length > 10) {
+    recentLatencies.shift();
+  }
+  
+  // Only adjust if we have enough data
+  if (recentLatencies.length < 3) {
+    return;
+  }
+  
+  // Calculate average latency
+  const avgLatency = recentLatencies.reduce((a, b) => a + b, 0) / recentLatencies.length;
+  
+  // Adjust input interval based on latency
+  let newInterval = currentInputInterval;
+  
+  if (avgLatency > 500) {
+    // Very high latency - slow down significantly
+    newInterval = 0.15; // ~6.7 tx/s
+    console.log(`⚠️ High latency detected (${avgLatency.toFixed(0)}ms), reducing to ~7 tx/s`);
+  } else if (avgLatency > 300) {
+    // High latency - slow down moderately
+    newInterval = 0.10; // 10 tx/s
+    console.log(`⚠️ Elevated latency detected (${avgLatency.toFixed(0)}ms), reducing to 10 tx/s`);
+  } else if (avgLatency > 150) {
+    // Moderate latency - slow down slightly
+    newInterval = 0.075; // ~13 tx/s
+    console.log(`📊 Moderate latency detected (${avgLatency.toFixed(0)}ms), reducing to ~13 tx/s`);
+  } else if (avgLatency < 100 && currentInputInterval > 0.05) {
+    // Low latency - can speed up to baseline
+    newInterval = 0.05; // 20 tx/s
+    console.log(`✅ Low latency detected (${avgLatency.toFixed(0)}ms), increasing to 20 tx/s`);
+  }
+  
+  // Only update if changed significantly (5ms difference)
+  if (Math.abs(newInterval - currentInputInterval) >= 0.005) {
+    currentInputInterval = newInterval;
+    
+    // Update global reference
+    if (typeof window !== 'undefined') {
+      window.currentInputInterval = currentInputInterval;
+    }
+  }
+}
+
+/**
  * Initialize the Solana connection and Anchor program
  * This must be called before any other functions
  */
@@ -399,14 +511,20 @@ export async function initSolanaClient() {
     // Create ephemeral connection for Magicblock
     ephemeralConnection = new Connection(EPHEMERAL_RPC_URL, "confirmed");
     console.log(`⚡ Ephemeral RPC initialized: ${EPHEMERAL_RPC_URL}`);
+    
+    // Mark connection as fresh
+    lastConnectionRefresh = Date.now();
 
     // Expose connections globally for latency measurements
     if (typeof window !== 'undefined') {
       window.solanaConnection = connection;
       window.ephemeralConnection = ephemeralConnection;
+      window.currentInputInterval = currentInputInterval;
       window.solanaBridge = {
         ...window.solanaBridge,
         measureLatency: measureLatency,
+        refreshEphemeralConnection: refreshEphemeralConnection,
+        adjustInputRateBasedOnLatency: adjustInputRateBasedOnLatency,
       };
     }
 
@@ -1673,7 +1791,7 @@ export async function setReadyState(gamePubkey, isReady) {
           rotationX: 0.0, // Default pitch
           rotationY: 0.0, // Default yaw
           rotationZ: 0.0, // Default roll
-          deltaTime: 0.1 // Default delta time (50ms)
+          deltaTime: 0.05 // Default delta time (50ms)
         });
         console.log("✅ Step 4 complete - Initial player input sent to ephemeral rollup");
       } catch (error) {
@@ -2544,6 +2662,16 @@ export async function sendPlayerInput(input) {
   if (!input.gameId) {
     throw new Error("gameId is required in input");
   }
+
+  // Check if we need to refresh the ephemeral connection (every 60 seconds)
+  const timeSinceRefresh = Date.now() - lastConnectionRefresh;
+  if (timeSinceRefresh >= CONNECTION_REFRESH_INTERVAL) {
+    console.log(`🔄 Auto-refreshing connection (${(timeSinceRefresh / 1000).toFixed(0)}s since last refresh)`);
+    await refreshEphemeralConnection();
+  }
+  
+  // Track transaction count
+  transactionCount++;
 
   // Initialize game program if not already done
   if (!gameProgram) {

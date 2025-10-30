@@ -46,10 +46,20 @@ const LatencyDisplay = ({ gamePublicKey, isPlaying }) => {
           const endTime = performance.now();
           const rtt = endTime - startTime;
           setLatency(Math.round(rtt));
+          
+          // Adjust input rate based on latency (adaptive rate limiting)
+          if (window.solanaBridge && window.solanaBridge.adjustInputRateBasedOnLatency) {
+            window.solanaBridge.adjustInputRateBasedOnLatency(rtt);
+          }
         } else if (window.solanaBridge && window.solanaBridge.measureLatency) {
           // Alternative: use the dedicated latency measurement function
           const rtt = await window.solanaBridge.measureLatency();
           setLatency(Math.round(rtt));
+          
+          // Adjust input rate based on latency
+          if (window.solanaBridge && window.solanaBridge.adjustInputRateBasedOnLatency) {
+            window.solanaBridge.adjustInputRateBasedOnLatency(rtt);
+          }
         } else {
           console.warn('⚠️ No ephemeral connection available for latency measurement');
           setLatency(null);
