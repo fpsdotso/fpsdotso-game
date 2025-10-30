@@ -28,6 +28,7 @@ import MatchStatus from "./components/MatchStatus";
 import RespawnOverlay from "./components/RespawnOverlay";
 import VirtualJoystick from "./components/VirtualJoystick";
 import VictoryDialog from "./components/VictoryDialog";
+import PauseMenu from "./components/PauseMenu";
 
 // NOTE: This app is configured to connect to Solana LOCALNET only
 // RPC URL is hardcoded to http://127.0.0.1:8899 in solana-bridge.js
@@ -76,6 +77,9 @@ function App() {
   // Victory dialog state
   const [showVictoryDialog, setShowVictoryDialog] = useState(false);
   const [victoryData, setVictoryData] = useState(null);
+
+  // Pause menu state
+  const [isPaused, setIsPaused] = useState(false);
 
   useEffect(() => {
     async function init() {
@@ -162,6 +166,53 @@ function App() {
 
     const refreshLobbyData = async () => {
       try {
+        // Check if the game has ended
+        const gameState = await getGameState(currentLobbyData.gamePublicKey);
+        console.log('🔄 Refreshing lobby, game state:', gameState);
+
+        // If game has ended (state 2), prompt user to leave
+        if (gameState === 2) {
+          console.log('🏁 Game has ended, prompting user to leave...');
+
+          // Show confirmation dialog
+          const shouldLeave = window.confirm(
+            'This game has ended. Would you like to leave and return to the lobby browser?\n\n' +
+            '(This will require a wallet transaction to remove you from the game)'
+          );
+
+          if (shouldLeave) {
+            try {
+              await leaveCurrentGame();
+              console.log('✅ Left ended game');
+
+              // Clear lobby state
+              setInLobby(false);
+              setCurrentLobbyData(null);
+              setPlayerReady(false);
+              setIsLobbyLeader(false);
+              setCurrentGameState(null);
+
+              // Disconnect WebSocket if connected
+              try {
+                if (window.gameBridge && window.gameBridge.disconnectWebSocket) {
+                  window.gameBridge.disconnectWebSocket();
+                }
+              } catch (error) {
+                console.error('❌ Error disconnecting WebSocket:', error);
+              }
+
+              // Refresh games list
+              await loadGames();
+
+              alert('You have been removed from the ended game.');
+            } catch (error) {
+              console.error('❌ Error leaving game:', error);
+              alert('Failed to leave game: ' + error.message);
+            }
+          }
+          return; // Stop further processing whether they left or not
+        }
+
         const players = await getAllPlayersInGame(currentLobbyData.gamePublicKey);
 
         console.log('🔄 Refreshing lobby data, players:', players);
@@ -222,9 +273,6 @@ function App() {
           if (gameState === 1) {
             console.log('🎮 Game has started! Switching to fullscreen gameplay...');
 
-            // Exit lobby view
-            setInLobby(false);
-
             // Switch to map editor tab (where game canvas is)
             setActiveTab('mapeditor');
 
@@ -234,30 +282,54 @@ function App() {
               console.log('✅ Set current game pubkey in Raylib');
             }
 
-            // Load the map data from blockchain
-            if (window.gameBridge && window.gameBridge.getMapDataById && currentLobbyData?.mapName) {
-              console.log('🗺️ Loading map from blockchain:', currentLobbyData.mapName);
-              window.gameBridge.getMapDataById(currentLobbyData.mapName).then(mapData => {
-                if (mapData) {
-                  console.log('✅ Map data loaded, length:', mapData ? mapData.length : 0);
-                  // The Rust side will handle loading the map
-                } else {
-                  console.warn('⚠️ No map data returned');
-                }
-              }).catch(err => {
-                console.error('❌ Failed to load map:', err);
-              });
-            }
+            // Initialize WebSocket connection and subscribe to game players
+            // This is run as an immediately invoked async function
+            (async () => {
+              try {
+                console.log('🔌 Initializing WebSocket connection...');
 
-            // Tell Raylib game to switch to playing mode AFTER setting up the game
-            setTimeout(() => {
-              if (window.gameBridge && window.gameBridge.startGameMode) {
-                window.gameBridge.startGameMode();
-                console.log('✅ Called startGameMode');
-              } else {
-                console.warn('⚠️ gameBridge.startGameMode not available');
+                // Connect to WebSocket
+                if (window.gameBridge && window.gameBridge.connectWebSocket) {
+                  await window.gameBridge.connectWebSocket();
+                  console.log('✅ WebSocket connected');
+                }
+
+                // Subscribe to game players
+                if (window.gameBridge && window.gameBridge.subscribeToGamePlayers && currentLobbyData?.gamePublicKey) {
+                  await window.gameBridge.subscribeToGamePlayers(currentLobbyData.gamePublicKey);
+                  console.log('✅ Subscribed to game players');
+                }
+
+                // Load the map data from blockchain
+                if (window.gameBridge && window.gameBridge.getMapDataById && currentLobbyData?.mapName) {
+                  console.log('🗺️ Loading map from blockchain:', currentLobbyData.mapName);
+                  const mapData = await window.gameBridge.getMapDataById(currentLobbyData.mapName);
+                  if (mapData) {
+                    console.log('✅ Map data loaded, length:', mapData ? mapData.length : 0);
+                    // Wait a bit for the Rust side to fully process the map
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                  } else {
+                    console.warn('⚠️ No map data returned');
+                  }
+                }
+
+                // Now that everything is set up, tell Raylib game to switch to playing mode
+                if (window.gameBridge && window.gameBridge.startGameMode) {
+                  window.gameBridge.startGameMode();
+                  console.log('✅ Called startGameMode - game should now be in Playing mode');
+                } else {
+                  console.warn('⚠️ gameBridge.startGameMode not available');
+                }
+
+                // Exit lobby view AFTER WebSocket is connected and everything is initialized
+                setInLobby(false);
+                console.log('✅ Exited lobby view after game initialization');
+              } catch (error) {
+                console.error('❌ Error initializing game connection:', error);
+                // Even on error, exit lobby to prevent getting stuck
+                setInLobby(false);
               }
-            }, 500); // Wait 500ms for map to load
+            })();
 
             // Enter fullscreen mode
             enterFullscreen();
@@ -405,7 +477,14 @@ function App() {
 
       setIsFullscreen(isCurrentlyFullscreen);
 
-      if (!isCurrentlyFullscreen && currentGameState === 1) {
+      // If user exited fullscreen during gameplay and game is paused, try to re-enter
+      if (!isCurrentlyFullscreen && currentGameState === 1 && isPaused) {
+        console.log('⚠️ Fullscreen exited while paused, re-entering...');
+        // Re-enter fullscreen after a short delay
+        setTimeout(() => {
+          enterFullscreen();
+        }, 100);
+      } else if (!isCurrentlyFullscreen && currentGameState === 1) {
         console.log('⚠️ User exited fullscreen during gameplay');
       }
     };
@@ -421,7 +500,45 @@ function App() {
       document.removeEventListener('mozfullscreenchange', handleFullscreenChange);
       document.removeEventListener('MSFullscreenChange', handleFullscreenChange);
     };
-  }, [currentGameState]);
+  }, [currentGameState, isPaused]);
+
+  // Listen for ESC key to toggle pause menu during gameplay
+  useEffect(() => {
+    const handleKeyDown = (event) => {
+      // Only handle ESC key when in active gameplay (not in lobby, not showing victory dialog)
+      if (event.key === 'Escape' && currentGameState === 1 && !inLobby && !showVictoryDialog) {
+        event.preventDefault();
+        event.stopPropagation();
+
+        setIsPaused(prev => {
+          const newPauseState = !prev;
+          console.log(newPauseState ? '⏸️ Game paused' : '▶️ Game resumed');
+
+          // Tell Rust game to pause/unpause
+          if (window.gameBridge) {
+            if (newPauseState && window.gameBridge.stopGameMode) {
+              // Pause: stop game mode (releases mouse, etc.)
+              window.gameBridge.stopGameMode();
+            } else if (!newPauseState && window.gameBridge.startGameMode) {
+              // Resume: start game mode again
+              window.gameBridge.startGameMode();
+            }
+          }
+
+          return newPauseState;
+        });
+      }
+    };
+
+    // Only add listener when in active gameplay (not in lobby)
+    if (currentGameState === 1 && !inLobby) {
+      // Use capture phase to intercept ESC before fullscreen handler
+      document.addEventListener('keydown', handleKeyDown, true);
+      return () => {
+        document.removeEventListener('keydown', handleKeyDown, true);
+      };
+    }
+  }, [currentGameState, inLobby, showVictoryDialog]);
 
   const handleConnectWallet = async () => {
     const result = await connectWallet();
@@ -454,6 +571,35 @@ function App() {
       const currentGamePubkey = await getPlayerCurrentGame();
       if (currentGamePubkey) {
         console.log("🎮 Player is already in game:", currentGamePubkey);
+
+        // Check if the game has ended
+        const gameState = await getGameState(currentGamePubkey);
+        console.log("🔍 Checking existing game state:", gameState);
+
+        if (gameState === 2) {
+          console.log("🏁 Player is in an ended game, prompting to leave...");
+
+          // Show confirmation dialog
+          const shouldLeave = window.confirm(
+            'You are still in a game that has ended. Would you like to leave it now?\n\n' +
+            '(This will require a wallet transaction to remove you from the game)'
+          );
+
+          if (shouldLeave) {
+            try {
+              await leaveCurrentGame();
+              console.log("✅ Left ended game on reconnect");
+              alert("You have been removed from the ended game.");
+            } catch (error) {
+              console.error("❌ Error leaving ended game:", error);
+              alert("Failed to leave game: " + error.message);
+            }
+          } else {
+            // If they decline, still don't rejoin the lobby - just show them lobby browser
+            console.log("ℹ️ User declined to leave ended game");
+          }
+          return; // Don't rejoin the lobby either way
+        }
 
         // Fetch game data
         const gameData = await getGame(currentGamePubkey);
@@ -491,25 +637,92 @@ function App() {
           });
           const isLeader = createdByString === currentWalletString;
 
-          // Set lobby state
-          setInLobby(true);
-          setIsLobbyLeader(isLeader);
-          setPlayerReady(playerInfo.isReady || false);
-          setCurrentLobbyData({
-            gamePublicKey: currentGamePubkey,
-            lobbyName: gameData.lobbyName || "Game Lobby",
-            mapName: gameData.mapName || gameData.mapId || "Default Map",
-            maxPlayers: gameData.maxPlayersPerTeam * 2,
-            teamA: teamAPlayers,
-            teamB: teamBPlayers,
-            spectators: spectators,
-            teamAReady: teamAReady,
-            teamBReady: teamBReady,
-          });
+          // Check if game is already active (started)
+          if (gameState === 1) {
+            console.log("🎮 Game is already active, initializing gameplay...");
 
-          // Switch to lobby tab
-          setActiveTab('lobby');
-          console.log("✅ Auto-opened lobby for existing game");
+            // Set game state first
+            setCurrentGameState(1);
+
+            // Store lobby data for the active game
+            const lobbyData = {
+              gamePublicKey: currentGamePubkey,
+              lobbyName: gameData.lobbyName || "Game Lobby",
+              mapName: gameData.mapName || gameData.mapId || "Default Map",
+              maxPlayers: gameData.maxPlayersPerTeam * 2,
+            };
+            setCurrentLobbyData(lobbyData);
+
+            // Don't set inLobby to true - we're going straight to gameplay
+            setInLobby(false);
+            setActiveTab('mapeditor');
+
+            // Initialize game connection asynchronously
+            setTimeout(async () => {
+              try {
+                // Set current game in Raylib
+                if (window.gameBridge && window.gameBridge.setCurrentGame) {
+                  window.gameBridge.setCurrentGame(currentGamePubkey);
+                  console.log('✅ Set current game pubkey in Raylib');
+                }
+
+                // Connect WebSocket
+                if (window.gameBridge && window.gameBridge.connectWebSocket) {
+                  await window.gameBridge.connectWebSocket();
+                  console.log('✅ WebSocket connected on reconnect');
+                }
+
+                // Subscribe to game players
+                if (window.gameBridge && window.gameBridge.subscribeToGamePlayers) {
+                  await window.gameBridge.subscribeToGamePlayers(currentGamePubkey);
+                  console.log('✅ Subscribed to game players on reconnect');
+                }
+
+                // Load map
+                if (window.gameBridge && window.gameBridge.getMapDataById) {
+                  const mapName = gameData.mapName || gameData.mapId;
+                  console.log('🗺️ Loading map from blockchain:', mapName);
+                  const mapData = await window.gameBridge.getMapDataById(mapName);
+                  if (mapData) {
+                    console.log('✅ Map data loaded on reconnect');
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                  }
+                }
+
+                // Start game mode
+                if (window.gameBridge && window.gameBridge.startGameMode) {
+                  window.gameBridge.startGameMode();
+                  console.log('✅ Started game mode on reconnect');
+                }
+
+                // Enter fullscreen
+                enterFullscreen();
+              } catch (error) {
+                console.error('❌ Error initializing game on reconnect:', error);
+              }
+            }, 500);
+
+          } else {
+            // Game is waiting (state 0), rejoin lobby normally
+            setInLobby(true);
+            setIsLobbyLeader(isLeader);
+            setPlayerReady(playerInfo.isReady || false);
+            setCurrentLobbyData({
+              gamePublicKey: currentGamePubkey,
+              lobbyName: gameData.lobbyName || "Game Lobby",
+              mapName: gameData.mapName || gameData.mapId || "Default Map",
+              maxPlayers: gameData.maxPlayersPerTeam * 2,
+              teamA: teamAPlayers,
+              teamB: teamBPlayers,
+              spectators: spectators,
+              teamAReady: teamAReady,
+              teamBReady: teamBReady,
+            });
+
+            // Switch to lobby tab
+            setActiveTab('lobby');
+            console.log("✅ Auto-opened lobby for existing game");
+          }
         }
       }
     } catch (error) {
@@ -917,10 +1130,9 @@ function App() {
 
       if (result) {
         console.log("✅ Game started successfully!");
-        // Game will transition to playing mode
-        setInLobby(false);
-        // Switch to map editor tab where the game will load
-        setActiveTab('mapeditor');
+        // Don't set inLobby to false here - let the game state monitoring effect handle it
+        // This ensures the host player also goes through the proper game initialization sequence
+        console.log("⏳ Waiting for game state to change to active...");
       } else {
         console.error("❌ Failed to start game");
         alert("Failed to start game. Check console for details.");
@@ -934,6 +1146,17 @@ function App() {
   const handleLeaveLobby = async () => {
     try {
       console.log("🚪 Leaving lobby...");
+
+      // Disconnect WebSocket if connected
+      try {
+        if (window.gameBridge && window.gameBridge.disconnectWebSocket) {
+          window.gameBridge.disconnectWebSocket();
+          console.log('✅ WebSocket disconnected');
+        }
+      } catch (wsError) {
+        console.error('❌ Error disconnecting WebSocket:', wsError);
+      }
+
       const result = await leaveCurrentGame();
 
       if (result) {
@@ -958,6 +1181,53 @@ function App() {
     } catch (error) {
       console.error("❌ Error leaving lobby:", error);
       alert("Error leaving lobby: " + error.message);
+    }
+  };
+
+  // Handle quitting from pause menu during active game
+  const handleQuitGame = async () => {
+    try {
+      console.log("🚪 Quitting game...");
+
+      // Close pause menu
+      setIsPaused(false);
+
+      // Disconnect WebSocket
+      try {
+        if (window.gameBridge && window.gameBridge.disconnectWebSocket) {
+          window.gameBridge.disconnectWebSocket();
+          console.log('✅ WebSocket disconnected');
+        }
+      } catch (wsError) {
+        console.error('❌ Error disconnecting WebSocket:', wsError);
+      }
+
+      // Leave the game on blockchain
+      const result = await leaveCurrentGame();
+
+      if (result || result?.error === "NotInGame") {
+        console.log("✅ Left game successfully");
+      }
+
+      // Exit fullscreen and return to lobby browser
+      exitFullscreen();
+      setCurrentGameState(null);
+      setInLobby(false);
+      setCurrentLobbyData(null);
+      setPlayerReady(false);
+      setIsLobbyLeader(false);
+
+      // Stop game mode in Raylib
+      if (window.gameBridge && window.gameBridge.stopGameMode) {
+        window.gameBridge.stopGameMode();
+      }
+
+      // Refresh games list
+      await loadGames();
+
+    } catch (error) {
+      console.error("❌ Error quitting game:", error);
+      alert("Error quitting game: " + error.message);
     }
   };
 
@@ -1286,8 +1556,8 @@ function App() {
               </button>
             )}
 
-            {/* ESC to exit hint - only show when in fullscreen */}
-            {isFullscreen && (
+            {/* ESC to pause hint - only show when in gameplay and not paused */}
+            {currentGameState === 1 && !isPaused && !showVictoryDialog && (
               <div style={{
                 position: 'fixed',
                 top: '20px',
@@ -1299,7 +1569,7 @@ function App() {
                 pointerEvents: 'none',
                 zIndex: 1000
               }}>
-                Press <span style={{ color: '#9c51ff', fontWeight: 'bold' }}>ESC</span> to exit fullscreen
+                Press <span style={{ color: '#9c51ff', fontWeight: 'bold' }}>ESC</span> to pause
               </div>
             )}
 
@@ -1318,6 +1588,17 @@ function App() {
             onClose={async () => {
               setShowVictoryDialog(false);
               setVictoryData(null);
+
+              // Disconnect WebSocket
+              try {
+                console.log('🔌 Disconnecting WebSocket...');
+                if (window.gameBridge && window.gameBridge.disconnectWebSocket) {
+                  window.gameBridge.disconnectWebSocket();
+                  console.log('✅ WebSocket disconnected');
+                }
+              } catch (error) {
+                console.error('❌ Error disconnecting WebSocket:', error);
+              }
 
               // Leave the game on the blockchain
               try {
@@ -1342,6 +1623,22 @@ function App() {
           />
         )}
       </div>
+
+      {/* Pause Menu - Rendered outside web-ui-overlay for proper pointer events */}
+      {/* Only show during active gameplay, NOT in lobby */}
+      {isPaused && currentGameState === 1 && !inLobby && !showVictoryDialog && (
+        <PauseMenu
+          onResume={() => {
+            setIsPaused(false);
+            // Resume game mode
+            if (window.gameBridge && window.gameBridge.startGameMode) {
+              window.gameBridge.startGameMode();
+              console.log('▶️ Game resumed');
+            }
+          }}
+          onQuit={handleQuitGame}
+        />
+      )}
     </div>
   );
 }

@@ -152,16 +152,18 @@ function LobbyBrowser({
           games.map((game, index) => (
             <div key={game.publicKey || index} className="room-card">
               <div className="room-info">
-                <h3 className="room-name">{game.lobbyName || game.name}</h3>
+                <h3 className="room-name">
+                  {game.lobbyName || game.name || `Game Room #${index + 1}`}
+                </h3>
                 <div className="room-details">
                   <span className="room-detail">
-                    🗺️ {game.mapName || game.map}
+                    🗺️ {game.mapName || game.map || 'Default Map'}
                   </span>
                   <span className="room-detail">
-                    👥 {game.totalPlayers || game.current_players}/{game.maxPlayers || game.max_players}
+                    👥 {game.totalPlayers || game.current_players || 0}/{game.maxPlayers || game.max_players || 10}
                   </span>
                   <span className="room-detail">
-                    🎯 Host: {game.createdBy ? `${game.createdBy.toString().slice(0, 4)}...${game.createdBy.toString().slice(-4)}` : game.host}
+                    🎯 Host: {game.createdBy ? `${game.createdBy.toString().slice(0, 4)}...${game.createdBy.toString().slice(-4)}` : (game.host || 'Unknown')}
                   </span>
                 </div>
               </div>

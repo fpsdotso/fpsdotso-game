@@ -1,0 +1,139 @@
+.pause-menu-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.85);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  animation: fadeIn 0.2s ease-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.pause-menu {
+  background: linear-gradient(135deg, rgba(20, 20, 30, 0.95) 0%, rgba(30, 30, 45, 0.95) 100%);
+  border: 2px solid rgba(156, 81, 255, 0.5);
+  border-radius: 16px;
+  padding: 48px 64px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), 0 0 40px rgba(156, 81, 255, 0.2);
+  min-width: 400px;
+  text-align: center;
+  animation: slideIn 0.3s ease-out;
+}
+
+@keyframes slideIn {
+  from {
+    transform: scale(0.9) translateY(-20px);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1) translateY(0);
+    opacity: 1;
+  }
+}
+
+.pause-menu-header {
+  margin-bottom: 32px;
+}
+
+.pause-menu-title {
+  font-size: 48px;
+  font-weight: 900;
+  color: #9c51ff;
+  margin: 0 0 12px 0;
+  text-shadow: 0 0 20px rgba(156, 81, 255, 0.6);
+  letter-spacing: 4px;
+}
+
+.pause-menu-subtitle {
+  font-size: 16px;
+  color: rgba(200, 200, 220, 0.8);
+  margin: 0;
+}
+
+.pause-menu-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-bottom: 32px;
+}
+
+.pause-btn {
+  padding: 16px 32px;
+  font-size: 18px;
+  font-weight: 700;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  font-family: inherit;
+}
+
+.pause-btn-primary {
+  background: linear-gradient(135deg, #9c51ff 0%, #7c3fcc 100%);
+  color: white;
+  box-shadow: 0 4px 16px rgba(156, 81, 255, 0.4);
+}
+
+.pause-btn-primary:hover {
+  background: linear-gradient(135deg, #b366ff 0%, #9c51ff 100%);
+  box-shadow: 0 6px 20px rgba(156, 81, 255, 0.6);
+  transform: translateY(-2px);
+}
+
+.pause-btn-primary:active {
+  transform: translateY(0);
+}
+
+.pause-btn-danger {
+  background: linear-gradient(135deg, #ff4444 0%, #cc3333 100%);
+  color: white;
+  box-shadow: 0 4px 16px rgba(255, 68, 68, 0.4);
+}
+
+.pause-btn-danger:hover {
+  background: linear-gradient(135deg, #ff5555 0%, #ff4444 100%);
+  box-shadow: 0 6px 20px rgba(255, 68, 68, 0.6);
+  transform: translateY(-2px);
+}
+
+.pause-btn-danger:active {
+  transform: translateY(0);
+}
+
+.pause-menu-hint {
+  padding-top: 24px;
+  border-top: 1px solid rgba(156, 81, 255, 0.2);
+}
+
+.pause-menu-hint p {
+  font-size: 14px;
+  color: rgba(200, 200, 220, 0.6);
+  margin: 0;
+}
+
+.key-hint {
+  display: inline-block;
+  background: rgba(156, 81, 255, 0.2);
+  border: 1px solid rgba(156, 81, 255, 0.4);
+  border-radius: 4px;
+  padding: 4px 12px;
+  font-weight: 700;
+  color: #9c51ff;
+  font-family: 'Courier New', monospace;
+  margin: 0 4px;
+}

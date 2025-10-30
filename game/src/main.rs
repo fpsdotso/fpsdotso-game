@@ -151,7 +151,7 @@ fn main() {
     // Initialize the Raylib window with MSAA for better quality
     let (mut rl, thread) = raylib::init()
         .size(1280, 720)
-        .title("FPS.so Map Builder")
+        .title("fps.so")
         .msaa_4x()  // Enable 4x Multi-Sample Anti-Aliasing
         .build();
 

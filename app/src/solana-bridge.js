@@ -1767,6 +1767,8 @@ export async function getAllGames(filterState = null) {
       const gameObject = {
         publicKey: pubkey.toString(),
         ...gameData,
+        // Ensure lobbyName has a fallback if not set
+        lobbyName: gameData.lobbyName || `Game Room ${pubkey.toString().slice(0, 8)}`,
         // Add computed fields
         totalPlayers:
           gameData.currentPlayersTeamA + gameData.currentPlayersTeamB,
