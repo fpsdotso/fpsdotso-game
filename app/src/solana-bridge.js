@@ -1673,7 +1673,7 @@ export async function setReadyState(gamePubkey, isReady) {
           rotationX: 0.0, // Default pitch
           rotationY: 0.0, // Default yaw
           rotationZ: 0.0, // Default roll
-          deltaTime: 0.05 // Default delta time (50ms)
+          deltaTime: 0.1 // Default delta time (50ms)
         });
         console.log("✅ Step 4 complete - Initial player input sent to ephemeral rollup");
       } catch (error) {

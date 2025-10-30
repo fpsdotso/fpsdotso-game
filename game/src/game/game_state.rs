@@ -927,7 +927,7 @@ impl GameState {
             // Send player input every 50ms (20 updates per second) for better network efficiency
             // Accumulate time and only send when threshold is reached
             self.input_update_timer += delta;
-            const INPUT_UPDATE_INTERVAL: f32 = 0.05; // 50ms = 0.05 seconds
+            const INPUT_UPDATE_INTERVAL: f32 = 0.1; // 50ms = 0.05 seconds
 
             if self.input_update_timer >= INPUT_UPDATE_INTERVAL {
                 if let Some(ref player) = self.player {
