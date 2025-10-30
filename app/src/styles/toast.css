@@ -1,0 +1,138 @@
+/**
+ * Custom styles for react-hot-toast notifications
+ */
+
+/* Toast container styling */
+.toast-content {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 250px;
+  max-width: 400px;
+}
+
+.toast-message {
+  font-weight: 500;
+  color: #1a1a1a;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.toast-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: #9945FF;
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: all 0.2s ease;
+  padding: 4px 8px;
+  border-radius: 4px;
+  background: rgba(153, 69, 255, 0.1);
+  align-self: flex-start;
+}
+
+.toast-link:hover {
+  background: rgba(153, 69, 255, 0.2);
+  transform: translateX(2px);
+}
+
+/* Override default toast styles for better appearance */
+div[data-sonner-toast] {
+  border-radius: 8px !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
+}
+
+/* Success toast styling */
+div[data-sonner-toast][data-type="success"] {
+  background: linear-gradient(135deg, #14F195 0%, #9945FF 100%) !important;
+  color: white !important;
+}
+
+div[data-sonner-toast][data-type="success"] .toast-message {
+  color: white !important;
+}
+
+div[data-sonner-toast][data-type="success"] .toast-link {
+  background: rgba(255, 255, 255, 0.2) !important;
+  color: white !important;
+}
+
+div[data-sonner-toast][data-type="success"] .toast-link:hover {
+  background: rgba(255, 255, 255, 0.3) !important;
+}
+
+/* Error toast styling */
+div[data-sonner-toast][data-type="error"] {
+  background: #ef4444 !important;
+  color: white !important;
+}
+
+div[data-sonner-toast][data-type="error"] .toast-message {
+  color: white !important;
+}
+
+/* Loading toast styling */
+div[data-sonner-toast][data-type="loading"] {
+  background: #3b82f6 !important;
+  color: white !important;
+}
+
+div[data-sonner-toast][data-type="loading"] .toast-message {
+  color: white !important;
+}
+
+div[data-sonner-toast][data-type="loading"] .toast-link {
+  background: rgba(255, 255, 255, 0.2) !important;
+  color: white !important;
+}
+
+div[data-sonner-toast][data-type="loading"] .toast-link:hover {
+  background: rgba(255, 255, 255, 0.3) !important;
+}
+
+/* Solana-themed gradients for blockchain transactions */
+.toast-solana {
+  background: linear-gradient(135deg, #00FFA3 0%, #DC1FFF 100%) !important;
+}
+
+.toast-matchmaking {
+  background: linear-gradient(135deg, #9945FF 0%, #14F195 100%) !important;
+}
+
+.toast-map-registry {
+  background: linear-gradient(135deg, #14F195 0%, #00D4FF 100%) !important;
+}
+
+/* Animation for toast entrance */
+@keyframes slideInRight {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+div[data-sonner-toast] {
+  animation: slideInRight 0.3s cubic-bezier(0.21, 1.02, 0.73, 1) forwards !important;
+}
+
+/* Mobile responsive adjustments */
+@media (max-width: 640px) {
+  .toast-content {
+    min-width: 200px;
+    max-width: calc(100vw - 32px);
+  }
+
+  .toast-message {
+    font-size: 13px;
+  }
+
+  .toast-link {
+    font-size: 12px;
+  }
+}

@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from "react";
 import "./App.css";
+import "./styles/toast.css";
+import toast, { Toaster } from "react-hot-toast";
 import {
   initSolanaClient,
   connectWallet,
@@ -1475,6 +1477,41 @@ function App() {
 
   return (
     <div id="container">
+      {/* React Hot Toast Notifications */}
+      <Toaster
+        position="bottom-right"
+        toastOptions={{
+          duration: 5000,
+          style: {
+            background: '#fff',
+            color: '#1a1a1a',
+            borderRadius: '8px',
+            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
+            padding: '16px',
+          },
+          success: {
+            duration: 5000,
+            iconTheme: {
+              primary: '#14F195',
+              secondary: '#fff',
+            },
+          },
+          error: {
+            duration: 5000,
+            iconTheme: {
+              primary: '#ef4444',
+              secondary: '#fff',
+            },
+          },
+          loading: {
+            iconTheme: {
+              primary: '#3b82f6',
+              secondary: '#fff',
+            },
+          },
+        }}
+      />
+      
       {/* Settings Panel (modal overlay) */}
       <SettingsPanel
         isOpen={settingsOpen}

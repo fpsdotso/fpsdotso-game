@@ -9,6 +9,10 @@ import mapRegistryIdl from "./idl/map_registry.json";
 import matchmakingIdl from "./idl/matchmaking.json";
 import gameIdl from "./idl/game.json";
 import * as EphemeralWallet from "./ephemeral-wallet.js";
+import { 
+  showMatchmakingTransaction, 
+  showMapRegistryTransaction 
+} from "./utils/toast-notifications.js";
 
 // Program IDs from the IDLs
 const PROGRAM_ID = new PublicKey(mapRegistryIdl.address);
@@ -660,17 +664,20 @@ export async function createMap(
       program.programId
     );
 
-    const tx = await program.methods
-      .createMap(mapId, name, description, isDefault, mapData)
-      .accounts({
-        mapMetadata: mapMetadataPda,
-        mapDataAccount: mapDataPda,
-        mapRegistry: registryPda,
-        userMapIndex: userMapIndexPda,
-        user: wallet.publicKey,
-        systemProgram: web3.SystemProgram.programId,
-      })
-      .rpc();
+    const tx = await showMapRegistryTransaction(
+      `Creating map "${name}"`,
+      program.methods
+        .createMap(mapId, name, description, isDefault, mapData)
+        .accounts({
+          mapMetadata: mapMetadataPda,
+          mapDataAccount: mapDataPda,
+          mapRegistry: registryPda,
+          userMapIndex: userMapIndexPda,
+          user: wallet.publicKey,
+          systemProgram: web3.SystemProgram.programId,
+        })
+        .rpc()
+    );
 
     console.log("✅ Map created! Transaction:", tx);
     return {
@@ -1024,16 +1031,19 @@ export async function initPlayer(username) {
 
     console.log("Setting this to be Player Signing Key: ", ephemeralKeypair.publicKey.toString());
 
-    const tx = await matchmakingProgram.methods
-      .initPlayer(usernameBytes)
-      .accounts({
-      player: playerPda,
-      authority: wallet.publicKey,
-      signingKey: ephemeralKeypair.publicKey,
-      systemProgram: web3.SystemProgram.programId,
-      })
-      //.signers() // Add ephemeralKeypair as a signer
-      .rpc();
+    const tx = await showMatchmakingTransaction(
+      `Initializing player "${username}"`,
+      matchmakingProgram.methods
+        .initPlayer(usernameBytes)
+        .accounts({
+          player: playerPda,
+          authority: wallet.publicKey,
+          signingKey: ephemeralKeypair.publicKey,
+          systemProgram: web3.SystemProgram.programId,
+        })
+        //.signers() // Add ephemeralKeypair as a signer
+        .rpc()
+    );
 
     console.log("✅ Player initialized! Transaction:", tx);
     return {
@@ -1146,15 +1156,18 @@ export async function initGame(mapId) {
       matchmakingProgram.programId
     );
 
-    const tx = await matchmakingProgram.methods
-      .initGame(mapId)
-      .accounts({
-        game: gamePda,
-        player: playerPda,
-        authority: wallet.publicKey,
-        systemProgram: web3.SystemProgram.programId,
-      })
-      .rpc();
+    const tx = await showMatchmakingTransaction(
+      "Creating game lobby",
+      matchmakingProgram.methods
+        .initGame(mapId)
+        .accounts({
+          game: gamePda,
+          player: playerPda,
+          authority: wallet.publicKey,
+          systemProgram: web3.SystemProgram.programId,
+        })
+        .rpc()
+    );
 
     console.log("✅ Game initialized! Transaction:", tx);
     console.log("✅ Game PDA:", gamePda.toString());
@@ -1226,14 +1239,17 @@ export async function leaveCurrentGame() {
 
     const gamePubkeyObj = new PublicKey(currentGame);
 
-    const tx = await matchmakingProgram.methods
-      .leaveGame()
-      .accounts({
-        game: gamePubkeyObj,
-        player: playerPda,
-        authority: wallet.publicKey,
-      })
-      .rpc();
+    const tx = await showMatchmakingTransaction(
+      "Leaving game lobby",
+      matchmakingProgram.methods
+        .leaveGame()
+        .accounts({
+          game: gamePubkeyObj,
+          player: playerPda,
+          authority: wallet.publicKey,
+        })
+        .rpc()
+    );
 
     console.log("✅ Left game! Transaction:", tx);
     return {
@@ -1282,14 +1298,17 @@ export async function joinGame(gamePubkey) {
       matchmakingProgram.programId
     );
 
-    const tx = await matchmakingProgram.methods
-      .joinGame()
-      .accounts({
-        game: gamePublicKey,
-        player: playerPda,
-        authority: wallet.publicKey,
-      })
-      .rpc();
+    const tx = await showMatchmakingTransaction(
+      "Joining game lobby",
+      matchmakingProgram.methods
+        .joinGame()
+        .accounts({
+          game: gamePublicKey,
+          player: playerPda,
+          authority: wallet.publicKey,
+        })
+        .rpc()
+    );
 
     console.log("✅ Joined game! Transaction:", tx);
     return {
@@ -1420,14 +1439,17 @@ export async function startGame(gamePubkey) {
       matchmakingProgram.programId
     );
 
-    const tx = await matchmakingProgram.methods
-      .startGame()
-      .accounts({
-        game: gamePublicKey,
-        player: playerPda,
-        authority: wallet.publicKey,
-      })
-      .rpc();
+    const tx = await showMatchmakingTransaction(
+      "Starting game",
+      matchmakingProgram.methods
+        .startGame()
+        .accounts({
+          game: gamePublicKey,
+          player: playerPda,
+          authority: wallet.publicKey,
+        })
+        .rpc()
+    );
 
     console.log("✅ Game started! Transaction:", tx);
     return {
@@ -1471,14 +1493,17 @@ export async function setReadyState(gamePubkey, isReady) {
 
     // Step 1: Set ready state in matchmaking contract
     console.log("📝 Step 1: Setting ready state in matchmaking contract...");
-    const readyTx = await matchmakingProgram.methods
-      .setReadyState(isReady)
-      .accounts({
-        game: gamePublicKey,
-        player: playerPda,
-        authority: wallet.publicKey,
-      })
-      .rpc();
+    const readyTx = await showMatchmakingTransaction(
+      isReady ? "Setting ready status" : "Unreadying",
+      matchmakingProgram.methods
+        .setReadyState(isReady)
+        .accounts({
+          game: gamePublicKey,
+          player: playerPda,
+          authority: wallet.publicKey,
+        })
+        .rpc()
+    );
 
     console.log("✅ Step 1 complete - Ready state set:", readyTx);
 
