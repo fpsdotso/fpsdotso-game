@@ -177,7 +177,7 @@ pub extern "C" fn set_mouse_sensitivity(value: f32) {
 /// JavaScript-callable: get current mouse sensitivity
 #[no_mangle]
 pub extern "C" fn get_mouse_sensitivity() -> f32 {
-    let mut sens = 0.01f32;
+    let mut sens = 0.006f32;
     GAME_STATE.with(|gs| {
         if let Some(state_ptr) = *gs.borrow() {
             unsafe {
@@ -397,6 +397,53 @@ fn main() {
         // Check if map data has been loaded and start the game
         if menu_state.waiting_for_map_data {
             menu_state.check_map_data_response(&mut game_state, &mut rl);
+        }
+
+        // Sync settings from JS globals (no Module.ccall usage)
+        unsafe {
+            // Read settings open flag from window.__settings_open if present
+            let js_flag = CString::new(
+                r#"
+                (function(){
+                    if (typeof window.__settings_open !== 'undefined') {
+                        return window.__settings_open ? 'true' : 'false';
+                    }
+                    return 'null';
+                })()
+                "#
+            ).unwrap();
+            let flag_ptr = emscripten_run_script_string(js_flag.as_ptr());
+            if !flag_ptr.is_null() {
+                if let Ok(flag_str) = CStr::from_ptr(flag_ptr).to_str() {
+                    if flag_str == "true" {
+                        game_state.show_settings = true;
+                    } else if flag_str == "false" {
+                        game_state.show_settings = false;
+                    }
+                }
+            }
+
+            // Read sensitivity value from window.__mouse_sensitivity if present
+            let js_sens = CString::new(
+                r#"
+                (function(){
+                    var v = (typeof window.__mouse_sensitivity === 'number') ? window.__mouse_sensitivity : null;
+                    return v === null ? 'null' : String(v);
+                })()
+                "#
+            ).unwrap();
+            let sens_ptr = emscripten_run_script_string(js_sens.as_ptr());
+            if !sens_ptr.is_null() {
+                if let Ok(sens_str) = CStr::from_ptr(sens_ptr).to_str() {
+                    if sens_str != "null" {
+                        if let Ok(val) = sens_str.parse::<f32>() {
+                            if let Some(ref mut player) = game_state.player {
+                                player.mouse_sensitivity = val;
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         // Update game state if playing
