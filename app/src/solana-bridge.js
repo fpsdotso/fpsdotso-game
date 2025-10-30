@@ -400,6 +400,16 @@ export async function initSolanaClient() {
     ephemeralConnection = new Connection(EPHEMERAL_RPC_URL, "confirmed");
     console.log(`⚡ Ephemeral RPC initialized: ${EPHEMERAL_RPC_URL}`);
 
+    // Expose connections globally for latency measurements
+    if (typeof window !== 'undefined') {
+      window.solanaConnection = connection;
+      window.ephemeralConnection = ephemeralConnection;
+      window.solanaBridge = {
+        ...window.solanaBridge,
+        measureLatency: measureLatency,
+      };
+    }
+
     // Test connection
     const version = await connection.getVersion();
     console.log("✅ Connected to Solana:", version);
@@ -2915,4 +2925,39 @@ export async function finishReload(gameIdPubkey) {
     console.error("❌ Failed to finish reload:", error);
     throw error;
   }
+}
+
+/**
+ * Measure network latency using HTTP RPC call to EPHEMERAL ROLLUP
+ * Makes a lightweight RPC call and measures round-trip time
+ * This measures latency to the high-speed ephemeral rollup used during gameplay
+ * @returns {Promise<number>} Latency in milliseconds
+ */
+export async function measureLatency() {
+  try {
+    if (!ephemeralConnection) {
+      console.warn('⚠️ Ephemeral connection not initialized for latency measurement');
+      return null;
+    }
+
+    // Record start time with high precision
+    const startTime = performance.now();
+    
+    // Make a lightweight RPC call to EPHEMERAL ROLLUP - getSlot is one of the fastest
+    await ephemeralConnection.getSlot();
+    
+    // Calculate round-trip time
+    const endTime = performance.now();
+    const latencyMs = endTime - startTime;
+    
+    return latencyMs;
+  } catch (error) {
+    console.error('❌ Error measuring ephemeral rollup latency:', error);
+    return null;
+  }
+}
+
+// Expose ephemeral connection globally for latency measurements during gameplay
+if (typeof window !== 'undefined') {
+  window.ephemeralConnection = null; // Will be set in initSolanaClient
 }

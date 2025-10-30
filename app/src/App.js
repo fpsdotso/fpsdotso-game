@@ -33,6 +33,7 @@ import VictoryDialog from "./components/VictoryDialog";
 import PauseMenu from "./components/PauseMenu";
 import SettingsPanel from "./components/SettingsPanel";
 import DebugConsole from "./components/DebugConsole";
+import LatencyDisplay from "./components/LatencyDisplay";
 
 // NOTE: This app is configured to connect to Solana LOCALNET only
 // RPC URL is hardcoded to http://127.0.0.1:8899 in solana-bridge.js
@@ -1946,6 +1947,12 @@ function App() {
 
             {/* Minimap - Modern web-based implementation */}
             <Minimap gamePublicKey={currentLobbyData?.gamePublicKey} />
+
+            {/* Latency Display - Shows ping/connection status on left side */}
+            <LatencyDisplay 
+              gamePublicKey={currentLobbyData?.gamePublicKey}
+              isPlaying={currentGameState === 1}
+            />
 
             {/* Match Status - Shows team scores during gameplay */}
             <MatchStatus
