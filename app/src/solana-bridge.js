@@ -1677,10 +1677,10 @@ export async function setReadyState(gamePubkey, isReady) {
         });
         console.log("✅ Step 4 complete - Initial player input sent to ephemeral rollup");
       } catch (error) {
-        console.warn("⚠️ Failed to send initial player input (non-critical):", error);
+        //console.warn("⚠️ Failed to send initial player input (non-critical):", error);
         // Don't fail the whole ready operation if this fails
         // Wait a bit anyway to give delegation time to propagate
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        //await new Promise(resolve => setTimeout(resolve, 1000));
       }
 
       return {
