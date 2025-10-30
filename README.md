@@ -11,6 +11,9 @@ A Rust-based FPS game with Solana blockchain integration. The game uses Raylib (
 
 FPS.so is a skill‑based first‑person shooter on Solana. We stream inputs through MagicBlock’s Ephemeral Rollups to deliver Web2‑grade responsiveness while actions are verifiably committed on-chain. This game is playable on your desktop and phone!
 
+1. 5v5 First Person Shooting gameplay
+2. Desktop (WASD/mouse) and mobile joystick controls (React overlay)
+
 ### Why Only Possible On MagicBlock (OPOMB)
 
 - Ultra‑low latency play (as low as ~10 ms) via Ephemeral Rollups.
@@ -21,12 +24,6 @@ FPS.so is a skill‑based first‑person shooter on Solana. We stream inputs thr
 
 - Web3 gamers, Web2 gamers, and NFT collectors/communities.
 - Market signal: Gaming dominance rose from 20.1% → 25% in Q3 with 7.4M daily UAW.
-
-### What’s in the Demo
-
-- Desktop (WASD/mouse) and mobile joystick controls (React overlay).
-- Wallet‑aware authority; inputs streamed to chain via ER.
-- Clear architecture across Game (WASM), Bridge (React), and Solana client.
 
 ### Roadmap
 
@@ -78,41 +75,10 @@ pnpm install
 pnpm run start
 ```
 
-Open http://localhost:3000
-
 ### Controls
 
 - Desktop: WASD to move, mouse to look, click to shoot (where implemented).
-- Mobile: When the viewport width < 1000px, a joystick overlay is shown. Joystick inputs are streamed via the same MagicBlock ER pathway for gasless, low‑latency control.
-
-### 3. Test the Bridge
-
-Open http://localhost:3000/test-bridge.html for a testing console
-
-## Project Structure
-
-```
-fpsdotso-game/
-├── game/                      # Raylib game (Emscripten)
-│   └── src/main.rs           # Game logic
-├── solana-client/            # Solana client (wasm-bindgen)
-│   └── src/lib.rs           # Blockchain interactions
-├── app/                      # React frontend
-│   ├── src/
-│   │   ├── App.js           # Main component
-│   │   ├── solana-bridge.js # Solana WASM loader
-│   │   └── game-bridge.js   # Game ↔ JS interface
-│   └── public/
-│       └── test-bridge.html # Bridge testing console
-├── build-game.sh            # Build script
-└── idls/                    # Solana program IDLs
-```
-
-## Documentation
-
-- **[BRIDGE_SUMMARY.md](./BRIDGE_SUMMARY.md)** - Quick overview of the bridge
-- **[INTEGRATION_GUIDE.md](./INTEGRATION_GUIDE.md)** - Complete integration walkthrough
-- **[JAVASCRIPT_BRIDGE.md](./JAVASCRIPT_BRIDGE.md)** - API reference and examples
+- Mobile: A joystick overlay is shown, drag the screen to move character's camera, and a shoot button would be shown. Joystick inputs are streamed via the same MagicBlock ER pathway for gasless, low‑latency control.
 
 ## How It Works
 
@@ -124,51 +90,6 @@ fpsdotso-game/
 4. Solana client WASM executes blockchain transaction
 5. Result returned to game
 
-### Example
-
-**In Rust game:**
-
-```rust
-extern "C" {
-    fn js_register_kill(killer: *const c_char, victim: *const c_char);
-}
-
-// When player dies
-register_kill_on_chain("player1", "player2");
-```
-
-**JavaScript handles the rest automatically!**
-
-## Available Bridge Functions
-
-From the game, you can call:
-
-- `js_register_kill(killer, victim)` - Record kill on-chain
-- `js_get_player_stats(playerId)` - Fetch player stats
-- `js_send_message(message)` - Send message to UI
-- `js_connect_wallet()` - Connect wallet
-- `js_get_balance()` - Get wallet balance
-
-## Testing
-
-### Browser Console Test
-
-```javascript
-// Check readiness
-window.gameBridge.isSolanaReady();
-
-// Test functions
-await window.gameBridge.connectWallet();
-await window.gameBridge.registerKill("alice", "bob");
-await window.gameBridge.getPlayerStats("alice");
-```
-
-### Test Console
-
-Visit http://localhost:3000/test-bridge.html for a visual testing interface
-
-## Development
-
 ### Build Commands
 
 ```bash
@@ -179,60 +100,5 @@ Visit http://localhost:3000/test-bridge.html for a visual testing interface
 source emsdk_env.sh
 cargo build --release --target wasm32-unknown-emscripten -p fpsdotso-game
 
-# Build only solana-client
-cd solana-client
-wasm-pack build --target web --out-dir ../app/public/solana-client
+
 ```
-
-### Watch Mode (React only)
-
-```bash
-cd app
-pnpm run start
-```
-
-## Features
-
-- ✅ Raylib game engine (Emscripten WASM)
-- ✅ Solana blockchain integration (wasm-bindgen)
-- ✅ JavaScript bridge for communication
-- ✅ React frontend with wallet integration
-- ✅ Real-time game events to blockchain
-- ✅ On-chain player stats and leaderboards
-
-## Next Steps
-
-1. Implement Solana program for game data storage
-2. Add proper wallet integration (Phantom, Solflare)
-3. Implement transaction signing and confirmation
-4. Add more game mechanics
-5. Create leaderboard system
-6. Add token rewards/payments
-
-## Troubleshooting
-
-### Build Fails
-
-- Ensure Emscripten is installed: `source emsdk_env.sh`
-- Install wasm-pack: `cargo install wasm-pack`
-- Check Rust target: `rustup target add wasm32-unknown-emscripten`
-
-### Module Not Found
-
-- Check files exist in `app/public/`
-- Clear browser cache
-- Check browser console for errors
-
-### Bridge Not Working
-
-- Wait for both modules to initialize
-- Check console logs for initialization sequence
-- Use test-bridge.html to debug
-
-## Contributing
-
-See [INTEGRATION_GUIDE.md](./INTEGRATION_GUIDE.md) for detailed development instructions.
-
-## License
-
-[Your License Here]
