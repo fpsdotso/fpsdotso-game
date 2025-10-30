@@ -9,6 +9,7 @@ const Minimap = ({ gamePublicKey }) => {
   const canvasRef = useRef(null);
   const [players, setPlayers] = useState([]);
   const [currentPlayer, setCurrentPlayer] = useState(null);
+  const [mapObjects, setMapObjects] = useState([]);
 
   // Map configuration (must match game world coordinates)
   const MAP_SIZE = 50.0; // World map is -25 to +25 on X and Z
@@ -76,6 +77,35 @@ const Minimap = ({ gamePublicKey }) => {
     return () => clearInterval(updateInterval);
   }, [gamePublicKey]);
 
+  // Load map objects from blockchain
+  useEffect(() => {
+    if (!gamePublicKey) return;
+
+    const loadMapObjects = async () => {
+      try {
+        // Get the game account to find the map ID
+        if (window.gameBridge && window.gameBridge.getGame) {
+          const gameAccount = await window.gameBridge.getGame(gamePublicKey);
+          const mapId = gameAccount?.mapId;
+
+          if (mapId && window.gameBridge.getMapObjectsData) {
+            console.log('[Minimap] Loading map objects for mapId:', mapId);
+            const objects = await window.gameBridge.getMapObjectsData(mapId);
+            
+            if (objects && objects.length > 0) {
+              console.log('[Minimap] Loaded', objects.length, 'map objects');
+              setMapObjects(objects);
+            }
+          }
+        }
+      } catch (error) {
+        console.warn('[Minimap] Failed to load map objects:', error);
+      }
+    };
+
+    loadMapObjects();
+  }, [gamePublicKey]);
+
   // Render the minimap on canvas
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -134,6 +164,86 @@ const Minimap = ({ gamePublicKey }) => {
       ctx.beginPath();
       ctx.arc(pos.x, pos.y, 4, 0, Math.PI * 2);
       ctx.fill();
+    });
+
+    // Draw map objects (walls, obstacles, etc.)
+    mapObjects.forEach((obj) => {
+      // Skip spawn points as they're already indicated by other means
+      if (obj.modelType?.spawnPointBlue !== undefined || 
+          obj.modelType?.spawnPointRed !== undefined) {
+        return;
+      }
+
+      const objPos = worldToMinimap(obj.position.x, obj.position.z);
+      
+      // Calculate object size on minimap based on its scale
+      const sizeX = (obj.scale.x / MAP_SIZE) * MINIMAP_SIZE;
+      const sizeZ = (obj.scale.z / MAP_SIZE) * MINIMAP_SIZE;
+      const avgSize = (sizeX + sizeZ) / 2;
+
+      // Determine object color (use the object's color but make it semi-transparent)
+      const objColor = `rgba(${obj.color.r}, ${obj.color.g}, ${obj.color.b}, 0.6)`;
+      
+      // Draw different shapes based on model type
+      if (obj.modelType?.cube !== undefined || 
+          obj.modelType?.rectangle !== undefined) {
+        // Draw as rectangle/square
+        ctx.fillStyle = objColor;
+        ctx.fillRect(
+          objPos.x - sizeX / 2,
+          objPos.y - sizeZ / 2,
+          sizeX,
+          sizeZ
+        );
+        // Draw border
+        ctx.strokeStyle = `rgba(${obj.color.r}, ${obj.color.g}, ${obj.color.b}, 0.8)`;
+        ctx.lineWidth = 1;
+        ctx.strokeRect(
+          objPos.x - sizeX / 2,
+          objPos.y - sizeZ / 2,
+          sizeX,
+          sizeZ
+        );
+      } else if (obj.modelType?.sphere !== undefined) {
+        // Draw as circle
+        ctx.fillStyle = objColor;
+        ctx.beginPath();
+        ctx.arc(objPos.x, objPos.y, avgSize / 2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = `rgba(${obj.color.r}, ${obj.color.g}, ${obj.color.b}, 0.8)`;
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      } else if (obj.modelType?.cylinder !== undefined) {
+        // Draw as circle (top-down view of cylinder)
+        ctx.fillStyle = objColor;
+        ctx.beginPath();
+        ctx.arc(objPos.x, objPos.y, avgSize / 2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = `rgba(${obj.color.r}, ${obj.color.g}, ${obj.color.b}, 0.8)`;
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      } else if (obj.modelType?.triangle !== undefined) {
+        // Draw as triangle
+        ctx.fillStyle = objColor;
+        ctx.beginPath();
+        ctx.moveTo(objPos.x, objPos.y - avgSize / 2);
+        ctx.lineTo(objPos.x - avgSize / 2, objPos.y + avgSize / 2);
+        ctx.lineTo(objPos.x + avgSize / 2, objPos.y + avgSize / 2);
+        ctx.closePath();
+        ctx.fill();
+        ctx.strokeStyle = `rgba(${obj.color.r}, ${obj.color.g}, ${obj.color.b}, 0.8)`;
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      } else {
+        // Default: draw as small square
+        ctx.fillStyle = objColor;
+        ctx.fillRect(
+          objPos.x - avgSize / 2,
+          objPos.y - avgSize / 2,
+          avgSize,
+          avgSize
+        );
+      }
     });
 
     // Draw other players
@@ -223,7 +333,7 @@ const Minimap = ({ gamePublicKey }) => {
       ctx.lineTo(dirEndX + Math.cos(angle2) * arrowSize, dirEndY + Math.sin(angle2) * arrowSize);
       ctx.stroke();
     }
-  }, [currentPlayer, players]);
+  }, [currentPlayer, players, mapObjects]);
 
   return (
     <div className="minimap-container">
