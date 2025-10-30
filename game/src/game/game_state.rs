@@ -96,6 +96,9 @@ pub struct GameState {
 
     /// Whether reload has been initiated
     reload_initiated: bool,
+
+    /// Local timestamp when reload was initiated (for immediate animation start)
+    reload_start_time: f64,
 }
 
 impl GameState {
@@ -119,6 +122,7 @@ impl GameState {
             show_reload_prompt: false,
             reload_progress: 0.0,
             reload_initiated: false,
+            reload_start_time: 0.0,
         }
     }
 
@@ -382,8 +386,10 @@ impl GameState {
                 emscripten_run_script(c_str.as_ptr());
             }
 
+            // Start the animation immediately using local time
             self.reload_initiated = true;
             self.reload_progress = 0.0;
+            self.reload_start_time = unsafe { emscripten_get_now() / 1000.0 }; // Store start time in seconds
             self.show_reload_prompt = false; // Hide prompt when reload starts
         }
     }
@@ -416,6 +422,7 @@ impl GameState {
 
             self.reload_initiated = false;
             self.reload_progress = 0.0;
+            self.reload_start_time = 0.0;
         }
     }
 
@@ -934,15 +941,21 @@ impl GameState {
             }
             
             if self.reload_initiated {
+                // Use local time to drive the animation immediately
+                let current_time = unsafe { emscripten_get_now() / 1000.0 }; // Convert ms to seconds
+                let local_elapsed = current_time - self.reload_start_time;
+                
+                // Update reload progress based on local time (1 second duration)
+                self.reload_progress = (local_elapsed as f32).min(1.0);
+                
+                // Check blockchain state for actual completion
                 if reload_timestamp > 0 {
                     // Get current blockchain timestamp from JavaScript (Solana Clock)
-                    // This is more accurate than local time since it matches the on-chain timestamp
                     use std::ffi::CString;
                     
                     let js_code = r#"
                         (() => {
                             try {
-                                // Get current Unix timestamp in seconds (matches Solana's Clock.unix_timestamp)
                                 return Math.floor(Date.now() / 1000);
                             } catch (e) {
                                 console.error('Failed to get current timestamp:', e);
@@ -951,7 +964,7 @@ impl GameState {
                         })();
                     "#;
                     
-                    let current_time = unsafe {
+                    let blockchain_time = unsafe {
                         let c_str = CString::new(js_code).unwrap();
                         let result_ptr = emscripten_run_script_string(c_str.as_ptr());
                         
@@ -963,23 +976,20 @@ impl GameState {
                         }
                     };
                     
-                    if current_time > 0 {
-                        let elapsed = current_time.saturating_sub(reload_timestamp);
+                    if blockchain_time > 0 {
+                        let blockchain_elapsed = blockchain_time.saturating_sub(reload_timestamp);
                         
-                        // Update reload progress (1 second duration)
-                        self.reload_progress = (elapsed as f32).min(1.0);
-                        
-                        // Auto-finish reload after 1 second has passed
-                        if elapsed >= 1 {
+                        // Auto-finish reload after blockchain confirms 1 second has passed
+                        if blockchain_elapsed >= 1 {
                             self.finish_reload();
                         }
-                    } else {
-                        // Keep progress at current state if we can't get timestamp
-                        self.reload_progress = 0.0;
                     }
-                } else {
-                    // Reload timestamp not yet available, keep progress at 0
-                    self.reload_progress = 0.0;
+                }
+                
+                // Also finish locally after 1 second if blockchain hasn't responded yet
+                // This ensures the animation completes smoothly even with network latency
+                if local_elapsed >= 1.0 {
+                    self.finish_reload();
                 }
             }
 
@@ -1675,70 +1685,115 @@ impl GameState {
             player.position.z,
         );
 
-        // Reload animation: Move gun down and rotate based on reload_progress (0.0 to 1.0)
-        let reload_offset_y = if reload_progress > 0.0 {
-            // Smooth animation: gun goes down in first half, comes back up in second half
-            let half_progress = (reload_progress * 2.0).min(1.0);
-            if reload_progress < 0.5 {
-                // Going down (0.0 to 0.5)
-                -half_progress * 0.3
+        // Enhanced reload animation with multiple stages
+        // Stage 1 (0.0-0.3): Gun tilts and moves down
+        // Stage 2 (0.3-0.5): Magazine ejects (moves down)
+        // Stage 3 (0.5-0.7): New magazine inserts (moves up)
+        // Stage 4 (0.7-1.0): Gun returns to normal position and charges
+        
+        let (reload_offset_y, reload_offset_x, reload_rotation, magazine_offset) = if reload_progress > 0.0 {
+            if reload_progress < 0.3 {
+                // Stage 1: Tilt and lower gun
+                let stage_progress = reload_progress / 0.3;
+                let y_offset = -stage_progress * 0.4;
+                let x_offset = stage_progress * 0.1; // Move slightly to center
+                let rotation = stage_progress * 50.0; // Tilt 50 degrees
+                (y_offset, x_offset, rotation, 0.0)
+            } else if reload_progress < 0.5 {
+                // Stage 2: Eject magazine (magazine drops down)
+                let stage_progress = (reload_progress - 0.3) / 0.2;
+                let mag_drop = stage_progress * 0.6; // Magazine falls
+                (-0.4, 0.1, 50.0, -mag_drop)
+            } else if reload_progress < 0.7 {
+                // Stage 3: Insert new magazine (magazine rises from below)
+                let stage_progress = (reload_progress - 0.5) / 0.2;
+                let mag_rise = -0.6 + stage_progress * 0.6; // Magazine rises back
+                (-0.4, 0.1, 50.0, mag_rise)
             } else {
-                // Coming back up (0.5 to 1.0)
-                -(1.0 - (reload_progress - 0.5) * 2.0) * 0.3
+                // Stage 4: Return to normal position
+                let stage_progress = (reload_progress - 0.7) / 0.3;
+                let y_offset = -0.4 + stage_progress * 0.4; // Rise back up
+                let x_offset = 0.1 - stage_progress * 0.1; // Move back to side
+                let rotation = 50.0 - stage_progress * 50.0; // Straighten
+                (y_offset, x_offset, rotation, 0.0)
             }
         } else {
-            0.0
-        };
-
-        let reload_rotation = if reload_progress > 0.0 {
-            // Rotate gun during reload: tilts in first half, straightens in second half
-            if reload_progress < 0.5 {
-                reload_progress * 2.0 * 30.0 // Rotate to 30 degrees
-            } else {
-                (1.0 - (reload_progress - 0.5) * 2.0) * 30.0 // Rotate back to 0
-            }
-        } else {
-            0.0
+            (0.0, 0.0, 0.0, 0.0)
         };
 
         // Position gun base in front and to the right of camera using all three vectors
         // Apply reload offset
-        let gun_base = camera_pos + direction * 0.8 + right * 0.35 + up * (-0.3 + reload_offset_y);
+        let gun_base = camera_pos + direction * 0.8 + right * (0.35 - reload_offset_x) + up * (-0.3 + reload_offset_y);
 
         // Helper function to transform local gun coordinates to world space with reload rotation
         let to_world = |local_x: f32, local_y: f32, local_z: f32| -> Vector3 {
-            // Apply reload rotation around the right axis
+            // Apply reload rotation around multiple axes for more dynamic animation
             if reload_rotation.abs() > 0.01 {
-                let rot_rad = reload_rotation.to_radians();
-                let cos_rot = rot_rad.cos();
-                let sin_rot = rot_rad.sin();
+                let pitch_rad = reload_rotation.to_radians();
+                let roll_rad = (reload_rotation * 0.3).to_radians(); // Add some roll
                 
-                // Rotate around right vector (tilt forward/backward)
-                let rotated_up = up * cos_rot - direction * sin_rot;
-                let rotated_dir = up * sin_rot + direction * cos_rot;
+                let cos_pitch = pitch_rad.cos();
+                let sin_pitch = pitch_rad.sin();
+                let cos_roll = roll_rad.cos();
+                let sin_roll = roll_rad.sin();
                 
-                gun_base + right * local_x + rotated_up * local_y + rotated_dir * local_z
+                // First apply pitch rotation (around right axis)
+                let temp_y = local_y * cos_pitch - local_z * sin_pitch;
+                let temp_z = local_y * sin_pitch + local_z * cos_pitch;
+                
+                // Then apply roll rotation (around forward axis)
+                let rotated_y = temp_y * cos_roll - local_x * sin_roll;
+                let rotated_x = temp_y * sin_roll + local_x * cos_roll;
+                let rotated_z = temp_z;
+                
+                gun_base + right * rotated_x + up * rotated_y + direction * rotated_z
             } else {
                 gun_base + right * local_x + up * local_y + direction * local_z
             }
         };
 
-        // Draw gun as simple spheres
-        let gun_color = Color::new(80, 80, 90, 255);
+        // Draw gun as simple spheres with improved colors
+        let gun_body_color = Color::new(70, 70, 80, 255);
+        let gun_dark_color = Color::new(50, 50, 60, 255);
+        let magazine_color = Color::new(90, 90, 100, 255);
 
         // Gun body - series of spheres along the forward axis
         for i in 0..8 {
             let z = (i as f32 - 4.0) * 0.08;
             let pos = to_world(0.0, 0.0, z);
-            d3d.draw_sphere(pos, 0.06, gun_color);
+            d3d.draw_sphere(pos, 0.06, gun_body_color);
         }
 
         // Barrel extension - forward from gun body
         for i in 0..5 {
             let z = 0.32 + i as f32 * 0.05;
             let pos = to_world(0.0, 0.0, z);
-            d3d.draw_sphere(pos, 0.03, Color::new(60, 60, 70, 255));
+            d3d.draw_sphere(pos, 0.03, gun_dark_color);
         }
+
+        // Magazine (animates during reload) - positioned below gun body
+        // Magazine moves down when ejecting, then new one appears from below
+        for i in 0..3 {
+            let y = -0.12 - i as f32 * 0.04 + magazine_offset;
+            let z = -0.05;
+            let pos = to_world(0.0, y, z);
+            
+            // Make magazine dimmer when falling, brighter when inserting
+            let mag_alpha = if reload_progress > 0.3 && reload_progress < 0.5 {
+                // Ejecting - fade out
+                255 - ((reload_progress - 0.3) / 0.2 * 200.0) as u8
+            } else if reload_progress >= 0.5 && reload_progress < 0.7 {
+                // Inserting - fade in
+                (55.0 + (reload_progress - 0.5) / 0.2 * 200.0) as u8
+            } else {
+                255
+            };
+            d3d.draw_sphere(pos, 0.04, Color::new(magazine_color.r, magazine_color.g, magazine_color.b, mag_alpha));
+        }
+
+        // Magazine release button (small detail)
+        let release_button = to_world(0.0, -0.08, -0.03);
+        d3d.draw_sphere(release_button, 0.015, Color::new(120, 120, 130, 255));
 
         // Handle - downward and back from gun body (using up vector)
         for i in 0..4 {
@@ -1755,6 +1810,22 @@ impl GameState {
             let pos = to_world(0.0, y, z);
             d3d.draw_sphere(pos, 0.03, Color::new(156, 81, 255, 255)); // Solana purple
         }
+        
+        // Charging handle (moves back during reload in stage 4)
+        let charging_handle_offset = if reload_progress > 0.7 && reload_progress < 0.85 {
+            let stage_progress = (reload_progress - 0.7) / 0.15;
+            if stage_progress < 0.5 {
+                // Pull back
+                stage_progress * 2.0 * 0.12
+            } else {
+                // Release forward
+                (1.0 - (stage_progress - 0.5) * 2.0) * 0.12
+            }
+        } else {
+            0.0
+        };
+        let charging_handle = to_world(0.02, 0.08, 0.15 - charging_handle_offset);
+        d3d.draw_sphere(charging_handle, 0.025, Color::new(100, 100, 110, 255));
 
         // Muzzle flash effect when shooting
         if muzzle_flash_timer > 0.0 {
