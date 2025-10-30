@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import "./VirtualJoystick.css";
 
-const VirtualJoystick = ({ isPlaying, gameId, onInput }) => {
+const VirtualJoystick = ({ isPlaying, gameId, onInput, sensitivity }) => {
   const [isMobile, setIsMobile] = useState(false);
   const [leftJoystick, setLeftJoystick] = useState({
     center: { x: 0, y: 0 },
@@ -646,18 +646,16 @@ const VirtualJoystick = ({ isPlaying, gameId, onInput }) => {
     try {
       // Set camera input in global variable for Rust to read
       // Match mouse sensitivity exactly (0.1) for consistent feel
-      const cameraSensitivity = 0.1; // Same as mouse sensitivity
-
+      const cameraSensitivity = sensitivity ?? 1.0; // Same as mouse sensitivity
       window.cameraInput = {
         deltaX: cameraTouch.deltaX * cameraSensitivity,
         deltaY: cameraTouch.deltaY * cameraSensitivity,
       };
-
       console.log("📷 Camera input set:", window.cameraInput);
     } catch (error) {
       console.error("❌ Failed to set camera input:", error);
     }
-  }, [isPlaying, cameraTouch]);
+  }, [isPlaying, cameraTouch, sensitivity]);
 
   // Send shoot input to Rust game engine (only on press, not continuous)
   const sendShootInput = useCallback(() => {
