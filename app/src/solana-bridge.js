@@ -1797,16 +1797,20 @@ export async function getAllGames(filterState = null) {
       // Try to decode using Anchor first
       let gameData;
       try {
+        // Use the coder to decode the raw account data directly
+        // This doesn't make network calls, just decodes the bytes
         gameData = matchmakingProgram.coder.accounts.decode(
-          "Game",
+          "game", // Use lowercase - Anchor account names are typically lowercase
           account.data
         );
         console.log(`📊 Successfully decoded with Anchor:`, gameData);
+        console.log(`📊 Game state value: ${gameData.gameState} (type: ${typeof gameData.gameState})`);
       } catch (anchorError) {
         console.log(
           `⚠️ Anchor decode failed for ${pubkey.toString()}, using fallback:`,
           anchorError.message
         );
+        console.log(`⚠️ Error stack:`, anchorError.stack);
 
         // Manual parsing as fallback
         // Skip the 8-byte discriminator and parse the rest
@@ -1849,23 +1853,70 @@ export async function getAllGames(filterState = null) {
         continue;
       }
 
+      // Fetch the host player's username
+      let hostUsername = "Unknown";
+      if (gameData.createdBy) {
+        try {
+          console.log(`📊 Fetching username for createdBy:`, gameData.createdBy.toString());
+          
+          // Ensure createdBy is a PublicKey object
+          const createdByPubkey = gameData.createdBy instanceof PublicKey 
+            ? gameData.createdBy 
+            : new PublicKey(gameData.createdBy);
+          
+          const [playerPda] = PublicKey.findProgramAddressSync(
+            [Buffer.from("player"), createdByPubkey.toBuffer()],
+            matchmakingProgram.programId
+          );
+          
+          console.log(`📊 Player PDA:`, playerPda.toString());
+          
+          const playerAccount = await matchmakingProgram.account.player.fetch(playerPda);
+          console.log(`📊 Player account fetched:`, playerAccount);
+          
+          // Decode username from bytes - username is stored as direct byte array
+          if (playerAccount.username && playerAccount.username.length > 0) {
+            console.log(`📊 Raw username array:`, Array.from(playerAccount.username));
+            
+            // Convert byte array directly to string (no length prefix)
+            hostUsername = Buffer.from(playerAccount.username).toString('utf-8').replace(/\0/g, '').trim();
+            console.log(`📊 Decoded host username: "${hostUsername}"`);
+          } else {
+            console.warn(`⚠️ Player account has no username or empty username array`);
+          }
+        } catch (error) {
+          console.error(`❌ Error fetching host username for ${gameData.createdBy?.toString()}:`, error);
+          console.error(`   Error stack:`, error.stack);
+        }
+      } else {
+        console.warn(`⚠️ Game has no createdBy field`);
+      }
+
       const gameObject = {
         publicKey: pubkey.toString(),
         ...gameData,
-        // Ensure lobbyName has a fallback if not set
-        lobbyName: gameData.lobbyName || `Game Room ${pubkey.toString().slice(0, 8)}`,
+        // Ensure gameState is a number for proper filtering
+        gameState: typeof gameData.gameState === 'number' ? gameData.gameState : parseInt(gameData.gameState) || 0,
+        // Ensure lobbyName and mapId are properly exposed with both camelCase and snake_case
+        lobbyName: gameData.lobbyName || gameData.lobby_name || `Game Room ${pubkey.toString().slice(0, 8)}`,
+        lobby_name: gameData.lobby_name || gameData.lobbyName || `Game Room ${pubkey.toString().slice(0, 8)}`,
+        mapId: gameData.mapId || gameData.map_id || 'default',
+        map_id: gameData.map_id || gameData.mapId || 'default',
+        // Add host username
+        hostUsername: hostUsername,
         // Add computed fields
         totalPlayers:
           gameData.currentPlayersTeamA + gameData.currentPlayersTeamB,
         maxPlayers: gameData.maxPlayersPerTeam * 2,
         isJoinable:
-          gameData.gameState === 0 &&
+          (typeof gameData.gameState === 'number' ? gameData.gameState : parseInt(gameData.gameState) || 0) === 0 &&
           !gameData.isPrivate &&
           gameData.currentPlayersTeamA + gameData.currentPlayersTeamB <
             gameData.maxPlayersPerTeam * 2,
       };
 
       console.log(`📊 Final game object:`, gameObject);
+      console.log(`📊 Game ${gameObject.publicKey.slice(0, 8)} - State: ${gameObject.gameState}, isJoinable: ${gameObject.isJoinable}`);
       games.push(gameObject);
     }
 
@@ -1906,7 +1957,7 @@ export async function getAvailableGames() {
     // Log game states for debugging
     if (allGames.length > 0) {
       allGames.forEach(game => {
-        console.log(`  Game ${game.publicKey.slice(0, 8)}: state=${game.gameState}, players=${game.totalPlayers}/${game.maxPlayers}, private=${game.isPrivate}`);
+        console.log(`  Game ${game.publicKey.slice(0, 8)}: "${game.lobbyName}" state=${game.gameState} (0=waiting, 1=active, 2=ended, 3=paused), players=${game.totalPlayers}/${game.maxPlayers}, private=${game.isPrivate}`);
       });
     }
 

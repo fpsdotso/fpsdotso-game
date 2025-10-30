@@ -1064,14 +1064,17 @@ function App() {
   };
 
   // Lobby handlers
-  const handleCreateRoom = async (roomName, mapName, maxPlayers) => {
+  const handleCreateRoom = async (mapName, maxPlayers) => {
     if (!playerInitialized) {
       alert("Please initialize your player first");
       return;
     }
 
+    // Use player's username as the room name
+    const roomName = playerData?.username || playerUsername || walletAddress.slice(0, 8);
+
     try {
-      console.log(`🎮 Creating room: ${roomName} with map: ${mapName}`);
+      console.log(`🎮 Creating room: ${roomName}'s Lobby with map: ${mapName}`);
       const result = await createGame(roomName, mapName);
       if (result) {
         console.log("✅ Successfully created room!");

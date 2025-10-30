@@ -15,7 +15,6 @@ function LobbyBrowser({
   onClose
 }) {
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [newRoomName, setNewRoomName] = useState('');
   const [selectedMap, setSelectedMap] = useState('');
   const [maxPlayers, setMaxPlayers] = useState(10);
   const [availableMaps, setAvailableMaps] = useState([]);
@@ -86,17 +85,12 @@ function LobbyBrowser({
   };
 
   const handleCreateRoom = () => {
-    if (!newRoomName.trim()) {
-      alert('Please enter a room name');
-      return;
-    }
     if (!selectedMap) {
       alert('Please select a map');
       return;
     }
-    onCreateRoom(newRoomName, selectedMap, maxPlayers);
+    onCreateRoom(selectedMap, maxPlayers);
     setShowCreateModal(false);
-    setNewRoomName('');
   };
 
   return (
@@ -153,17 +147,22 @@ function LobbyBrowser({
             <div key={game.publicKey || index} className="room-card">
               <div className="room-info">
                 <h3 className="room-name">
-                  {game.lobbyName || game.name || `Game Room #${index + 1}`}
+                  {game.hostUsername && game.hostUsername !== "Unknown" 
+                    ? `${game.hostUsername}'s Lobby`
+                    : game.createdBy 
+                      ? `${game.createdBy.toString().slice(0, 4)}...${game.createdBy.toString().slice(-4)}'s Lobby`
+                      : `Lobby #${index + 1}`
+                  }
                 </h3>
                 <div className="room-details">
                   <span className="room-detail">
-                    🗺️ {game.mapName || game.map || 'Default Map'}
+                    🗺️ {game.mapId || game.map_id || game.mapName || game.map || 'Default Map'}
                   </span>
                   <span className="room-detail">
                     👥 {game.totalPlayers || game.current_players || 0}/{game.maxPlayers || game.max_players || 10}
                   </span>
                   <span className="room-detail">
-                    🎯 Host: {game.createdBy ? `${game.createdBy.toString().slice(0, 4)}...${game.createdBy.toString().slice(-4)}` : (game.host || 'Unknown')}
+                    🎯 Host: {game.hostUsername || (game.createdBy ? `${game.createdBy.toString().slice(0, 4)}...${game.createdBy.toString().slice(-4)}` : (game.host || 'Unknown'))}
                   </span>
                 </div>
               </div>
@@ -202,18 +201,6 @@ function LobbyBrowser({
         <div className="modal-overlay" onClick={() => setShowCreateModal(false)}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <h2 className="modal-title">Create New Room</h2>
-
-            <div className="form-group">
-              <label>Room Name</label>
-              <input
-                type="text"
-                placeholder="Enter room name..."
-                value={newRoomName}
-                onChange={(e) => setNewRoomName(e.target.value)}
-                className="form-input"
-                autoFocus
-              />
-            </div>
 
             <div className="form-group">
               <label>Map {loadingMaps && '⏳'}</label>
