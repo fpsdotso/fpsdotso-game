@@ -67,6 +67,9 @@ pub struct GameState {
     /// Current player authority (wallet public key)
     current_player_authority: Option<String>,
 
+    /// Current player's team (0 = Blue, 1 = Red)
+    current_player_team: u8,
+
     /// Other players in the game (from blockchain)
     other_players: Vec<OtherPlayer>,
 
@@ -118,6 +121,7 @@ impl GameState {
             websocket_subscribed: false,
             current_game_pubkey: None,
             current_player_authority: None,
+            current_player_team: 0, // Default to team 0 (Blue)
             other_players: Vec::new(),
             touch_controls: None,
             muzzle_flash_timer: 0.0,
@@ -593,30 +597,80 @@ impl GameState {
     fn call_respawn(&mut self, game_pubkey: &str) {
         use std::os::raw::c_char;
         use std::ffi::CString;
+        use crate::map::ModelType;
 
-        // Default spawn position (center of map, slightly elevated)
-        let spawn_x = 0.0_f32;
-        let spawn_y = 1.0_f32;
-        let spawn_z = 0.0_f32;
+        println!("🎯 call_respawn ENTERED! game_pubkey: {}", game_pubkey);
 
+        // Use the stored team value
+        let team = self.current_player_team;
+        println!("👥 Current player team: {}", team);
+
+        // Get spawn position from the loaded map
+        let (spawn_x, spawn_y, spawn_z) = if let Some(ref map) = self.map {
+            // Filter spawn points by team from the loaded map
+            let target_model_type = if team == 0 {
+                ModelType::SpawnPointBlue
+            } else {
+                ModelType::SpawnPointRed
+            };
+
+            // Collect all spawn points for the team
+            let team_spawn_points: Vec<&crate::map::MapObject> = map.objects
+                .iter()
+                .filter(|obj| obj.model_type == target_model_type)
+                .collect();
+
+            if !team_spawn_points.is_empty() {
+                // Pick a random spawn point
+                use std::time::{SystemTime, UNIX_EPOCH};
+                let seed = SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs() as usize;
+                let random_index = seed % team_spawn_points.len();
+                let spawn_point = team_spawn_points[random_index];
+
+                let pos = spawn_point.get_position();
+                println!("✅ Using map spawn point: ({:.2}, {:.2}, {:.2}) from {} available", 
+                    pos.x, pos.y, pos.z, team_spawn_points.len());
+                (pos.x, pos.y, pos.z)
+            } else {
+                // No spawn points found for team, use default
+                let default_x = if team == 0 { -10.0 } else { 10.0 };
+                println!("⚠️ No spawn points found for team {}, using default ({:.2}, 1.0, 0.0)", 
+                    team, default_x);
+                (default_x, 1.0, 0.0)
+            }
+        } else {
+            // No map loaded, use default spawn position
+            let default_x = if team == 0 { -10.0 } else { 10.0 };
+            println!("⚠️ No map loaded, using default spawn ({:.2}, 1.0, 0.0)", default_x);
+            (default_x, 1.0, 0.0)
+        };
+
+        // Call JavaScript to execute respawn transaction
         let js_code = format!(
             r#"
             (async () => {{
                 try {{
-                    if (window.gameBridge && window.gameBridge.respawnPlayer) {{
-                        console.log('♻️ Calling respawn transaction...');
-                        const result = await window.gameBridge.respawnPlayer('{}', {}, {}, {});
-                        console.log('✅ Respawn transaction sent:', result);
+                    if (!window.gameBridge || !window.gameBridge.respawnPlayer) {{
+                        console.error('❌ window.gameBridge.respawnPlayer not available!');
+                        return;
                     }}
+                    
+                    console.log('🎯 Calling respawnPlayer with coordinates: ({}, {}, {})', {}, {}, {});
+                    const result = await window.gameBridge.respawnPlayer('{}', {}, {}, {});
+                    console.log('✅ Respawn transaction sent:', result);
                 }} catch (error) {{
-                    console.error('Error calling respawn:', error);
+                    console.error('❌ Error calling respawn:', error);
+                    console.error('Error stack:', error.stack);
                 }}
             }})();
             "#,
+            spawn_x, spawn_y, spawn_z,
+            spawn_x, spawn_y, spawn_z,
             game_pubkey,
-            spawn_x,
-            spawn_y,
-            spawn_z
+            spawn_x, spawn_y, spawn_z
         );
 
         unsafe {
@@ -627,6 +681,7 @@ impl GameState {
         // Mark that we've attempted respawn (to avoid spamming)
         if let Some(ref mut player) = self.player {
             player.death_timestamp = -1.0; // Negative means respawn requested
+            println!("✅ Set death_timestamp to -1.0 to prevent duplicate calls");
         }
     }
 
@@ -1343,6 +1398,10 @@ impl GameState {
 
         // Handle local player reconciliation
         if is_local_player {
+            // Store the player's team for use in respawn
+            // Team comes as 0 or 1 from blockchain
+            self.current_player_team = team_num as u8;
+            
             // Variables to track state changes
             let mut just_died = false;
             let mut should_respawn = false;
@@ -1377,7 +1436,13 @@ impl GameState {
                     let current_time = unsafe { emscripten_get_now() / 1000.0 };
                     let time_since_death = current_time - player.death_timestamp;
 
-                    if time_since_death >= 3.0 {
+                    println!("🔍 Respawn check: is_dead={}, is_alive={}, time_since_death={:.2}, death_timestamp={:.2}", 
+                        player.is_dead, is_alive, time_since_death, player.death_timestamp);
+
+                    // Only respawn if 3 seconds have passed AND we haven't already requested respawn
+                    // (death_timestamp < 0 means respawn already requested)
+                    if time_since_death >= 3.0 && player.death_timestamp >= 0.0 {
+                        println!("✅ Respawn conditions met! Triggering respawn...");
                         should_respawn = true;
                     }
                 } else if is_alive && player.is_dead {
@@ -1396,8 +1461,12 @@ impl GameState {
             }
 
             if should_respawn {
+                println!("🚀 should_respawn=true, current_game_pubkey={:?}", self.current_game_pubkey);
                 if let Some(game_pubkey) = self.current_game_pubkey.clone() {
+                    println!("📞 Calling respawn with game_pubkey: {}", game_pubkey);
                     self.call_respawn(&game_pubkey);
+                } else {
+                    println!("❌ Cannot respawn: No game_pubkey set!");
                 }
             }
 

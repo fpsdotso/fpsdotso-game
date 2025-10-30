@@ -8,6 +8,7 @@ import * as solanaBridge from "./solana-bridge";
 import websocketGameManager from "./websocket-game-manager";
 import { publicKey, u64, bool } from '@solana/buffer-layout-utils';
 import * as BufferLayout from '@solana/buffer-layout';
+import { debug } from "./utils/debug-config";
 
 const { u32, u8, struct, f32 } = BufferLayout;
 
@@ -60,80 +61,80 @@ export function initGameBridge() {
 
     // Solana functions
     registerKill: async (killer, victim) => {
-      console.log(`[Game Bridge] registerKill called: ${killer} -> ${victim}`);
+      debug.log('GAME_BRIDGE', `[Game Bridge] registerKill called: ${killer} -> ${victim}`);
       return await solanaBridge.registerKill(killer, victim);
     },
 
     getPlayerStats: async (playerId) => {
-      console.log(`[Game Bridge] getPlayerStats called: ${playerId}`);
+      debug.log('GAME_BRIDGE', `[Game Bridge] getPlayerStats called: ${playerId}`);
       return await solanaBridge.getPlayerStats(playerId);
     },
 
     connectWallet: async () => {
-      console.log("[Game Bridge] connectWallet called");
+      debug.log('GAME_BRIDGE', "[Game Bridge] connectWallet called");
       return await solanaBridge.connectWallet();
     },
 
     getBalance: async () => {
-      console.log("[Game Bridge] getBalance called");
+      debug.log('GAME_BRIDGE', "[Game Bridge] getBalance called");
       return await solanaBridge.getBalance();
     },
 
     createGame: async (lobbyName, mapName) => {
-      console.log(
+      debug.log('GAME_BRIDGE',
         `[Game Bridge] createGame called: ${lobbyName} on ${mapName}`
       );
       const result = await solanaBridge.createGame(lobbyName, mapName);
-      console.log("[Game Bridge] createGame result:", result);
+      debug.log('GAME_BRIDGE', "[Game Bridge] createGame result:", result);
       return result;
     },
 
     testInitPlayer: async () => {
-      console.log("[Game Bridge] testInitPlayer called");
+      debug.log('GAME_BRIDGE', "[Game Bridge] testInitPlayer called");
       const result = await solanaBridge.testInitPlayer();
-      console.log("[Game Bridge] testInitPlayer result:", result);
+      debug.log('GAME_BRIDGE', "[Game Bridge] testInitPlayer result:", result);
       return result;
     },
 
     testMatchmakingProgram: async () => {
-      console.log("[Game Bridge] testMatchmakingProgram called");
+      debug.log('GAME_BRIDGE', "[Game Bridge] testMatchmakingProgram called");
       const result = await solanaBridge.testMatchmakingProgram();
-      console.log("[Game Bridge] testMatchmakingProgram result:", result);
+      debug.log('GAME_BRIDGE', "[Game Bridge] testMatchmakingProgram result:", result);
       return result;
     },
 
     testCreateAndFetchGame: async () => {
-      console.log("[Game Bridge] testCreateAndFetchGame called");
+      debug.log('GAME_BRIDGE', "[Game Bridge] testCreateAndFetchGame called");
       const result = await solanaBridge.testCreateAndFetchGame();
-      console.log("[Game Bridge] testCreateAndFetchGame result:", result);
+      debug.log('GAME_BRIDGE', "[Game Bridge] testCreateAndFetchGame result:", result);
       return result;
     },
 
     testAllProgramAccounts: async () => {
-      console.log("[Game Bridge] testAllProgramAccounts called");
+      debug.log('GAME_BRIDGE', "[Game Bridge] testAllProgramAccounts called");
       const result = await solanaBridge.testAllProgramAccounts();
-      console.log("[Game Bridge] testAllProgramAccounts result:", result);
+      debug.log('GAME_BRIDGE', "[Game Bridge] testAllProgramAccounts result:", result);
       return result;
     },
 
     getAvailableGames: async () => {
-      console.log("[Game Bridge] getAvailableGames called");
+      debug.log('GAME_BRIDGE', "[Game Bridge] getAvailableGames called");
       const result = await solanaBridge.getAvailableGames();
-      console.log("[Game Bridge] getAvailableGames result:", result);
+      debug.log('GAME_BRIDGE', "[Game Bridge] getAvailableGames result:", result);
       return result;
     },
 
     getPlayerCurrentGame: async () => {
-      console.log("[Game Bridge] getPlayerCurrentGame called");
+      debug.log('GAME_BRIDGE', "[Game Bridge] getPlayerCurrentGame called");
       const result = await solanaBridge.getPlayerCurrentGame();
-      console.log("[Game Bridge] getPlayerCurrentGame result:", result);
+      debug.log('GAME_BRIDGE', "[Game Bridge] getPlayerCurrentGame result:", result);
       return result;
     },
 
     leaveCurrentGame: async () => {
-      console.log("[Game Bridge] leaveCurrentGame called");
+      debug.log('GAME_BRIDGE', "[Game Bridge] leaveCurrentGame called");
       const result = await solanaBridge.leaveCurrentGame();
-      console.log("[Game Bridge] leaveCurrentGame result:", result);
+      debug.log('GAME_BRIDGE', "[Game Bridge] leaveCurrentGame result:", result);
       return result;
     },
 
@@ -144,51 +145,51 @@ export function initGameBridge() {
 
     // Example: Send a message from game to UI
     sendMessage: (message) => {
-      console.log(`[Game Message]: ${message}`);
+      debug.log('GAME_BRIDGE', `[Game Message]: ${message}`);
       // Dispatch custom event that React can listen to
       window.dispatchEvent(new CustomEvent("gameMessage", { detail: message }));
     },
 
     // Lobby functions
     joinGame: async (gamePubkey) => {
-      console.log("[Game Bridge] joinGame called:", gamePubkey);
+      debug.log('GAME_BRIDGE', "[Game Bridge] joinGame called:", gamePubkey);
       const result = await solanaBridge.joinGame(gamePubkey);
-      console.log("[Game Bridge] joinGame result:", result);
+      debug.log('GAME_BRIDGE', "[Game Bridge] joinGame result:", result);
       return result;
     },
 
     startGame: async (gamePubkey) => {
-      console.log("[Game Bridge] startGame called:", gamePubkey);
+      debug.log('GAME_BRIDGE', "[Game Bridge] startGame called:", gamePubkey);
       const result = await solanaBridge.startGame(gamePubkey);
-      console.log("[Game Bridge] startGame result:", result);
+      debug.log('GAME_BRIDGE', "[Game Bridge] startGame result:", result);
       return result;
     },
 
     getGame: async (gamePubkey) => {
-      console.log("[Game Bridge] getGame called:", gamePubkey);
+      debug.log('GAME_BRIDGE', "[Game Bridge] getGame called:", gamePubkey);
       const result = await solanaBridge.getGame(gamePubkey);
-      console.log("[Game Bridge] getGame result:", result);
+      debug.log('GAME_BRIDGE', "[Game Bridge] getGame result:", result);
       return result;
     },
 
     getAllPlayersInGame: async (gamePubkey) => {
-      console.log("[Game Bridge] getAllPlayersInGame called:", gamePubkey);
+      debug.log('GAME_BRIDGE', "[Game Bridge] getAllPlayersInGame called:", gamePubkey);
       const result = await solanaBridge.getAllPlayersInGame(gamePubkey);
-      console.log("[Game Bridge] getAllPlayersInGame result:", result);
+      debug.log('GAME_BRIDGE', "[Game Bridge] getAllPlayersInGame result:", result);
       return result;
     },
 
     setReadyState: async (gamePubkey, isReady) => {
-      console.log("[Game Bridge] setReadyState called:", gamePubkey, isReady);
+      debug.log('GAME_BRIDGE', "[Game Bridge] setReadyState called:", gamePubkey, isReady);
       const result = await solanaBridge.setReadyState(gamePubkey, isReady);
-      console.log("[Game Bridge] setReadyState result:", result);
+      debug.log('GAME_BRIDGE', "[Game Bridge] setReadyState result:", result);
       return result;
     },
 
     getMapDataById: async (mapId) => {
-      console.log("[Game Bridge] getMapDataById called:", mapId);
+      debug.log('GAME_BRIDGE', "[Game Bridge] getMapDataById called:", mapId);
       const result = await solanaBridge.getMapData(mapId, "borsh");
-      console.log("[Game Bridge] getMapDataById result:", result ? `${result.length} bytes` : 'null');
+      debug.log('GAME_BRIDGE', "[Game Bridge] getMapDataById result:", result ? `${result.length} bytes` : 'null');
 
       // The Rust game expects Module.mapDataResult to be set with base64-encoded data
       if (result && window.Module) {
@@ -197,19 +198,32 @@ export function initGameBridge() {
           const base64 = btoa(String.fromCharCode.apply(null, result));
           // Set Module.mapDataResult as JSON string expected by Rust
           window.Module.mapDataResult = JSON.stringify({ success: true, data: base64 });
-          console.log("[Game Bridge] ✅ Set Module.mapDataResult with", result.length, "bytes as base64");
+          debug.log('GAME_BRIDGE', "[Game Bridge] ✅ Set Module.mapDataResult with", result.length, "bytes as base64");
         } catch (error) {
-          console.error("[Game Bridge] ❌ Failed to set Module.mapDataResult:", error);
+          debug.error("[Game Bridge] ❌ Failed to set Module.mapDataResult:", error);
           window.Module.mapDataResult = JSON.stringify({ error: error.message });
         }
       } else if (!result) {
-        console.warn("[Game Bridge] ⚠️ No map data to set");
+        debug.warn('GAME_BRIDGE', "[Game Bridge] ⚠️ No map data to set");
         if (window.Module) {
           window.Module.mapDataResult = JSON.stringify({ error: 'Failed to fetch map data' });
         }
       }
 
       return result;
+    },
+
+    // Get map objects data (for spawn points, etc.) - returns parsed game objects
+    getMapObjectsData: async (mapId) => {
+      debug.log('GAME_BRIDGE', "[Game Bridge] getMapObjectsData called:", mapId);
+      try {
+        const result = await solanaBridge.getMapData(mapId, "gameObjects");
+        debug.log('GAME_BRIDGE', "[Game Bridge] getMapObjectsData result:", result ? `${result.length} objects` : 'null');
+        return result;
+      } catch (error) {
+        debug.error("[Game Bridge] ❌ getMapObjectsData failed:", error);
+        return null;
+      }
     },
 
     // Ephemeral wallet functions
@@ -369,12 +383,12 @@ export function initGameBridge() {
       if (window.Module && window.Module._stop_game) {
         window.Module._stop_game();
       } else {
-        console.warn("⚠️ Module._stop_game not available");
+        debug.warn('GAME_BRIDGE', "⚠️ Module._stop_game not available");
       }
     },
 
     setCurrentGame: (gamePubkey) => {
-      console.log("[Game Bridge] setCurrentGame called:", gamePubkey);
+      debug.log('GAME_BRIDGE', "[Game Bridge] setCurrentGame called:", gamePubkey);
       if (window.Module && window.Module._set_current_game_js) {
         // Allocate string in WASM memory
         const lengthBytes = window.Module.lengthBytesUTF8(gamePubkey) + 1;
@@ -387,30 +401,30 @@ export function initGameBridge() {
         // Free the memory
         window.Module._free(stringPtr);
       } else {
-        console.warn("⚠️ Module._set_current_game_js not available");
+        debug.warn('GAME_BRIDGE', "⚠️ Module._set_current_game_js not available");
       }
     },
 
     // WebSocket real-time game state functions
     connectWebSocket: async () => {
-      console.log("[Game Bridge] connectWebSocket called");
+      debug.log('WEBSOCKET', "[Game Bridge] connectWebSocket called");
       try {
         await websocketGameManager.connect();
         return { success: true };
       } catch (error) {
-        console.error("[Game Bridge] Failed to connect WebSocket:", error);
+        debug.error("[Game Bridge] Failed to connect WebSocket:", error);
         return { success: false, error: error.message };
       }
     },
 
     disconnectWebSocket: () => {
-      console.log("[Game Bridge] disconnectWebSocket called");
+      debug.log('WEBSOCKET', "[Game Bridge] disconnectWebSocket called");
       websocketGameManager.disconnect();
       return { success: true };
     },
 
     subscribeToGamePlayers: async (gamePubkey) => {
-      console.log("[Game Bridge] subscribeToGamePlayers called:", gamePubkey);
+      debug.log('WEBSOCKET', "[Game Bridge] subscribeToGamePlayers called:", gamePubkey);
       try {
         // First, get all players in the game
         // Retry mechanism: GamePlayer accounts might not be created immediately when game starts
@@ -420,10 +434,10 @@ export function initGameBridge() {
 
         while (players.length === 0 && retryCount < maxRetries) {
           players = await solanaBridge.getGamePlayers(gamePubkey);
-          console.log(`[Game Bridge] Attempt ${retryCount + 1}: Found ${players.length} players to subscribe to`);
+          debug.log('WEBSOCKET', `[Game Bridge] Attempt ${retryCount + 1}: Found ${players.length} players to subscribe to`);
 
           if (players.length === 0 && retryCount < maxRetries - 1) {
-            console.log(`[Game Bridge] No players found yet, waiting 1 second before retry...`);
+            debug.log('WEBSOCKET', `[Game Bridge] No players found yet, waiting 1 second before retry...`);
             await new Promise(resolve => setTimeout(resolve, 1000));
           }
           retryCount++;
@@ -504,7 +518,7 @@ export function initGameBridge() {
                   if (dataChanged) {
                     lastLoggedPositions[accountPubkey] = posKey;
                     const totalPlayers = Object.keys(window.___websocket_player_updates).length;
-                    console.log(`[WebSocket] 📡 Player ${accountPubkey.slice(0, 8)} | Pos(${gamePlayerData.positionX.toFixed(1)}, ${gamePlayerData.positionY.toFixed(1)}, ${gamePlayerData.positionZ.toFixed(1)}) | Rot(${gamePlayerData.rotationY.toFixed(2)}) | Team ${gamePlayerData.team} | HP ${gamePlayerData.health} | Alive: ${gamePlayerData.isAlive} | Ammo: ${gamePlayerData.bulletCount} | Reload: ${gamePlayerData.reloadStartTimestamp} | Total: ${totalPlayers} players`);
+                    debug.log('PLAYER_UPDATES', `[WebSocket] 📡 Player ${accountPubkey.slice(0, 8)} | Pos(${gamePlayerData.positionX.toFixed(1)}, ${gamePlayerData.positionY.toFixed(1)}, ${gamePlayerData.positionZ.toFixed(1)}) | Rot(${gamePlayerData.rotationY.toFixed(2)}) | Team ${gamePlayerData.team} | HP ${gamePlayerData.health} | Alive: ${gamePlayerData.isAlive} | Ammo: ${gamePlayerData.bulletCount} | Reload: ${gamePlayerData.reloadStartTimestamp} | Total: ${totalPlayers} players`);
                   }
 
                   // Store the decoded data

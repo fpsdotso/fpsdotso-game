@@ -31,13 +31,13 @@ export function logTransaction({ type, action, functionName, signature, endpoint
   window.dispatchEvent(event);
   
   // Also log to console for debugging
-  const emoji = status === 'success' ? '✅' : status === 'error' ? '❌' : '⏳';
+  /*const emoji = status === 'success' ? '✅' : status === 'error' ? '❌' : '⏳';
   console.log(`${emoji} [${type}] ${functionName || action}`, {
     signature,
     endpoint,
     status,
     error,
-  });
+  });*/
 }
 
 /**

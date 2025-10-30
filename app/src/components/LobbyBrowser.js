@@ -61,24 +61,16 @@ function LobbyBrowser({
         setAvailableMaps(resolvedMaps);
         setSelectedMap(resolvedMaps[0].id); // Set first map as default
       } else {
-        console.log('ℹ️ No user maps found, using default maps');
-        // Fallback to default maps if user has no maps
-        setAvailableMaps([
-          { id: 'default', name: 'Default Map' },
-          { id: 'dust2', name: 'Dust 2' },
-          { id: 'mirage', name: 'Mirage' }
-        ]);
-        setSelectedMap('default');
+        console.log('ℹ️ No user maps found');
+        // User has no maps - don't set any default
+        setAvailableMaps([]);
+        setSelectedMap('');
       }
     } catch (error) {
       console.error('❌ Error loading maps:', error);
-      // Fallback to default maps on error
-      setAvailableMaps([
-        { id: 'default', name: 'Default Map' },
-        { id: 'dust2', name: 'Dust 2' },
-        { id: 'mirage', name: 'Mirage' }
-      ]);
-      setSelectedMap('default');
+      // On error, assume no maps
+      setAvailableMaps([]);
+      setSelectedMap('');
     } finally {
       setLoadingMaps(false);
     }
@@ -208,7 +200,7 @@ function LobbyBrowser({
                 value={selectedMap}
                 onChange={(e) => setSelectedMap(e.target.value)}
                 className="form-select"
-                disabled={loadingMaps}
+                disabled={loadingMaps || availableMaps.length === 0}
               >
                 {loadingMaps ? (
                   <option>Loading maps...</option>
@@ -250,6 +242,11 @@ function LobbyBrowser({
               <button
                 className="btn btn-primary"
                 onClick={handleCreateRoom}
+                disabled={loadingMaps || availableMaps.length === 0}
+                style={{
+                  opacity: (loadingMaps || availableMaps.length === 0) ? 0.5 : 1,
+                  cursor: (loadingMaps || availableMaps.length === 0) ? 'not-allowed' : 'pointer'
+                }}
               >
                 CREATE
               </button>
