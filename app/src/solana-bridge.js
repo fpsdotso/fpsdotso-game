@@ -2554,7 +2554,7 @@ export async function sendPlayerInput(input) {
     ephemeralProvider = new AnchorProvider(
       ephemeralConnection,
       new NodeWallet(ephemeralKeypair),
-      { commitment: "confirmed" }
+      { commitment: "processed" }
     );
     gameProgram = new Program(gameIdl, ephemeralProvider);
   }
@@ -2589,7 +2589,7 @@ export async function sendPlayerInput(input) {
         gamePlayer: gamePlayerPda,
         authority: getEphemeralPublicKey,
       })
-      .rpc({ skipPreflight: true }); // Skip preflight checks for maximum speed
+      .rpc({ skipPreflight: false }); // Skip preflight checks for maximum speed
 
     // Log to debug console
     const tx = await logTransactionPromise(
