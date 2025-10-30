@@ -1685,63 +1685,95 @@ impl GameState {
             player.position.z,
         );
 
-        // Enhanced reload animation with multiple stages
-        // Stage 1 (0.0-0.3): Gun tilts and moves down
-        // Stage 2 (0.3-0.5): Magazine ejects (moves down)
-        // Stage 3 (0.5-0.7): New magazine inserts (moves up)
-        // Stage 4 (0.7-1.0): Gun returns to normal position and charges
+        // ENHANCED reload animation with multiple sophisticated stages
+        // Stage 1 (0.0-0.25): Gun tilts and moves down/left (inspect angle)
+        // Stage 2 (0.25-0.4): Magazine release + eject (drops down with rotation)
+        // Stage 3 (0.4-0.6): New magazine grab + insert (comes from side, inserts up)
+        // Stage 4 (0.6-0.75): Magazine lock + tap (small bounce)
+        // Stage 5 (0.75-0.9): Charging handle pull back and release
+        // Stage 6 (0.9-1.0): Gun returns to ready position
         
-        let (reload_offset_y, reload_offset_x, reload_rotation, magazine_offset) = if reload_progress > 0.0 {
-            if reload_progress < 0.3 {
-                // Stage 1: Tilt and lower gun
-                let stage_progress = reload_progress / 0.3;
-                let y_offset = -stage_progress * 0.4;
-                let x_offset = stage_progress * 0.1; // Move slightly to center
-                let rotation = stage_progress * 50.0; // Tilt 50 degrees
-                (y_offset, x_offset, rotation, 0.0)
-            } else if reload_progress < 0.5 {
-                // Stage 2: Eject magazine (magazine drops down)
-                let stage_progress = (reload_progress - 0.3) / 0.2;
-                let mag_drop = stage_progress * 0.6; // Magazine falls
-                (-0.4, 0.1, 50.0, -mag_drop)
-            } else if reload_progress < 0.7 {
-                // Stage 3: Insert new magazine (magazine rises from below)
-                let stage_progress = (reload_progress - 0.5) / 0.2;
-                let mag_rise = -0.6 + stage_progress * 0.6; // Magazine rises back
-                (-0.4, 0.1, 50.0, mag_rise)
+        let (reload_offset_y, reload_offset_x, reload_offset_z, reload_rotation_pitch, reload_rotation_roll, magazine_offset_y, magazine_offset_x, magazine_rotation) = if reload_progress > 0.0 {
+            if reload_progress < 0.25 {
+                // Stage 1: Tilt gun down and to the left for inspection
+                let stage_progress = reload_progress / 0.25;
+                let eased = stage_progress * stage_progress; // Ease-in
+                let y_offset = -eased * 0.5; // Move down more
+                let x_offset = eased * 0.2; // Move toward center/left
+                let z_offset = -eased * 0.15; // Pull back slightly
+                let rotation_pitch = eased * 60.0; // Tilt down 60 degrees
+                let rotation_roll = eased * -15.0; // Roll left 15 degrees
+                (y_offset, x_offset, z_offset, rotation_pitch, rotation_roll, 0.0, 0.0, 0.0)
+            } else if reload_progress < 0.4 {
+                // Stage 2: Magazine ejects - drops with spin
+                let stage_progress = (reload_progress - 0.25) / 0.15;
+                let eased = 1.0 - (1.0 - stage_progress).powi(2); // Ease-out (gravity)
+                let mag_drop = eased * 0.8; // Magazine falls faster
+                let mag_side = eased * 0.15; // Falls slightly to the side
+                let mag_spin = eased * 90.0; // Spins as it falls
+                (-0.5, 0.2, -0.15, 60.0, -15.0, -mag_drop, -mag_side, -mag_spin)
+            } else if reload_progress < 0.6 {
+                // Stage 3: New magazine appears from side and inserts
+                let stage_progress = (reload_progress - 0.4) / 0.2;
+                let eased = stage_progress * stage_progress; // Ease-in for controlled insertion
+                // Magazine comes from below-right and moves up-left
+                let mag_rise = -0.8 + eased * 0.8; // Start far below, rise to position
+                let mag_side = 0.3 - eased * 0.3; // Start to the right, move to center
+                let mag_tilt = 45.0 - eased * 45.0; // Start tilted, straighten
+                (-0.5, 0.2, -0.15, 60.0, -15.0, mag_rise, mag_side, mag_tilt)
+            } else if reload_progress < 0.75 {
+                // Stage 4: Magazine lock + tap (small bounce for emphasis)
+                let stage_progress = (reload_progress - 0.6) / 0.15;
+                let bounce = if stage_progress < 0.5 {
+                    stage_progress * 2.0 * 0.05 // Tap down
+                } else {
+                    (1.0 - (stage_progress - 0.5) * 2.0) * 0.05 // Bounce up
+                };
+                (-0.5, 0.2, -0.15, 60.0, -15.0, -bounce, 0.0, 0.0)
+            } else if reload_progress < 0.9 {
+                // Stage 5: Charging handle animation
+                let stage_progress = (reload_progress - 0.75) / 0.15;
+                // Gun stays in reload position while charging
+                (-0.5, 0.2, -0.15, 60.0, -15.0, 0.0, 0.0, 0.0)
             } else {
-                // Stage 4: Return to normal position
-                let stage_progress = (reload_progress - 0.7) / 0.3;
-                let y_offset = -0.4 + stage_progress * 0.4; // Rise back up
-                let x_offset = 0.1 - stage_progress * 0.1; // Move back to side
-                let rotation = 50.0 - stage_progress * 50.0; // Straighten
-                (y_offset, x_offset, rotation, 0.0)
+                // Stage 6: Return to ready position with smooth ease-out
+                let stage_progress = (reload_progress - 0.9) / 0.1;
+                let eased = 1.0 - (1.0 - stage_progress).powi(3); // Ease-out cubic
+                let y_offset = -0.5 + eased * 0.5; // Rise back up
+                let x_offset = 0.2 - eased * 0.2; // Move back to side
+                let z_offset = -0.15 + eased * 0.15; // Push forward
+                let rotation_pitch = 60.0 - eased * 60.0; // Straighten pitch
+                let rotation_roll = -15.0 + eased * 15.0; // Straighten roll
+                (y_offset, x_offset, z_offset, rotation_pitch, rotation_roll, 0.0, 0.0, 0.0)
             }
         } else {
-            (0.0, 0.0, 0.0, 0.0)
+            (0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
         };
 
         // Position gun base in front and to the right of camera using all three vectors
-        // Apply reload offset
-        let gun_base = camera_pos + direction * 0.8 + right * (0.35 - reload_offset_x) + up * (-0.3 + reload_offset_y);
+        // Apply reload offsets for more dynamic movement
+        let gun_base = camera_pos 
+            + direction * (0.8 + reload_offset_z) // Forward/back
+            + right * (0.35 - reload_offset_x) // Left/right
+            + up * (-0.3 + reload_offset_y); // Up/down
 
-        // Helper function to transform local gun coordinates to world space with reload rotation
+        // Helper function to transform local gun coordinates to world space with advanced reload rotation
         let to_world = |local_x: f32, local_y: f32, local_z: f32| -> Vector3 {
-            // Apply reload rotation around multiple axes for more dynamic animation
-            if reload_rotation.abs() > 0.01 {
-                let pitch_rad = reload_rotation.to_radians();
-                let roll_rad = (reload_rotation * 0.3).to_radians(); // Add some roll
+            // Apply reload rotation around multiple axes for sophisticated animation
+            if reload_rotation_pitch.abs() > 0.01 || reload_rotation_roll.abs() > 0.01 {
+                let pitch_rad = reload_rotation_pitch.to_radians();
+                let roll_rad = reload_rotation_roll.to_radians();
                 
                 let cos_pitch = pitch_rad.cos();
                 let sin_pitch = pitch_rad.sin();
                 let cos_roll = roll_rad.cos();
                 let sin_roll = roll_rad.sin();
                 
-                // First apply pitch rotation (around right axis)
+                // First apply pitch rotation (around right axis) - tilts gun up/down
                 let temp_y = local_y * cos_pitch - local_z * sin_pitch;
                 let temp_z = local_y * sin_pitch + local_z * cos_pitch;
                 
-                // Then apply roll rotation (around forward axis)
+                // Then apply roll rotation (around forward axis) - rolls gun left/right
                 let rotated_y = temp_y * cos_roll - local_x * sin_roll;
                 let rotated_x = temp_y * sin_roll + local_x * cos_roll;
                 let rotated_z = temp_z;
@@ -1771,24 +1803,49 @@ impl GameState {
             d3d.draw_sphere(pos, 0.03, gun_dark_color);
         }
 
-        // Magazine (animates during reload) - positioned below gun body
-        // Magazine moves down when ejecting, then new one appears from below
+        // Magazine (sophisticated animation during reload) - positioned below gun body
+        // Magazine moves down when ejecting with spin, then new one appears from side
         for i in 0..3 {
-            let y = -0.12 - i as f32 * 0.04 + magazine_offset;
-            let z = -0.05;
-            let pos = to_world(0.0, y, z);
+            let base_y = -0.12 - i as f32 * 0.04;
+            let base_z = -0.05;
             
-            // Make magazine dimmer when falling, brighter when inserting
-            let mag_alpha = if reload_progress > 0.3 && reload_progress < 0.5 {
-                // Ejecting - fade out
-                255 - ((reload_progress - 0.3) / 0.2 * 200.0) as u8
-            } else if reload_progress >= 0.5 && reload_progress < 0.7 {
-                // Inserting - fade in
-                (55.0 + (reload_progress - 0.5) / 0.2 * 200.0) as u8
+            // Apply magazine animation offsets and rotation
+            let mag_y = base_y + magazine_offset_y;
+            let mag_x = magazine_offset_x;
+            
+            // Transform magazine position with rotation
+            let mag_pos = if magazine_rotation.abs() > 0.01 {
+                let rot_rad = magazine_rotation.to_radians();
+                let cos_rot = rot_rad.cos();
+                let sin_rot = rot_rad.sin();
+                
+                // Rotate magazine around its center
+                let rotated_y = mag_y * cos_rot - base_z * sin_rot;
+                let rotated_z = mag_y * sin_rot + base_z * cos_rot;
+                
+                to_world(mag_x, rotated_y, rotated_z)
             } else {
-                255
+                to_world(mag_x, mag_y, base_z)
             };
-            d3d.draw_sphere(pos, 0.04, Color::new(magazine_color.r, magazine_color.g, magazine_color.b, mag_alpha));
+            
+            // Magazine visibility control during animation stages
+            let mag_alpha = if reload_progress > 0.25 && reload_progress < 0.4 {
+                // Stage 2: Ejecting old magazine - fade out quickly
+                let fade_progress = (reload_progress - 0.25) / 0.15;
+                (255.0 * (1.0 - fade_progress)) as u8
+            } else if reload_progress >= 0.4 && reload_progress < 0.6 {
+                // Stage 3: Inserting new magazine - fade in smoothly
+                let fade_progress = (reload_progress - 0.4) / 0.2;
+                (255.0 * fade_progress) as u8
+            } else if reload_progress > 0.0 && reload_progress <= 0.25 {
+                255 // Visible during initial stage
+            } else if reload_progress >= 0.6 {
+                255 // Fully visible after insertion
+            } else {
+                0 // Hidden between eject and insert
+            };
+            
+            d3d.draw_sphere(mag_pos, 0.04, Color::new(magazine_color.r, magazine_color.g, magazine_color.b, mag_alpha));
         }
 
         // Magazine release button (small detail)
@@ -1811,21 +1868,30 @@ impl GameState {
             d3d.draw_sphere(pos, 0.03, Color::new(156, 81, 255, 255)); // Solana purple
         }
         
-        // Charging handle (moves back during reload in stage 4)
-        let charging_handle_offset = if reload_progress > 0.7 && reload_progress < 0.85 {
-            let stage_progress = (reload_progress - 0.7) / 0.15;
+        // Charging handle (animated during stage 5 of reload)
+        // Pulls back and releases with smooth motion
+        let charging_handle_offset = if reload_progress > 0.75 && reload_progress < 0.9 {
+            let stage_progress = (reload_progress - 0.75) / 0.15;
             if stage_progress < 0.5 {
-                // Pull back
-                stage_progress * 2.0 * 0.12
+                // Pull back aggressively
+                let pull_progress = stage_progress * 2.0;
+                pull_progress * 0.15 // Pull back 15cm
             } else {
-                // Release forward
-                (1.0 - (stage_progress - 0.5) * 2.0) * 0.12
+                // Release forward with spring motion
+                let release_progress = (stage_progress - 0.5) * 2.0;
+                let spring_release = 1.0 - release_progress + (release_progress * 0.2); // Small bounce
+                spring_release.max(0.0) * 0.15
             }
         } else {
             0.0
         };
+        
         let charging_handle = to_world(0.02, 0.08, 0.15 - charging_handle_offset);
         d3d.draw_sphere(charging_handle, 0.025, Color::new(100, 100, 110, 255));
+        
+        // Charging handle latch (detail piece)
+        let latch = to_world(0.02, 0.06, 0.13 - charging_handle_offset);
+        d3d.draw_sphere(latch, 0.015, Color::new(80, 80, 90, 255));
 
         // Muzzle flash effect when shooting
         if muzzle_flash_timer > 0.0 {
