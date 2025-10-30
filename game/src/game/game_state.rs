@@ -88,11 +88,8 @@ pub struct GameState {
     /// Current bullet count (for ammo tracking)
     current_bullet_count: u8,
 
-    /// Reload start timestamp (0 if not reloading)
-    reload_start_timestamp: u64,
-
-    /// Reload initiated flag (to prevent repeated calls)
-    reload_initiated: bool,
+    /// Whether reload is in progress (to show "Press R to reload" message)
+    show_reload_prompt: bool,
 }
 
 impl GameState {
@@ -113,8 +110,7 @@ impl GameState {
             bullet_trails: Vec::new(),
             joystick_input: (false, false, false, false),
             current_bullet_count: 10, // Start with full magazine
-            reload_start_timestamp: 0,
-            reload_initiated: false,
+            show_reload_prompt: false,
         }
     }
 
@@ -309,101 +305,20 @@ impl GameState {
         10
     }
 
-    /// Get reload start timestamp from WebSocket data
-    fn get_reload_timestamp_from_websocket(&mut self) -> u64 {
-        use std::ffi::CString;
-
-        // Use the simple global variable that game-bridge.js sets
-        let js_code = r#"
-            (() => {
-                try {
-                    // Check the simple global variable first (set by game-bridge.js)
-                    if (typeof window.___current_player_reload_timestamp === 'number') {
-                        return window.___current_player_reload_timestamp;
-                    }
-                    
-                    // Fallback: Try to read from WebSocket updates
-                    const ephemeralKey = window.gameBridge?.getCurrentPlayerEphemeralKey();
-                    if (!ephemeralKey || !window.___websocket_player_updates) {
-                        return 0;
-                    }
-                    
-                    for (const [accountPubkey, update] of Object.entries(window.___websocket_player_updates)) {
-                        if (update.parsed && update.parsed.authority === ephemeralKey) {
-                            return update.parsed.reloadStartTimestamp || 0;
-                        }
-                    }
-                    return 0;
-                } catch (e) {
-                    return 0;
-                }
-            })();
-        "#;
-
-        unsafe {
-            let c_str = CString::new(js_code).unwrap();
-            let result_ptr = emscripten_run_script_string(c_str.as_ptr());
-
-            if !result_ptr.is_null() {
-                let result_str = std::ffi::CStr::from_ptr(result_ptr)
-                    .to_string_lossy();
-                
-                if let Ok(timestamp) = result_str.parse::<u64>() {
-                    self.reload_start_timestamp = timestamp;
-                    return timestamp;
-                }
-            }
-        }
-
-        0
-    }
-
-    /// Check if currently reloading
-    fn is_reloading(&self) -> bool {
-        let is_reloading = if self.reload_start_timestamp == 0 {
-            false
-        } else {
-            let current_time = unsafe { emscripten_get_now() / 1000.0 } as u64;
-            let elapsed = current_time.saturating_sub(self.reload_start_timestamp);
-            elapsed < 2
-        };
-
-        // Update UI with reload status
-        use std::ffi::CString;
-        let update_ui_code = format!(r#"
-            (() => {{
-                if (window.gameBridge && window.gameBridge.updateUIReloadStatus) {{
-                    window.gameBridge.updateUIReloadStatus({});
-                }}
-            }})();
-        "#, if is_reloading { "true" } else { "false" });
-        
-        unsafe {
-            let update_c_str = CString::new(update_ui_code).unwrap();
-            emscripten_run_script(update_c_str.as_ptr());
-        }
-
-        is_reloading
-    }
-
-    /// Start reload via blockchain
-    fn start_reload_blockchain(&mut self) {
-        if self.reload_initiated {
-            return;
-        }
-
+    /// Manually reload the gun via blockchain (instant reload)
+    fn reload_gun(&mut self) {
         if let Some(ref game_pubkey) = self.current_game_pubkey {
             use std::ffi::CString;
 
             let js_code = format!(r#"
                 (async () => {{
                     try {{
-                        console.log('🔄 Auto-reload triggered');
-                        if (window.gameBridge && window.gameBridge.startReload) {{
-                            await window.gameBridge.startReload('{}');
+                        if (window.gameBridge && window.gameBridge.reload) {{
+                            await window.gameBridge.reload('{}');
+                            console.log('✅ Reload complete');
                         }}
                     }} catch (e) {{
-                        console.error('❌ Auto-reload failed:', e);
+                        console.error('❌ Reload failed:', e);
                     }}
                 }})();
             "#, game_pubkey);
@@ -413,44 +328,8 @@ impl GameState {
                 emscripten_run_script(c_str.as_ptr());
             }
 
-            self.reload_initiated = true;
-        }
-    }
-
-    /// Finish reload after 1.5 seconds
-    fn finish_reload_if_ready(&mut self) {
-        if !self.reload_initiated || self.reload_start_timestamp == 0 {
-            return;
-        }
-
-        let current_time = unsafe { emscripten_get_now() / 1000.0 } as u64;
-        let elapsed = current_time.saturating_sub(self.reload_start_timestamp);
-
-        if elapsed >= 2 {
-            if let Some(ref game_pubkey) = self.current_game_pubkey {
-                use std::ffi::CString;
-
-                let js_code = format!(r#"
-                    (async () => {{
-                        try {{
-                            console.log('✅ Auto-reload completing');
-                            if (window.gameBridge && window.gameBridge.finishReload) {{
-                                await window.gameBridge.finishReload('{}');
-                            }}
-                        }} catch (e) {{
-                            console.error('❌ Finish reload failed:', e);
-                        }}
-                    }})();
-                "#, game_pubkey);
-
-                unsafe {
-                    let c_str = CString::new(js_code).unwrap();
-                    emscripten_run_script(c_str.as_ptr());
-                }
-
-                self.reload_initiated = false;
-                self.reload_start_timestamp = 0;
-            }
+            // Hide reload prompt after reloading
+            self.show_reload_prompt = false;
         }
     }
 
@@ -469,12 +348,9 @@ impl GameState {
         // Check bullet count first
         let bullet_count = self.get_bullet_count_from_websocket();
         
-        // If no bullets or currently reloading, trigger auto-reload and prevent shooting
-        if bullet_count == 0 || self.is_reloading() {
-            if bullet_count == 0 && !self.reload_initiated {
-                println!("🔫 Out of ammo! Auto-reloading...");
-                self.start_reload_blockchain();
-            }
+        // If no bullets, show reload prompt and prevent shooting
+        if bullet_count == 0 {
+            self.show_reload_prompt = true;
             return; // Don't shoot
         }
 
@@ -927,11 +803,13 @@ impl GameState {
             // Remove expired trails
             self.bullet_trails.retain(|trail| trail.timer > 0.0);
 
-            // Check and update reload status from WebSocket
-            self.get_reload_timestamp_from_websocket();
-            
-            // If reloading, check if 1.5 seconds have passed and finish reload
-            self.finish_reload_if_ready();
+            // Handle R key press for manual reload
+            if rl.is_key_pressed(KeyboardKey::KEY_R) {
+                let bullet_count = self.get_bullet_count_from_websocket();
+                if bullet_count < 10 {
+                    self.reload_gun();
+                }
+            }
 
             // Smoothly interpolate other players with dead reckoning for latency compensation
             // This runs every frame for buttery smooth movement
@@ -1550,7 +1428,7 @@ impl GameState {
             );
 
             // Draw gun model in front of camera (viewmodel)
-            Self::draw_gun_viewmodel(&mut d3d, &player, self.muzzle_flash_timer, self.is_reloading());
+            Self::draw_gun_viewmodel(&mut d3d, &player, self.muzzle_flash_timer, false); // No reload animation needed
         }
 
         // Draw 2D UI elements (crosshair, health bar) after 3D rendering
@@ -1559,7 +1437,7 @@ impl GameState {
 
         if let Some(ref player) = self.player {
             // Self::draw_minimap(d, player); // Disabled - now using web-based minimap
-            Self::draw_health_bar(d, player);
+            Self::draw_health_bar(d, player, self.show_reload_prompt);
         }
 
         // Touch controls disabled - using React VirtualJoystick instead
@@ -1787,7 +1665,7 @@ impl GameState {
     }
 
     /// Draw health bar at bottom center of screen
-    fn draw_health_bar(d: &mut RaylibDrawHandle, player: &Player) {
+    fn draw_health_bar(d: &mut RaylibDrawHandle, player: &Player, show_reload_prompt: bool) {
         let screen_width = d.get_screen_width();
         let screen_height = d.get_screen_height();
 
@@ -1831,6 +1709,24 @@ impl GameState {
 
         // "HEALTH" label
         d.draw_text("HEALTH", bar_x + 5, bar_y - 20, 12, Color::new(200, 200, 220, 255));
+
+        // "Press R to Reload" prompt (centered at top of screen)
+        if show_reload_prompt {
+            let prompt_text = "PRESS R TO RELOAD";
+            let text_width = d.measure_text(prompt_text, 30);
+            
+            // Draw centered at top-center of screen with pulsing effect
+            let pulse = ((unsafe { emscripten_get_now() } / 500.0).sin() * 0.3 + 0.7) as f32;
+            let alpha = (255.0 * pulse) as u8;
+            
+            d.draw_text(
+                prompt_text,
+                (screen_width - text_width) / 2,
+                screen_height / 4,
+                30,
+                Color::new(255, 255, 0, alpha), // Yellow with pulsing alpha
+            );
+        }
     }
 
     /// Draw other players in the game (from blockchain sync)

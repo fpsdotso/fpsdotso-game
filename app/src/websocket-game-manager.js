@@ -214,8 +214,6 @@ class WebSocketGameManager {
    * @param {Function} callback - Callback function (accountPubkey, accountData) => void
    */
   async subscribeToGamePlayers(gamePlayerPubkeys, callback) {
-    console.log(`📡 Subscribing to ${gamePlayerPubkeys.length} GamePlayer accounts`);
-
     const subscriptionPromises = gamePlayerPubkeys.map(async (pubkey) => {
       try {
         await this.subscribeToAccount(pubkey, (accountData) => {
@@ -227,7 +225,6 @@ class WebSocketGameManager {
     });
 
     await Promise.all(subscriptionPromises);
-    console.log(`✅ Subscribed to all GamePlayer accounts`);
   }
 
   /**
@@ -235,8 +232,6 @@ class WebSocketGameManager {
    * @param {Array<string>} gamePlayerPubkeys - Array of GamePlayer account public keys
    */
   async unsubscribeFromGamePlayers(gamePlayerPubkeys) {
-    console.log(`📡 Unsubscribing from ${gamePlayerPubkeys.length} GamePlayer accounts`);
-
     const unsubscribePromises = gamePlayerPubkeys.map(async (pubkey) => {
       try {
         await this.unsubscribeFromAccount(pubkey);
@@ -246,7 +241,6 @@ class WebSocketGameManager {
     });
 
     await Promise.all(unsubscribePromises);
-    console.log(`✅ Unsubscribed from all GamePlayer accounts`);
   }
 
   /**
@@ -280,7 +274,6 @@ class WebSocketGameManager {
    */
   disconnect() {
     if (this.ws) {
-      console.log("🔌 Disconnecting WebSocket");
       this.isConnected = false;
       this.ws.close();
       this.ws = null;

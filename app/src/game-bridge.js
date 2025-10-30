@@ -52,8 +52,6 @@ export function initGameBridge() {
     return;
   }
 
-  console.log("Setting up game bridge functions...");
-
   // Expose functions to the game through window.gameBridge
   window.gameBridge = {
     // UI update callbacks (set by React App)
@@ -252,15 +250,9 @@ export function initGameBridge() {
       return await solanaBridge.respawnPlayer(gameId, spawnX, spawnY, spawnZ);
     },
 
-    // Reload functions
-    startReload: async (gameId) => {
-      console.log(`[Game Bridge] startReload called`);
-      return await solanaBridge.startReload(gameId);
-    },
-
-    finishReload: async (gameId) => {
-      console.log(`[Game Bridge] finishReload called`);
-      return await solanaBridge.finishReload(gameId);
+    // Reload function
+    reload: async (gameId) => {
+      return await solanaBridge.reload(gameId);
     },
 
     // Function for Rust to manually update UI with current bullet count
@@ -302,7 +294,6 @@ export function initGameBridge() {
         const allPlayers = await solanaBridge.getGamePlayers(gamePublicKey);
 
         if (!allPlayers || allPlayers.length === 0) {
-          console.log('[Game Bridge] No players found in game');
           return [];
         }
 
@@ -311,9 +302,6 @@ export function initGameBridge() {
           .filter(player => player.authority !== currentEphemeralKey)
           .map(player => player.publicKey);
 
-        console.log(`[Game Bridge] Found ${otherPlayers.length} other players for shooting detection`);
-        console.log(`[Game Bridge] Current player key: ${currentEphemeralKey}`);
-        console.log(`[Game Bridge] Other player PDAs:`, otherPlayers);
         return otherPlayers;
       } catch (error) {
         console.error('[Game Bridge] Error getting other player PDAs:', error);
@@ -323,26 +311,18 @@ export function initGameBridge() {
 
     // Game mode control functions
     startGameMode: () => {
-      console.log("[Game Bridge] startGameMode called - switching to playing mode");
-      console.log("[Game Bridge] Module available:", !!window.Module);
-      console.log("[Game Bridge] _start_game available:", !!(window.Module && window.Module._start_game));
-
       if (window.Module && window.Module._start_game) {
-        console.log("[Game Bridge] Calling Module._start_game()...");
         try {
           window.Module._start_game();
-          console.log("[Game Bridge] ✅ Module._start_game() called successfully");
         } catch (error) {
           console.error("[Game Bridge] ❌ Error calling _start_game:", error);
         }
       } else {
         console.warn("⚠️ Module._start_game not available");
-        console.log("Available Module functions:", Object.keys(window.Module || {}));
       }
     },
 
     stopGameMode: () => {
-      console.log("[Game Bridge] stopGameMode called - switching to menu mode");
       if (window.Module && window.Module._stop_game) {
         window.Module._stop_game();
       } else {
@@ -512,7 +492,7 @@ export function initGameBridge() {
                       window.___current_player_bullet_count = gamePlayerData.bulletCount;
                       window.___current_player_reload_timestamp = gamePlayerData.reloadStartTimestamp;
                       
-                      console.log(`[Game Bridge] 🔫 Current player ammo updated: ${gamePlayerData.bulletCount}/10, reloading: ${gamePlayerData.reloadStartTimestamp > 0}`);
+                      //console.log(`[Game Bridge] 🔫 Current player ammo updated: ${gamePlayerData.bulletCount}/10, reloading: ${gamePlayerData.reloadStartTimestamp > 0}`);
                     }
                   } catch (err) {
                     // Ephemeral wallet not initialized yet, skip UI update
