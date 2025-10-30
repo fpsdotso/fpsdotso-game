@@ -753,8 +753,8 @@ const VirtualJoystick = ({ isPlaying, gameId, onInput }) => {
         <div
           className="joystick-knob"
           style={{
-            left: `${leftJoystick.knob.x}px`, // Direct positioning within container
-            top: `${leftJoystick.knob.y}px`, // Direct positioning within container
+            left: `${leftJoystick.knob.x - leftJoystick.knobRadius}px`,
+            top: `${leftJoystick.knob.y - leftJoystick.knobRadius}px`,
             opacity: leftJoystick.isActive ? 1 : 0.7,
           }}
         />
