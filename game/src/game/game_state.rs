@@ -99,6 +99,12 @@ pub struct GameState {
 
     /// Local timestamp when reload was initiated (for immediate animation start)
     reload_start_time: f64,
+
+    /// In-game settings overlay visibility
+    pub show_settings: bool,
+
+    /// Pending sensitivity while the settings overlay is open
+    pub pending_sensitivity: f32,
 }
 
 impl GameState {
@@ -123,6 +129,8 @@ impl GameState {
             reload_progress: 0.0,
             reload_initiated: false,
             reload_start_time: 0.0,
+            show_settings: false,
+            pending_sensitivity: 0.01,
         }
     }
 
@@ -825,8 +833,23 @@ impl GameState {
             }
         }
 
-        // Update player if in playing mode
-        if self.mode == GameMode::Playing {
+        // Toggle in-game settings with 'M'
+        if rl.is_key_pressed(KeyboardKey::KEY_M) {
+            self.show_settings = !self.show_settings;
+            if self.show_settings {
+                rl.enable_cursor();
+                self.mouse_captured = false;
+                if let Some(ref player) = self.player {
+                    self.pending_sensitivity = player.mouse_sensitivity;
+                }
+            } else {
+                rl.disable_cursor();
+                self.mouse_captured = true;
+            }
+        }
+
+        // Update player if in playing mode (disabled while settings are open)
+        if self.mode == GameMode::Playing && !self.show_settings {
             // Get joystick input and mobile camera input before borrowing player
             let joystick_input = self.get_joystick_input_from_js();
             let mobile_camera_input = self.get_mobile_camera_input_from_js();
@@ -1057,6 +1080,60 @@ impl GameState {
             // Process incoming WebSocket player updates (real-time, no polling!)
             // WebSocket notifications are pushed to us when players move
             self.process_websocket_player_updates();
+        }
+
+        // Handle settings overlay interactions (mouse) while open
+        if self.mode == GameMode::Playing && self.show_settings {
+            let mouse = rl.get_mouse_position();
+            let click = rl.is_mouse_button_down(MouseButton::MOUSE_BUTTON_LEFT);
+            let pressed = rl.is_mouse_button_pressed(MouseButton::MOUSE_BUTTON_LEFT);
+
+            // Panel geometry
+            let sw = rl.get_screen_width() as f32;
+            let sh = rl.get_screen_height() as f32;
+            let panel_w = 420.0f32;
+            let panel_h = 220.0f32;
+            let px = (sw - panel_w) * 0.5;
+            let py = (sh - panel_h) * 0.5;
+
+            // Slider geometry
+            let slider_x = px + 40.0;
+            let slider_y = py + 100.0;
+            let slider_w = panel_w - 80.0;
+            let slider_h = 8.0;
+
+            // Map mouse to sensitivity when dragging over slider
+            if click && mouse.x >= slider_x && mouse.x <= slider_x + slider_w && mouse.y >= slider_y - 10.0 && mouse.y <= slider_y + 18.0 {
+                let t = ((mouse.x - slider_x) / slider_w).clamp(0.0, 1.0);
+                let min_s = 0.002f32;
+                let max_s = 0.06f32;
+                self.pending_sensitivity = min_s + t * (max_s - min_s);
+            }
+
+            // Buttons
+            let btn_w = 120.0;
+            let btn_h = 36.0;
+            let save_x = px + panel_w - 40.0 - btn_w;
+            let save_y = py + panel_h - 50.0;
+            let cancel_x = px + 40.0;
+            let cancel_y = save_y;
+
+            // Save
+            if pressed && mouse.x >= save_x && mouse.x <= save_x + btn_w && mouse.y >= save_y && mouse.y <= save_y + btn_h {
+                if let Some(ref mut player) = self.player {
+                    player.mouse_sensitivity = self.pending_sensitivity;
+                }
+                self.show_settings = false;
+                rl.disable_cursor();
+                self.mouse_captured = true;
+            }
+
+            // Cancel
+            if pressed && mouse.x >= cancel_x && mouse.x <= cancel_x + btn_w && mouse.y >= cancel_y && mouse.y <= cancel_y + btn_h {
+                self.show_settings = false;
+                rl.disable_cursor();
+                self.mouse_captured = true;
+            }
         }
     }
 
@@ -1634,6 +1711,70 @@ impl GameState {
         // if let Some(tc) = &self.touch_controls {
         //     tc.draw(d);
         // }
+
+        // Settings hint (top-right)
+        let hint_text = "Settings  (Press M)";
+        let tw = d.measure_text(hint_text, 16);
+        d.draw_text(
+            hint_text,
+            d.get_screen_width() - tw - 16,
+            14,
+            16,
+            Color::new(200, 200, 220, 220),
+        );
+
+        // Settings overlay
+        if self.show_settings {
+            let sw = d.get_screen_width();
+            let sh = d.get_screen_height();
+            // dim background
+            d.draw_rectangle(0, 0, sw, sh, Color::new(0, 0, 0, 180));
+
+            let panel_w = 420;
+            let panel_h = 220;
+            let px = (sw - panel_w) / 2;
+            let py = (sh - panel_h) / 2;
+
+            // panel bg
+            d.draw_rectangle(px - 2, py - 2, panel_w + 4, panel_h + 4, Color::new(0, 0, 0, 220));
+            d.draw_rectangle(px, py, panel_w, panel_h, Color::new(25, 25, 35, 240));
+            d.draw_rectangle_lines(px, py, panel_w, panel_h, Color::new(156, 81, 255, 200));
+
+            // title
+            d.draw_text("SETTINGS", px + 16, py + 16, 22, Color::new(156, 81, 255, 255));
+
+            // Sensitivity label
+            d.draw_text("Mouse Sensitivity", px + 16, py + 60, 16, Color::new(200, 200, 220, 255));
+
+            // Slider
+            let slider_x = px + 40;
+            let slider_y = py + 100;
+            let slider_w = panel_w - 80;
+            d.draw_rectangle(slider_x, slider_y, slider_w, 8, Color::new(60, 60, 75, 255));
+            d.draw_rectangle_lines(slider_x, slider_y, slider_w, 8, Color::new(120, 120, 150, 255));
+
+            let min_s = 0.002f32;
+            let max_s = 0.06f32;
+            let t = ((self.pending_sensitivity - min_s) / (max_s - min_s)).clamp(0.0, 1.0);
+            let handle_x = slider_x as f32 + t * slider_w as f32;
+            d.draw_circle(handle_x as i32, slider_y + 4, 10.0, Color::new(0, 242, 148, 230));
+            let sens_txt = format!("{:.4}", self.pending_sensitivity);
+            d.draw_text(&sens_txt, slider_x + slider_w - 80, slider_y - 24, 16, Color::WHITE);
+
+            // Buttons
+            let btn_w = 120;
+            let btn_h = 36;
+            let save_x = px + panel_w - 40 - btn_w;
+            let save_y = py + panel_h - 50;
+            let cancel_x = px + 40;
+            let cancel_y = save_y;
+            d.draw_rectangle(cancel_x, cancel_y, btn_w, btn_h, Color::new(60, 60, 75, 255));
+            d.draw_rectangle_lines(cancel_x, cancel_y, btn_w, btn_h, Color::new(120, 120, 150, 255));
+            d.draw_text("Cancel", cancel_x + 28, cancel_y + 10, 16, Color::WHITE);
+            d.draw_rectangle(save_x, save_y, btn_w, btn_h, Color::new(0, 242, 148, 180));
+            d.draw_rectangle_lines(save_x, save_y, btn_w, btn_h, Color::new(0, 200, 130, 255));
+            d.draw_text("Save", save_x + 42, save_y + 10, 16, Color::BLACK);
+        }
 
         // Screen flash effect when shooting (rendered last as overlay)
         if self.screen_flash_timer > 0.0 {

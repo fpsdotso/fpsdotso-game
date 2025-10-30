@@ -117,7 +117,15 @@ function App() {
     const handler = (evt) => {
       if (evt.key && (evt.key === "m" || evt.key === "M")) {
         evt.preventDefault();
-        setSettingsOpen((v) => !v);
+        setSettingsOpen((v) => {
+          const next = !v;
+          if (next) {
+            window.gameBridge?.openSettings?.();
+          } else {
+            window.gameBridge?.closeSettings?.();
+          }
+          return next;
+        });
       }
     };
     window.addEventListener("keydown", handler);
@@ -1515,17 +1523,61 @@ function App() {
           },
         }}
       />
+      {/* Small settings button with (Press M) hint - visible during gameplay */}
+      {currentGameState === 1 && (
+        <div
+          style={{
+            position: "fixed",
+            top: 16,
+            right: 16,
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            zIndex: 1500,
+            pointerEvents: "auto",
+          }}
+        >
+          <button
+            onClick={() => {
+              setSettingsOpen(true);
+              window.gameBridge?.openSettings?.();
+            }}
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: 8,
+              border: "1px solid rgba(156,81,255,0.5)",
+              background: "rgba(25,25,35,0.8)",
+              cursor: "pointer",
+              backgroundImage: "url('/settings.png')",
+              backgroundSize: "70% 70%",
+              backgroundRepeat: "no-repeat",
+              backgroundPosition: "center",
+            }}
+            title="Open Settings (M)"
+          />
+          <div style={{ color: "#c8c8dc", fontSize: 12 }}>(Press M)</div>
+        </div>
+      )}
       
       {/* Settings Panel (modal overlay) */}
       <SettingsPanel
         isOpen={settingsOpen}
         sensitivity={sensitivity}
         musicEnabled={musicEnabled}
-        onClose={() => setSettingsOpen(false)}
+        onClose={() => {
+          setSettingsOpen(false);
+          window.gameBridge?.closeSettings?.();
+        }}
         onSave={({ sensitivity, musicEnabled }) => {
           setSensitivity(sensitivity);
           setMusicEnabled(musicEnabled);
+          // apply immediately in Rust
+          try {
+            window.gameBridge?.setMouseSensitivity?.(sensitivity);
+          } catch (e) {}
           setSettingsOpen(false);
+          window.gameBridge?.closeSettings?.();
         }}
       />
       {/* Game canvas - full screen background */}

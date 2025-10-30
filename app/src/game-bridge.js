@@ -326,6 +326,45 @@ export function initGameBridge() {
       }
     },
 
+    // Settings bridge (JS overlay → Rust)
+    openSettings: () => {
+      try {
+        if (window.Module && window.Module.ccall) {
+          window.__settings_open = true;
+          window.Module.ccall('set_settings_open', null, ['number'], [1]);
+        }
+      } catch (e) {
+        console.warn('Failed to open settings:', e);
+      }
+    },
+    closeSettings: () => {
+      try {
+        if (window.Module && window.Module.ccall) {
+          window.__settings_open = false;
+          window.Module.ccall('set_settings_open', null, ['number'], [0]);
+        }
+      } catch (e) {
+        console.warn('Failed to close settings:', e);
+      }
+    },
+    getMouseSensitivity: () => {
+      try {
+        if (window.Module && window.Module.ccall) {
+          return window.Module.ccall('get_mouse_sensitivity', 'number', [], []);
+        }
+      } catch (e) {}
+      return 0.01;
+    },
+    setMouseSensitivity: (value) => {
+      try {
+        if (window.Module && window.Module.ccall) {
+          window.Module.ccall('set_mouse_sensitivity', null, ['number'], [value]);
+        }
+      } catch (e) {
+        console.warn('Failed to set sensitivity:', e);
+      }
+    },
+
     stopGameMode: () => {
       if (window.Module && window.Module._stop_game) {
         window.Module._stop_game();

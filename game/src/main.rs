@@ -146,6 +146,51 @@ pub extern "C" fn set_current_game_js(game_pubkey_ptr: *const std::os::raw::c_ch
     });
 }
 
+/// JavaScript-callable: set whether settings overlay is open (to pause input and show cursor)
+#[no_mangle]
+pub extern "C" fn set_settings_open(is_open: bool) {
+    GAME_STATE.with(|gs| {
+        if let Some(state_ptr) = *gs.borrow() {
+            unsafe {
+                let state = &mut *state_ptr;
+                state.show_settings = is_open;
+            }
+        }
+    });
+}
+
+/// JavaScript-callable: set mouse sensitivity from web UI
+#[no_mangle]
+pub extern "C" fn set_mouse_sensitivity(value: f32) {
+    GAME_STATE.with(|gs| {
+        if let Some(state_ptr) = *gs.borrow() {
+            unsafe {
+                let state = &mut *state_ptr;
+                if let Some(ref mut player) = state.player {
+                    player.mouse_sensitivity = value;
+                }
+            }
+        }
+    });
+}
+
+/// JavaScript-callable: get current mouse sensitivity
+#[no_mangle]
+pub extern "C" fn get_mouse_sensitivity() -> f32 {
+    let mut sens = 0.01f32;
+    GAME_STATE.with(|gs| {
+        if let Some(state_ptr) = *gs.borrow() {
+            unsafe {
+                let state = &mut *state_ptr;
+                if let Some(ref player) = state.player {
+                    sens = player.mouse_sensitivity;
+                }
+            }
+        }
+    });
+    sens
+}
+
 /// JavaScript-callable function to get player position for minimap
 /// Writes position data (x, y, z, yaw) to the provided pointer
 #[no_mangle]
