@@ -1430,52 +1430,6 @@ function App() {
 
   return (
     <div id="container">
-      {/* In header: Settings button (always visible) */}
-      <button
-        style={{
-          position: "absolute",
-          top: 12,
-          right: 18,
-          zIndex: 5001,
-          background: "#1a1433",
-          color: "#fff",
-          border: "2px solid #9c51ff",
-          borderRadius: 11,
-          fontWeight: 700,
-          fontSize: 17,
-          padding: "7px 18px",
-          cursor: "pointer",
-        }}
-        onClick={() => setSettingsOpen(true)}
-        title="Settings (M)"
-      >
-        Settings (M)
-      </button>
-      {/* In-game overlay: Settings button (top-right corner) */}
-      {currentGameState === 1 && (
-        <button
-          style={{
-            position: "fixed",
-            top: 26,
-            right: 26,
-            zIndex: 5001,
-            background: "#232255",
-            color: "#fff",
-            border: "2px solid #9c51ff",
-            borderRadius: 11,
-            fontWeight: 700,
-            fontSize: 19,
-            padding: "9px 22px",
-            cursor: "pointer",
-            opacity: 0.82,
-          }}
-          onClick={() => setSettingsOpen(true)}
-          title="In-Game Settings (M)"
-        >
-          Settings (M)
-        </button>
-      )}
-
       {/* Settings Panel (modal overlay) */}
       <SettingsPanel
         isOpen={settingsOpen}

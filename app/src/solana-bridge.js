@@ -414,18 +414,42 @@ export async function connectWallet() {
   try {
     console.log("🔗 Connecting wallet...");
 
-    // Check if wallet is available
-    if (!window.solana) {
+    // Try to detect and connect to any available Solana wallet
+    // Priority order: Phantom, Solflare, Backpack, other wallets
+    let detectedWallet = null;
+
+    if (window.phantom?.solana?.isPhantom) {
+      console.log("🟣 Detected Phantom wallet");
+      detectedWallet = window.phantom.solana;
+    } else if (window.solflare?.isSolflare) {
+      console.log("🟠 Detected Solflare wallet");
+      detectedWallet = window.solflare;
+    } else if (window.backpack?.isBackpack) {
+      console.log("🎒 Detected Backpack wallet");
+      detectedWallet = window.backpack;
+    } else if (window.solana) {
+      console.log("💼 Detected generic Solana wallet");
+      detectedWallet = window.solana;
+    }
+
+    if (!detectedWallet) {
       throw new Error(
-        "Solana wallet not found! Please install Phantom or another Solana wallet."
+        "No Solana wallet found! Please install Phantom, Solflare, or another Solana wallet extension."
       );
     }
 
     // Connect to wallet
-    const response = await window.solana.connect();
-    wallet = window.solana;
+    const response = await detectedWallet.connect();
+    wallet = detectedWallet;
 
-    console.log("📝 Wallet public key:", response.publicKey.toString());
+    // Get publicKey - different wallets return it differently
+    const publicKey = response?.publicKey || detectedWallet.publicKey;
+
+    if (!publicKey) {
+      throw new Error("Failed to get wallet public key after connection");
+    }
+
+    console.log("📝 Wallet public key:", publicKey.toString());
 
     // Create provider
     provider = new AnchorProvider(connection, wallet, {
@@ -436,7 +460,7 @@ export async function connectWallet() {
     program = new Program(mapRegistryIdl, provider);
     matchmakingProgram = new Program(matchmakingIdl, provider);
 
-    console.log("✅ Wallet connected:", response.publicKey.toString());
+    console.log("✅ Wallet connected:", publicKey.toString());
 
     // Initialize ephemeral wallet for Magicblock transactions
     const ephemeralInfo = await EphemeralWallet.initializeEphemeralWallet(wallet);
@@ -455,7 +479,7 @@ export async function connectWallet() {
     }
 
     return {
-      publicKey: response.publicKey.toString(),
+      publicKey: publicKey.toString(),
       connected: true,
       ephemeralWallet: ephemeralInfo.publicKey,
       ephemeralWalletIsNew: ephemeralInfo.isNew,
