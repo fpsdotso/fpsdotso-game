@@ -1673,7 +1673,7 @@ export async function setReadyState(gamePubkey, isReady) {
           rotationX: 0.0, // Default pitch
           rotationY: 0.0, // Default yaw
           rotationZ: 0.0, // Default roll
-          deltaTime: 0.033 // Default delta time
+          deltaTime: 0.05 // Default delta time (50ms)
         });
         console.log("✅ Step 4 complete - Initial player input sent to ephemeral rollup");
       } catch (error) {
@@ -2582,7 +2582,7 @@ export async function sendPlayerInput(input) {
         input.rotationX || 0.0,  // pitch (in radians)
         input.rotationY || 0.0,  // yaw (in radians)
         input.rotationZ || 0.0,  // roll (in radians, usually 0 for FPS)
-        input.deltaTime || 0.033, // 33ms default
+        input.deltaTime || 0.05, // 50ms default
         gameIdPubkey // _game_id parameter for PDA derivation
       )
       .accounts({

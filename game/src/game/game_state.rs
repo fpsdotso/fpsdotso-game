@@ -108,6 +108,9 @@ pub struct GameState {
 
     /// Pending sensitivity while the settings overlay is open
     pub pending_sensitivity: f32,
+
+    /// Timer for throttling player input updates (send every 50ms instead of every frame)
+    input_update_timer: f32,
 }
 
 impl GameState {
@@ -135,6 +138,7 @@ impl GameState {
             reload_start_time: 0.0,
             show_settings: false,
             pending_sensitivity: 0.01,
+            input_update_timer: 0.0,
         }
     }
 
@@ -920,9 +924,17 @@ impl GameState {
                 }
             }
 
-            // Send player input every frame for maximum responsiveness
-            if let Some(ref player) = self.player {
-                self.send_player_input(rl, player, delta);
+            // Send player input every 50ms (20 updates per second) for better network efficiency
+            // Accumulate time and only send when threshold is reached
+            self.input_update_timer += delta;
+            const INPUT_UPDATE_INTERVAL: f32 = 0.05; // 50ms = 0.05 seconds
+
+            if self.input_update_timer >= INPUT_UPDATE_INTERVAL {
+                if let Some(ref player) = self.player {
+                    self.send_player_input(rl, player, delta);
+                }
+                // Reset timer, keeping any overflow for precision
+                self.input_update_timer -= INPUT_UPDATE_INTERVAL;
             }
 
             // Handle shooting - left mouse button or mobile shoot button
