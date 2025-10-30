@@ -84,6 +84,15 @@ pub struct GameState {
 
     /// Virtual joystick input state
     joystick_input: (bool, bool, bool, bool), // (forward, backward, left, right)
+
+    /// Current bullet count (for ammo tracking)
+    current_bullet_count: u8,
+
+    /// Reload start timestamp (0 if not reloading)
+    reload_start_timestamp: u64,
+
+    /// Reload initiated flag (to prevent repeated calls)
+    reload_initiated: bool,
 }
 
 impl GameState {
@@ -103,6 +112,9 @@ impl GameState {
             screen_flash_timer: 0.0,
             bullet_trails: Vec::new(),
             joystick_input: (false, false, false, false),
+            current_bullet_count: 10, // Start with full magazine
+            reload_start_timestamp: 0,
+            reload_initiated: false,
         }
     }
 
@@ -226,6 +238,222 @@ impl GameState {
         false
     }
 
+    /// Get current bullet count from WebSocket data
+    fn get_bullet_count_from_websocket(&mut self) -> u8 {
+        use std::ffi::CString;
+
+        // Use the simple global variable that game-bridge.js sets
+        let js_code = r#"
+            (() => {
+                try {
+                    // Check the simple global variable first (set by game-bridge.js)
+                    if (typeof window.___current_player_bullet_count === 'number') {
+                        console.log('[Rust] Reading bullet count:', window.___current_player_bullet_count);
+                        return window.___current_player_bullet_count;
+                    }
+                    
+                    // Fallback: Try to read from WebSocket updates
+                    const ephemeralKey = window.gameBridge?.getCurrentPlayerEphemeralKey();
+                    if (!ephemeralKey || !window.___websocket_player_updates) {
+                        console.log('[Rust] No ephemeral key or websocket updates, defaulting to 10');
+                        return 10;
+                    }
+                    
+                    for (const [accountPubkey, update] of Object.entries(window.___websocket_player_updates)) {
+                        if (update.parsed && update.parsed.authority === ephemeralKey) {
+                            console.log('[Rust] Found player data, bullet count:', update.parsed.bulletCount);
+                            return update.parsed.bulletCount || 10;
+                        }
+                    }
+                    
+                    console.log('[Rust] Player not found in websocket updates, defaulting to 10');
+                    return 10;
+                } catch (e) {
+                    console.error('[Rust] Error getting bullet count:', e);
+                    return 10;
+                }
+            })();
+        "#;
+
+        unsafe {
+            let c_str = CString::new(js_code).unwrap();
+            let result_ptr = emscripten_run_script_string(c_str.as_ptr());
+
+            if !result_ptr.is_null() {
+                let result_str = std::ffi::CStr::from_ptr(result_ptr)
+                    .to_string_lossy();
+                
+                if let Ok(count) = result_str.parse::<u8>() {
+                    // Update internal state
+                    self.current_bullet_count = count;
+                    
+                    // Also update the UI via game bridge
+                    let update_ui_code = format!(r#"
+                        (() => {{
+                            if (window.gameBridge && window.gameBridge.updateUIAmmo) {{
+                                window.gameBridge.updateUIAmmo({});
+                            }}
+                        }})();
+                    "#, count);
+                    
+                    let update_c_str = CString::new(update_ui_code).unwrap();
+                    emscripten_run_script(update_c_str.as_ptr());
+                    
+                    println!("🔫 Rust: Bullet count updated to: {} (UI notified)", count);
+                    return count;
+                }
+            }
+        }
+
+        println!("⚠️ Rust: Failed to get bullet count, defaulting to 10");
+        10
+    }
+
+    /// Get reload start timestamp from WebSocket data
+    fn get_reload_timestamp_from_websocket(&mut self) -> u64 {
+        use std::ffi::CString;
+
+        // Use the simple global variable that game-bridge.js sets
+        let js_code = r#"
+            (() => {
+                try {
+                    // Check the simple global variable first (set by game-bridge.js)
+                    if (typeof window.___current_player_reload_timestamp === 'number') {
+                        return window.___current_player_reload_timestamp;
+                    }
+                    
+                    // Fallback: Try to read from WebSocket updates
+                    const ephemeralKey = window.gameBridge?.getCurrentPlayerEphemeralKey();
+                    if (!ephemeralKey || !window.___websocket_player_updates) {
+                        return 0;
+                    }
+                    
+                    for (const [accountPubkey, update] of Object.entries(window.___websocket_player_updates)) {
+                        if (update.parsed && update.parsed.authority === ephemeralKey) {
+                            return update.parsed.reloadStartTimestamp || 0;
+                        }
+                    }
+                    return 0;
+                } catch (e) {
+                    return 0;
+                }
+            })();
+        "#;
+
+        unsafe {
+            let c_str = CString::new(js_code).unwrap();
+            let result_ptr = emscripten_run_script_string(c_str.as_ptr());
+
+            if !result_ptr.is_null() {
+                let result_str = std::ffi::CStr::from_ptr(result_ptr)
+                    .to_string_lossy();
+                
+                if let Ok(timestamp) = result_str.parse::<u64>() {
+                    self.reload_start_timestamp = timestamp;
+                    return timestamp;
+                }
+            }
+        }
+
+        0
+    }
+
+    /// Check if currently reloading
+    fn is_reloading(&self) -> bool {
+        let is_reloading = if self.reload_start_timestamp == 0 {
+            false
+        } else {
+            let current_time = unsafe { emscripten_get_now() / 1000.0 } as u64;
+            let elapsed = current_time.saturating_sub(self.reload_start_timestamp);
+            elapsed < 2
+        };
+
+        // Update UI with reload status
+        use std::ffi::CString;
+        let update_ui_code = format!(r#"
+            (() => {{
+                if (window.gameBridge && window.gameBridge.updateUIReloadStatus) {{
+                    window.gameBridge.updateUIReloadStatus({});
+                }}
+            }})();
+        "#, if is_reloading { "true" } else { "false" });
+        
+        unsafe {
+            let update_c_str = CString::new(update_ui_code).unwrap();
+            emscripten_run_script(update_c_str.as_ptr());
+        }
+
+        is_reloading
+    }
+
+    /// Start reload via blockchain
+    fn start_reload_blockchain(&mut self) {
+        if self.reload_initiated {
+            return;
+        }
+
+        if let Some(ref game_pubkey) = self.current_game_pubkey {
+            use std::ffi::CString;
+
+            let js_code = format!(r#"
+                (async () => {{
+                    try {{
+                        console.log('🔄 Auto-reload triggered');
+                        if (window.gameBridge && window.gameBridge.startReload) {{
+                            await window.gameBridge.startReload('{}');
+                        }}
+                    }} catch (e) {{
+                        console.error('❌ Auto-reload failed:', e);
+                    }}
+                }})();
+            "#, game_pubkey);
+
+            unsafe {
+                let c_str = CString::new(js_code).unwrap();
+                emscripten_run_script(c_str.as_ptr());
+            }
+
+            self.reload_initiated = true;
+        }
+    }
+
+    /// Finish reload after 1.5 seconds
+    fn finish_reload_if_ready(&mut self) {
+        if !self.reload_initiated || self.reload_start_timestamp == 0 {
+            return;
+        }
+
+        let current_time = unsafe { emscripten_get_now() / 1000.0 } as u64;
+        let elapsed = current_time.saturating_sub(self.reload_start_timestamp);
+
+        if elapsed >= 2 {
+            if let Some(ref game_pubkey) = self.current_game_pubkey {
+                use std::ffi::CString;
+
+                let js_code = format!(r#"
+                    (async () => {{
+                        try {{
+                            console.log('✅ Auto-reload completing');
+                            if (window.gameBridge && window.gameBridge.finishReload) {{
+                                await window.gameBridge.finishReload('{}');
+                            }}
+                        }} catch (e) {{
+                            console.error('❌ Finish reload failed:', e);
+                        }}
+                    }})();
+                "#, game_pubkey);
+
+                unsafe {
+                    let c_str = CString::new(js_code).unwrap();
+                    emscripten_run_script(c_str.as_ptr());
+                }
+
+                self.reload_initiated = false;
+                self.reload_start_timestamp = 0;
+            }
+        }
+    }
+
     /// Set virtual joystick input
     pub fn set_joystick_input(&mut self, forward: bool, backward: bool, left: bool, right: bool) {
         self.joystick_input = (forward, backward, left, right);
@@ -238,6 +466,18 @@ impl GameState {
 
     /// Handle shooting - play sound and trigger visual effects
     pub fn shoot(&mut self) {
+        // Check bullet count first
+        let bullet_count = self.get_bullet_count_from_websocket();
+        
+        // If no bullets or currently reloading, trigger auto-reload and prevent shooting
+        if bullet_count == 0 || self.is_reloading() {
+            if bullet_count == 0 && !self.reload_initiated {
+                println!("🔫 Out of ammo! Auto-reloading...");
+                self.start_reload_blockchain();
+            }
+            return; // Don't shoot
+        }
+
         // Use emscripten to play the sound via Web Audio API
         // This is more reliable than raylib's audio system for WASM
         use std::os::raw::c_char;
@@ -686,6 +926,12 @@ impl GameState {
             }
             // Remove expired trails
             self.bullet_trails.retain(|trail| trail.timer > 0.0);
+
+            // Check and update reload status from WebSocket
+            self.get_reload_timestamp_from_websocket();
+            
+            // If reloading, check if 1.5 seconds have passed and finish reload
+            self.finish_reload_if_ready();
 
             // Smoothly interpolate other players with dead reckoning for latency compensation
             // This runs every frame for buttery smooth movement
@@ -1304,7 +1550,7 @@ impl GameState {
             );
 
             // Draw gun model in front of camera (viewmodel)
-            Self::draw_gun_viewmodel(&mut d3d, &player, self.muzzle_flash_timer);
+            Self::draw_gun_viewmodel(&mut d3d, &player, self.muzzle_flash_timer, self.is_reloading());
         }
 
         // Draw 2D UI elements (crosshair, health bar) after 3D rendering
@@ -1335,7 +1581,7 @@ impl GameState {
     }
 
     /// Draw the gun viewmodel (first-person weapon view) - SIMPLIFIED VERSION
-    fn draw_gun_viewmodel(d3d: &mut RaylibMode3D<RaylibDrawHandle>, player: &Player, muzzle_flash_timer: f32) {
+    fn draw_gun_viewmodel(d3d: &mut RaylibMode3D<RaylibDrawHandle>, player: &Player, muzzle_flash_timer: f32, is_reloading: bool) {
         // Calculate gun position relative to camera
         let yaw_rad = player.yaw.to_radians();
         let pitch_rad = player.pitch.to_radians();
@@ -1371,12 +1617,43 @@ impl GameState {
             player.position.z,
         );
 
-        // Position gun base in front and to the right of camera using all three vectors
-        let gun_base = camera_pos + direction * 0.8 + right * 0.35 + up * -0.3;
+        // Reload animation: Move gun down and rotate when reloading
+        let reload_offset_y = if is_reloading {
+            // Simple sine wave animation for reload
+            let time = unsafe { emscripten_get_now() / 1000.0 } as f32;
+            (time * 3.0).sin() * 0.15 // Sine wave goes down and up
+        } else {
+            0.0
+        };
 
-        // Helper function to transform local gun coordinates to world space
+        let reload_rotation = if is_reloading {
+            // Rotate gun slightly during reload
+            let time = unsafe { emscripten_get_now() / 1000.0 } as f32;
+            (time * 2.0).sin() * 15.0 // Rotate ±15 degrees
+        } else {
+            0.0
+        };
+
+        // Position gun base in front and to the right of camera using all three vectors
+        // Apply reload offset
+        let gun_base = camera_pos + direction * 0.8 + right * 0.35 + up * (-0.3 + reload_offset_y);
+
+        // Helper function to transform local gun coordinates to world space with reload rotation
         let to_world = |local_x: f32, local_y: f32, local_z: f32| -> Vector3 {
-            gun_base + right * local_x + up * local_y + direction * local_z
+            // Apply reload rotation around the right axis
+            if reload_rotation.abs() > 0.01 {
+                let rot_rad = reload_rotation.to_radians();
+                let cos_rot = rot_rad.cos();
+                let sin_rot = rot_rad.sin();
+                
+                // Rotate around right vector (tilt forward/backward)
+                let rotated_up = up * cos_rot - direction * sin_rot;
+                let rotated_dir = up * sin_rot + direction * cos_rot;
+                
+                gun_base + right * local_x + rotated_up * local_y + rotated_dir * local_z
+            } else {
+                gun_base + right * local_x + up * local_y + direction * local_z
+            }
         };
 
         // Draw gun as simple spheres

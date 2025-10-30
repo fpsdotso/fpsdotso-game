@@ -82,6 +82,10 @@ function App() {
   // Pause menu state
   const [isPaused, setIsPaused] = useState(false);
 
+  // Ammo and reload state
+  const [bulletCount, setBulletCount] = useState(10); // Start with full magazine
+  const [isReloading, setIsReloading] = useState(false);
+
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [sensitivity, setSensitivity] = useState(() => {
     const stored = localStorage.getItem("sensitivity");
@@ -115,6 +119,36 @@ function App() {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
+  }, []);
+
+  // Set up ammo and reload callbacks for Rust game to call
+  // IMPORTANT: This must run whenever gameBridge changes
+  useEffect(() => {
+    const setupCallbacks = () => {
+      if (window.gameBridge) {
+        window.gameBridge.onAmmoUpdate = (bulletCount) => {
+          setBulletCount(bulletCount);
+        };
+
+        window.gameBridge.onReloadStatusUpdate = (isReloading) => {
+          setIsReloading(isReloading);
+        };
+        return true;
+      }
+      return false;
+    };
+
+    // Try to set up callbacks immediately
+    if (!setupCallbacks()) {
+      // If gameBridge isn't ready, poll for it
+      const interval = setInterval(() => {
+        if (setupCallbacks()) {
+          clearInterval(interval);
+        }
+      }, 100);
+
+      return () => clearInterval(interval);
+    }
   }, []);
 
   useEffect(() => {
@@ -1806,12 +1840,13 @@ function App() {
                 </div>
                 <div
                   style={{
-                    color: "#fff",
+                    color: bulletCount === 0 ? "#ff4444" : bulletCount <= 3 ? "#ffaa00" : "#fff",
                     fontSize: "32px",
                     fontWeight: "bold",
                   }}
                 >
-                  30/120
+                  {bulletCount}/10
+                  {isReloading && " (Reloading...)"}
                 </div>
               </div>
             </div>

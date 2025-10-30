@@ -506,6 +506,34 @@
       ]
     },
     {
+      "name": "reload",
+      "docs": [
+        "Reload the gun (instantly refills to 10 bullets)",
+        "Client should enforce 1.5 second cooldown"
+      ],
+      "discriminator": [
+        68,
+        192,
+        145,
+        222,
+        159,
+        43,
+        38,
+        34
+      ],
+      "accounts": [
+        {
+          "name": "game_player",
+          "writable": true
+        },
+        {
+          "name": "authority",
+          "signer": true
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "respawn_player",
       "docs": [
         "Respawn a dead player at spawn point"
@@ -764,6 +792,21 @@
             "docs": [
               "Timestamp when player died (0 if alive)",
               "Used to enforce respawn cooldown"
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "bullet_count",
+            "docs": [
+              "Current bullet count (max 10)"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "reload_start_timestamp",
+            "docs": [
+              "Timestamp when reload started (0 if not reloading)",
+              "Reload takes 1.5 seconds"
             ],
             "type": "i64"
           },

@@ -5,7 +5,6 @@
  */
 
 const WEBSOCKET_RPC_URL = process.env.REACT_APP_EPHEMERAL_WEBSOCKET_RPC_URL || "ws://127.0.0.1:7800";
-console.log(`🔌 WebSocket RPC URL: ${WEBSOCKET_RPC_URL}`);
 
 class WebSocketGameManager {
   constructor() {
@@ -26,18 +25,14 @@ class WebSocketGameManager {
   connect() {
     return new Promise((resolve, reject) => {
       if (this.isConnected) {
-        console.log("✅ Already connected to WebSocket");
         resolve();
         return;
       }
-
-      console.log(`🔌 Connecting to WebSocket: ${WEBSOCKET_RPC_URL}`);
 
       try {
         this.ws = new WebSocket(WEBSOCKET_RPC_URL);
 
         this.ws.onopen = () => {
-          console.log("✅ WebSocket connected");
           this.isConnected = true;
           this.reconnectAttempts = 0;
           resolve();
@@ -53,7 +48,6 @@ class WebSocketGameManager {
         };
 
         this.ws.onclose = () => {
-          console.log("🔌 WebSocket disconnected");
           this.isConnected = false;
           this.handleDisconnect();
         };
@@ -97,12 +91,11 @@ class WebSocketGameManager {
             console.error(`❌ RPC error for message ${message.id}:`, message.error);
             pending.reject(new Error(message.error.message || "RPC request failed"));
           } else {
-            console.log(`✅ RPC response for message ${message.id}:`, message.result);
             pending.resolve(message.result);
           }
         }
       } else {
-        console.log("📬 Other WebSocket message:", message);
+        // Ignore other messages
       }
     } catch (error) {
       console.error("❌ Failed to parse WebSocket message:", error);
@@ -116,8 +109,6 @@ class WebSocketGameManager {
     if (this.reconnectAttempts < this.maxReconnectAttempts) {
       this.reconnectAttempts++;
       const delay = this.reconnectDelay * Math.pow(2, this.reconnectAttempts - 1); // Exponential backoff
-
-      console.log(`🔄 Attempting reconnect ${this.reconnectAttempts}/${this.maxReconnectAttempts} in ${delay}ms`);
 
       setTimeout(() => {
         this.connect().catch((error) => {
@@ -176,8 +167,6 @@ class WebSocketGameManager {
       await this.connect();
     }
 
-    console.log(`📡 Subscribing to account: ${accountPubkey}`);
-
     try {
       const subscriptionId = await this.sendRequest("accountSubscribe", [
         accountPubkey,
@@ -190,7 +179,6 @@ class WebSocketGameManager {
       this.subscriptions.set(subscriptionId, callback);
       this.accountSubscriptions.set(accountPubkey, subscriptionId);
 
-      console.log(`✅ Subscribed to account ${accountPubkey}, subscription ID: ${subscriptionId}`);
       return subscriptionId;
     } catch (error) {
       console.error(`❌ Failed to subscribe to account ${accountPubkey}:`, error);
@@ -206,7 +194,6 @@ class WebSocketGameManager {
     const subscriptionId = this.accountSubscriptions.get(accountPubkey);
 
     if (!subscriptionId) {
-      console.warn(`⚠️ No subscription found for account: ${accountPubkey}`);
       return;
     }
 
@@ -215,8 +202,6 @@ class WebSocketGameManager {
 
       this.subscriptions.delete(subscriptionId);
       this.accountSubscriptions.delete(accountPubkey);
-
-      console.log(`✅ Unsubscribed from account ${accountPubkey}`);
     } catch (error) {
       console.error(`❌ Failed to unsubscribe from account ${accountPubkey}:`, error);
       throw error;

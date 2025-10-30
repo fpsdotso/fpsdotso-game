@@ -30,10 +30,14 @@ const GamePlayerLayout = struct([
   u8('health'),                   // 1 byte
   bool('is_alive'),               // 1 byte
   u8('team'),                     // 1 byte
+  bool('is_spectator'),           // 1 byte
   u32('kills'),                   // 4 bytes
   u32('deaths'),                  // 4 bytes
   u32('score'),                   // 4 bytes
   u64('last_update'),             // 8 bytes
+  u64('death_timestamp'),         // 8 bytes
+  u8('bullet_count'),             // 1 byte - Current ammo (max 10)
+  u64('reload_start_timestamp'),  // 8 bytes - Reload start time (0 if not reloading)
   u8('bump'),                     // 1 byte
 ]);
 
@@ -52,6 +56,10 @@ export function initGameBridge() {
 
   // Expose functions to the game through window.gameBridge
   window.gameBridge = {
+    // UI update callbacks (set by React App)
+    onAmmoUpdate: null,
+    onReloadStatusUpdate: null,
+
     // Solana functions
     registerKill: async (killer, victim) => {
       console.log(`[Game Bridge] registerKill called: ${killer} -> ${victim}`);
@@ -244,6 +252,34 @@ export function initGameBridge() {
       return await solanaBridge.respawnPlayer(gameId, spawnX, spawnY, spawnZ);
     },
 
+    // Reload functions
+    startReload: async (gameId) => {
+      console.log(`[Game Bridge] startReload called`);
+      return await solanaBridge.startReload(gameId);
+    },
+
+    finishReload: async (gameId) => {
+      console.log(`[Game Bridge] finishReload called`);
+      return await solanaBridge.finishReload(gameId);
+    },
+
+    // Function for Rust to manually update UI with current bullet count
+    updateUIAmmo: (bulletCount) => {
+      // Store globally for Rust to read
+      window.___current_player_bullet_count = bulletCount;
+      
+      if (window.gameBridge?.onAmmoUpdate) {
+        window.gameBridge.onAmmoUpdate(bulletCount);
+      }
+    },
+
+    // Function for Rust to manually update UI with reload status
+    updateUIReloadStatus: (isReloading) => {
+      if (window.gameBridge?.onReloadStatusUpdate) {
+        window.gameBridge.onReloadStatusUpdate(isReloading);
+      }
+    },
+
     // Get all players in game for synchronization
     getGamePlayers: async (gamePublicKey) => {
       return await solanaBridge.getGamePlayers(gamePublicKey);
@@ -426,10 +462,14 @@ export function initGameBridge() {
                     health: rawData.health,
                     isAlive: rawData.is_alive, // camelCase for Rust
                     team: rawData.team,
+                    isSpectator: rawData.is_spectator,
                     kills: rawData.kills,
                     deaths: rawData.deaths,
                     score: rawData.score,
                     lastUpdate: Number(rawData.last_update), // Convert BigInt to Number
+                    deathTimestamp: Number(rawData.death_timestamp), // Convert BigInt to Number
+                    bulletCount: rawData.bullet_count, // Current ammo (max 10)
+                    reloadStartTimestamp: Number(rawData.reload_start_timestamp), // Reload start time (0 if not reloading)
                     bump: rawData.bump,
                   };
 
@@ -441,7 +481,7 @@ export function initGameBridge() {
                   if (dataChanged) {
                     lastLoggedPositions[accountPubkey] = posKey;
                     const totalPlayers = Object.keys(window.___websocket_player_updates).length;
-                    console.log(`[WebSocket] 📡 Player ${accountPubkey.slice(0, 8)} | Pos(${gamePlayerData.positionX.toFixed(1)}, ${gamePlayerData.positionY.toFixed(1)}, ${gamePlayerData.positionZ.toFixed(1)}) | Rot(${gamePlayerData.rotationY.toFixed(2)}) | Team ${gamePlayerData.team} | HP ${gamePlayerData.health} | Alive: ${gamePlayerData.isAlive} | Total: ${totalPlayers} players`);
+                    console.log(`[WebSocket] 📡 Player ${accountPubkey.slice(0, 8)} | Pos(${gamePlayerData.positionX.toFixed(1)}, ${gamePlayerData.positionY.toFixed(1)}, ${gamePlayerData.positionZ.toFixed(1)}) | Rot(${gamePlayerData.rotationY.toFixed(2)}) | Team ${gamePlayerData.team} | HP ${gamePlayerData.health} | Alive: ${gamePlayerData.isAlive} | Ammo: ${gamePlayerData.bulletCount} | Total: ${totalPlayers} players`);
                   }
 
                   // Store the decoded data
@@ -450,6 +490,33 @@ export function initGameBridge() {
                     data: accountData,
                     parsed: gamePlayerData, // Include parsed data (with BigInt converted to Number)
                   };
+
+                  // 🎯 UPDATE UI IF THIS IS THE CURRENT PLAYER
+                  // Check if this is the current player (by comparing ephemeral wallet authority)
+                  try {
+                    const currentPlayerEphemeralKey = solanaBridge.getCurrentPlayerEphemeralKey();
+                    if (currentPlayerEphemeralKey && gamePlayerData.authority === currentPlayerEphemeralKey) {
+                      // Update bullet count in UI
+                      if (window.gameBridge?.onAmmoUpdate) {
+                        window.gameBridge.onAmmoUpdate(gamePlayerData.bulletCount);
+                      }
+
+                      // Update reload status in UI
+                      if (window.gameBridge?.onReloadStatusUpdate) {
+                        const isReloading = gamePlayerData.reloadStartTimestamp > 0;
+                        window.gameBridge.onReloadStatusUpdate(isReloading);
+                      }
+
+                      // 🎯 CRITICAL: Store current player's bullet count in a global variable
+                      // This makes it easy for the Rust game to access via JavaScript
+                      window.___current_player_bullet_count = gamePlayerData.bulletCount;
+                      window.___current_player_reload_timestamp = gamePlayerData.reloadStartTimestamp;
+                      
+                      console.log(`[Game Bridge] 🔫 Current player ammo updated: ${gamePlayerData.bulletCount}/10, reloading: ${gamePlayerData.reloadStartTimestamp > 0}`);
+                    }
+                  } catch (err) {
+                    // Ephemeral wallet not initialized yet, skip UI update
+                  }
                 } catch (decodeError) {
                   console.error("[Game Bridge] ⚠️ Decoder failed:", decodeError.message);
                   console.error("[Game Bridge] Stack:", decodeError.stack);

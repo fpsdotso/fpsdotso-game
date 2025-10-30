@@ -1873,18 +1873,27 @@ export async function getAvailableGames() {
   try {
     console.log("📊 Fetching available games...");
 
-    // Get all waiting games
-    const allGames = await getAllGames(0); // 0 = waiting state
+    // Get all games (no state filter initially to see everything)
+    const allGames = await getAllGames();
 
-    // Filter for joinable games
+    console.log(`📊 Total games found: ${allGames.length}`);
+
+    // Log game states for debugging
+    if (allGames.length > 0) {
+      allGames.forEach(game => {
+        console.log(`  Game ${game.publicKey.slice(0, 8)}: state=${game.gameState}, players=${game.totalPlayers}/${game.maxPlayers}, private=${game.isPrivate}`);
+      });
+    }
+
+    // Filter for joinable games (only waiting state, not private, not full)
     const availableGames = allGames.filter(
       (game) =>
-        game.gameState === 0 && // waiting state
+        game.gameState === 0 && // waiting state (0 = waiting, 1 = active, 2 = ended, 3 = paused)
         !game.isPrivate && // not private
         game.totalPlayers < game.maxPlayers // not full
     );
 
-    console.log(`📊 Found ${availableGames.length} available games`);
+    console.log(`📊 Filtered to ${availableGames.length} available games (state=0, not private, not full)`);
     return availableGames;
   } catch (error) {
     console.error("❌ Failed to fetch available games:", error);
@@ -2633,6 +2642,122 @@ export async function respawnPlayer(gameIdPubkey, spawnX, spawnY, spawnZ) {
     return tx;
   } catch (error) {
     console.error("❌ Failed to respawn player:", error);
+    throw error;
+  }
+}
+
+/**
+ * Start reloading the gun
+ * Initiates a 1.5-second reload process
+ * @param {string} gameIdPubkey - Game ID public key
+ * @returns {Promise<string>} Transaction signature
+ */
+export async function startReload(gameIdPubkey) {
+  try {
+    console.log(`🔄 Starting reload...`);
+
+    const ephemeralKeypair = EphemeralWallet.getEphemeralKeypair();
+    if (!ephemeralKeypair) {
+      throw new Error("Ephemeral wallet not initialized");
+    }
+
+    // Initialize game program if not already done
+    if (!gameProgram) {
+      if (!ephemeralConnection) {
+        throw new Error("Ephemeral connection not initialized");
+      }
+
+      ephemeralProvider = new AnchorProvider(
+        ephemeralConnection,
+        new NodeWallet(ephemeralKeypair),
+        { commitment: "confirmed" }
+      );
+      gameProgram = new Program(gameIdl, ephemeralProvider);
+    }
+
+    const ephemeralPublicKey = ephemeralKeypair.publicKey;
+
+    // Derive GamePlayer PDA
+    const [gamePlayerPda] = PublicKey.findProgramAddressSync(
+      [
+        Buffer.from("game_player"),
+        ephemeralPublicKey.toBuffer(),
+        new PublicKey(gameIdPubkey).toBuffer(),
+      ],
+      GAME_PROGRAM_ID
+    );
+
+    // Call start_reload instruction
+    const tx = await gameProgram.methods
+      .startReload()
+      .accounts({
+        gamePlayer: gamePlayerPda,
+        authority: ephemeralPublicKey,
+      })
+      .rpc({ skipPreflight: true });
+
+    console.log(`✅ Reload started, transaction:`, tx);
+    return tx;
+  } catch (error) {
+    console.error("❌ Failed to start reload:", error);
+    throw error;
+  }
+}
+
+/**
+ * Finish reloading the gun
+ * Completes the reload after 1.5 seconds have passed
+ * @param {string} gameIdPubkey - Game ID public key
+ * @returns {Promise<string>} Transaction signature
+ */
+export async function finishReload(gameIdPubkey) {
+  try {
+    console.log(`🔄 Finishing reload...`);
+
+    const ephemeralKeypair = EphemeralWallet.getEphemeralKeypair();
+    if (!ephemeralKeypair) {
+      throw new Error("Ephemeral wallet not initialized");
+    }
+
+    // Initialize game program if not already done
+    if (!gameProgram) {
+      if (!ephemeralConnection) {
+        throw new Error("Ephemeral connection not initialized");
+      }
+
+      ephemeralProvider = new AnchorProvider(
+        ephemeralConnection,
+        new NodeWallet(ephemeralKeypair),
+        { commitment: "confirmed" }
+      );
+      gameProgram = new Program(gameIdl, ephemeralProvider);
+    }
+
+    const ephemeralPublicKey = ephemeralKeypair.publicKey;
+
+    // Derive GamePlayer PDA
+    const [gamePlayerPda] = PublicKey.findProgramAddressSync(
+      [
+        Buffer.from("game_player"),
+        ephemeralPublicKey.toBuffer(),
+        new PublicKey(gameIdPubkey).toBuffer(),
+      ],
+      GAME_PROGRAM_ID
+    );
+
+    // Call finish_reload instruction
+    const tx = await gameProgram.methods
+      .finishReload()
+      .accounts({
+        gamePlayer: gamePlayerPda,
+        authority: ephemeralPublicKey,
+      })
+      .rpc({ skipPreflight: true });
+
+    console.log(`✅ Reload finished, transaction:`, tx);
+    return tx;
+  } catch (error) {
+    console.error("❌ Failed to finish reload:", error);
     throw error;
   }
 }
