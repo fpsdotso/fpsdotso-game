@@ -334,8 +334,28 @@ export function initGameBridge() {
       console.log("[Game Bridge] subscribeToGamePlayers called:", gamePubkey);
       try {
         // First, get all players in the game
-        const players = await solanaBridge.getGamePlayers(gamePubkey);
-        console.log("[Game Bridge] Found", players.length, "players to subscribe to");
+        // Retry mechanism: GamePlayer accounts might not be created immediately when game starts
+        let players = [];
+        let retryCount = 0;
+        const maxRetries = 10;
+
+        while (players.length === 0 && retryCount < maxRetries) {
+          players = await solanaBridge.getGamePlayers(gamePubkey);
+          console.log(`[Game Bridge] Attempt ${retryCount + 1}: Found ${players.length} players to subscribe to`);
+
+          if (players.length === 0 && retryCount < maxRetries - 1) {
+            console.log(`[Game Bridge] No players found yet, waiting 1 second before retry...`);
+            await new Promise(resolve => setTimeout(resolve, 1000));
+          }
+          retryCount++;
+        }
+
+        if (players.length === 0) {
+          console.warn("[Game Bridge] No GamePlayer accounts found after retries. Players may need to ready up first.");
+          return { success: false, error: "No players found" };
+        }
+
+        console.log("[Game Bridge] Successfully found", players.length, "players after", retryCount, "attempts");
 
         // Extract GamePlayer account public keys
         const gamePlayerPubkeys = players.map(p => p.publicKey);
