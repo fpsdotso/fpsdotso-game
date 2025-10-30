@@ -90,6 +90,12 @@ pub struct GameState {
 
     /// Whether reload is in progress (to show "Press R to reload" message)
     show_reload_prompt: bool,
+
+    /// Reload animation progress (0.0 to 1.0, 0.0 when not reloading)
+    reload_progress: f32,
+
+    /// Whether reload has been initiated
+    reload_initiated: bool,
 }
 
 impl GameState {
@@ -111,6 +117,8 @@ impl GameState {
             joystick_input: (false, false, false, false),
             current_bullet_count: 10, // Start with full magazine
             show_reload_prompt: false,
+            reload_progress: 0.0,
+            reload_initiated: false,
         }
     }
 
@@ -305,20 +313,66 @@ impl GameState {
         10
     }
 
-    /// Manually reload the gun via blockchain (instant reload)
-    fn reload_gun(&mut self) {
+    /// Get reload timestamp from WebSocket to check if reloading
+    fn get_reload_timestamp(&self) -> u64 {
+        use std::ffi::CString;
+
+        let js_code = r#"
+            (() => {
+                try {
+                    const ephemeralKey = window.gameBridge?.getCurrentPlayerEphemeralKey();
+                    if (!ephemeralKey || !window.___websocket_player_updates) {
+                        return 0;
+                    }
+                    
+                    for (const [accountPubkey, update] of Object.entries(window.___websocket_player_updates)) {
+                        if (update.parsed && update.parsed.authority === ephemeralKey) {
+                            const reloadTimestamp = update.parsed.reloadStartTimestamp || 0;
+                            return reloadTimestamp;
+                        }
+                    }
+                    return 0;
+                } catch (e) {
+                    console.error('❌ JS: Error getting reload timestamp:', e);
+                    return 0;
+                }
+            })();
+        "#;
+
+        unsafe {
+            let c_str = CString::new(js_code).unwrap();
+            let result_ptr = emscripten_run_script_string(c_str.as_ptr());
+
+            if !result_ptr.is_null() {
+                let result_str = std::ffi::CStr::from_ptr(result_ptr)
+                    .to_string_lossy();
+                
+                if let Ok(timestamp) = result_str.parse::<u64>() {
+                    return timestamp;
+                }
+            }
+        }
+
+        0
+    }
+
+    /// Start reload process (Step 1: Call blockchain to record timestamp)
+    fn start_reload(&mut self) {
+        if self.reload_initiated {
+            return; // Already reloading
+        }
+
         if let Some(ref game_pubkey) = self.current_game_pubkey {
             use std::ffi::CString;
 
             let js_code = format!(r#"
                 (async () => {{
                     try {{
-                        if (window.gameBridge && window.gameBridge.reload) {{
-                            await window.gameBridge.reload('{}');
-                            console.log('✅ Reload complete');
+                        if (window.gameBridge && window.gameBridge.startReload) {{
+                            await window.gameBridge.startReload('{}');
                         }}
                     }} catch (e) {{
-                        console.error('❌ Reload failed:', e);
+                        console.error('❌ Start reload failed:', e);
                     }}
                 }})();
             "#, game_pubkey);
@@ -328,8 +382,40 @@ impl GameState {
                 emscripten_run_script(c_str.as_ptr());
             }
 
-            // Hide reload prompt after reloading
-            self.show_reload_prompt = false;
+            self.reload_initiated = true;
+            self.reload_progress = 0.0;
+            self.show_reload_prompt = false; // Hide prompt when reload starts
+        }
+    }
+
+    /// Finish reload process (Step 2: Call blockchain to refill ammo after 1 second)
+    fn finish_reload(&mut self) {
+        if !self.reload_initiated {
+            return;
+        }
+
+        if let Some(ref game_pubkey) = self.current_game_pubkey {
+            use std::ffi::CString;
+
+            let js_code = format!(r#"
+                (async () => {{
+                    try {{
+                        if (window.gameBridge && window.gameBridge.finishReload) {{
+                            await window.gameBridge.finishReload('{}');
+                        }}
+                    }} catch (e) {{
+                        console.error('❌ Finish reload failed:', e);
+                    }}
+                }})();
+            "#, game_pubkey);
+
+            unsafe {
+                let c_str = CString::new(js_code).unwrap();
+                emscripten_run_script(c_str.as_ptr());
+            }
+
+            self.reload_initiated = false;
+            self.reload_progress = 0.0;
         }
     }
 
@@ -803,11 +889,105 @@ impl GameState {
             // Remove expired trails
             self.bullet_trails.retain(|trail| trail.timer > 0.0);
 
+            // Handle reload animation and progress
+            // First, check if we should be in reload state (handles rejoin case)
+            let reload_timestamp = self.get_reload_timestamp();
+            
+            // If reload_timestamp exists but we're not tracking it, sync the state
+            if reload_timestamp > 0 && !self.reload_initiated {
+                // Check if the reload is already complete (more than 1 second has passed)
+                use std::ffi::CString;
+                
+                let js_code = r#"
+                    (() => {
+                        try {
+                            return Math.floor(Date.now() / 1000);
+                        } catch (e) {
+                            return 0;
+                        }
+                    })();
+                "#;
+                
+                let current_time = unsafe {
+                    let c_str = CString::new(js_code).unwrap();
+                    let result_ptr = emscripten_run_script_string(c_str.as_ptr());
+                    
+                    if !result_ptr.is_null() {
+                        let result_str = std::ffi::CStr::from_ptr(result_ptr).to_string_lossy();
+                        result_str.parse::<u64>().unwrap_or(0)
+                    } else {
+                        0
+                    }
+                };
+                
+                let elapsed = current_time.saturating_sub(reload_timestamp);
+                
+                if elapsed >= 1 {
+                    // Reload is already complete, finish it immediately
+                    self.reload_initiated = true;
+                    self.finish_reload();
+                } else {
+                    // Reload is still in progress, sync the state
+                    self.reload_initiated = true;
+                    self.reload_progress = (elapsed as f32).min(1.0);
+                }
+            }
+            
+            if self.reload_initiated {
+                if reload_timestamp > 0 {
+                    // Get current blockchain timestamp from JavaScript (Solana Clock)
+                    // This is more accurate than local time since it matches the on-chain timestamp
+                    use std::ffi::CString;
+                    
+                    let js_code = r#"
+                        (() => {
+                            try {
+                                // Get current Unix timestamp in seconds (matches Solana's Clock.unix_timestamp)
+                                return Math.floor(Date.now() / 1000);
+                            } catch (e) {
+                                console.error('Failed to get current timestamp:', e);
+                                return 0;
+                            }
+                        })();
+                    "#;
+                    
+                    let current_time = unsafe {
+                        let c_str = CString::new(js_code).unwrap();
+                        let result_ptr = emscripten_run_script_string(c_str.as_ptr());
+                        
+                        if !result_ptr.is_null() {
+                            let result_str = std::ffi::CStr::from_ptr(result_ptr).to_string_lossy();
+                            result_str.parse::<u64>().unwrap_or(0)
+                        } else {
+                            0
+                        }
+                    };
+                    
+                    if current_time > 0 {
+                        let elapsed = current_time.saturating_sub(reload_timestamp);
+                        
+                        // Update reload progress (1 second duration)
+                        self.reload_progress = (elapsed as f32).min(1.0);
+                        
+                        // Auto-finish reload after 1 second has passed
+                        if elapsed >= 1 {
+                            self.finish_reload();
+                        }
+                    } else {
+                        // Keep progress at current state if we can't get timestamp
+                        self.reload_progress = 0.0;
+                    }
+                } else {
+                    // Reload timestamp not yet available, keep progress at 0
+                    self.reload_progress = 0.0;
+                }
+            }
+
             // Handle R key press for manual reload
             if rl.is_key_pressed(KeyboardKey::KEY_R) {
                 let bullet_count = self.get_bullet_count_from_websocket();
-                if bullet_count < 10 {
-                    self.reload_gun();
+                if bullet_count < 10 && !self.reload_initiated {
+                    self.start_reload();
                 }
             }
 
@@ -1428,7 +1608,7 @@ impl GameState {
             );
 
             // Draw gun model in front of camera (viewmodel)
-            Self::draw_gun_viewmodel(&mut d3d, &player, self.muzzle_flash_timer, false); // No reload animation needed
+            Self::draw_gun_viewmodel(&mut d3d, &player, self.muzzle_flash_timer, self.reload_progress);
         }
 
         // Draw 2D UI elements (crosshair, health bar) after 3D rendering
@@ -1459,7 +1639,7 @@ impl GameState {
     }
 
     /// Draw the gun viewmodel (first-person weapon view) - SIMPLIFIED VERSION
-    fn draw_gun_viewmodel(d3d: &mut RaylibMode3D<RaylibDrawHandle>, player: &Player, muzzle_flash_timer: f32, is_reloading: bool) {
+    fn draw_gun_viewmodel(d3d: &mut RaylibMode3D<RaylibDrawHandle>, player: &Player, muzzle_flash_timer: f32, reload_progress: f32) {
         // Calculate gun position relative to camera
         let yaw_rad = player.yaw.to_radians();
         let pitch_rad = player.pitch.to_radians();
@@ -1495,19 +1675,28 @@ impl GameState {
             player.position.z,
         );
 
-        // Reload animation: Move gun down and rotate when reloading
-        let reload_offset_y = if is_reloading {
-            // Simple sine wave animation for reload
-            let time = unsafe { emscripten_get_now() / 1000.0 } as f32;
-            (time * 3.0).sin() * 0.15 // Sine wave goes down and up
+        // Reload animation: Move gun down and rotate based on reload_progress (0.0 to 1.0)
+        let reload_offset_y = if reload_progress > 0.0 {
+            // Smooth animation: gun goes down in first half, comes back up in second half
+            let half_progress = (reload_progress * 2.0).min(1.0);
+            if reload_progress < 0.5 {
+                // Going down (0.0 to 0.5)
+                -half_progress * 0.3
+            } else {
+                // Coming back up (0.5 to 1.0)
+                -(1.0 - (reload_progress - 0.5) * 2.0) * 0.3
+            }
         } else {
             0.0
         };
 
-        let reload_rotation = if is_reloading {
-            // Rotate gun slightly during reload
-            let time = unsafe { emscripten_get_now() / 1000.0 } as f32;
-            (time * 2.0).sin() * 15.0 // Rotate ±15 degrees
+        let reload_rotation = if reload_progress > 0.0 {
+            // Rotate gun during reload: tilts in first half, straightens in second half
+            if reload_progress < 0.5 {
+                reload_progress * 2.0 * 30.0 // Rotate to 30 degrees
+            } else {
+                (1.0 - (reload_progress - 0.5) * 2.0) * 30.0 // Rotate back to 0
+            }
         } else {
             0.0
         };

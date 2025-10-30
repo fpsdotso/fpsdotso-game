@@ -2647,12 +2647,80 @@ export async function respawnPlayer(gameIdPubkey, spawnX, spawnY, spawnZ) {
 }
 
 /**
- * Reload the gun instantly
+ * Start the reload process
+ * Records the timestamp when reload started
+ * @param {string} gameIdPubkey - Game ID public key
+ * @returns {Promise<string>} Transaction signature
+ */
+export async function startReload(gameIdPubkey) {
+  try {
+    console.log("🔄 startReload called with gameId:", gameIdPubkey);
+    
+    const ephemeralKeypair = EphemeralWallet.getEphemeralKeypair();
+    if (!ephemeralKeypair) {
+      throw new Error("Ephemeral wallet not initialized");
+    }
+
+    // Initialize game program if not already done
+    if (!gameProgram) {
+      console.log("🔄 Initializing game program for reload...");
+      if (!ephemeralConnection) {
+        throw new Error("Ephemeral connection not initialized");
+      }
+
+      ephemeralProvider = new AnchorProvider(
+        ephemeralConnection,
+        new NodeWallet(ephemeralKeypair),
+        { commitment: "confirmed" }
+      );
+      gameProgram = new Program(gameIdl, ephemeralProvider);
+      console.log("🔄 Game program initialized");
+    }
+
+    // Debug: Log available methods
+    console.log("🔄 Available game program methods:", Object.keys(gameProgram.methods));
+    console.log("🔄 Checking for startReload method:", typeof gameProgram.methods.startReload);
+
+    const ephemeralPublicKey = ephemeralKeypair.publicKey;
+
+    // Derive GamePlayer PDA
+    const [gamePlayerPda] = PublicKey.findProgramAddressSync(
+      [
+        Buffer.from("game_player"),
+        ephemeralPublicKey.toBuffer(),
+        new PublicKey(gameIdPubkey).toBuffer(),
+      ],
+      GAME_PROGRAM_ID
+    );
+
+    console.log("🔄 GamePlayer PDA:", gamePlayerPda.toString());
+    console.log("🔄 Authority:", ephemeralPublicKey.toString());
+
+    // Call start_reload instruction
+    const tx = await gameProgram.methods
+      .startReload()
+      .accounts({
+        gamePlayer: gamePlayerPda,
+        authority: ephemeralPublicKey,
+      })
+      .rpc({ skipPreflight: true });
+
+    console.log(`✅ Reload started, transaction:`, tx);
+    return tx;
+  } catch (error) {
+    console.error("❌ Failed to start reload:", error);
+    console.error("❌ Error stack:", error.stack);
+    throw error;
+  }
+}
+
+/**
+ * Complete the reload process (finishes after 1 second minimum)
  * Refills the magazine to 10 bullets
  * @param {string} gameIdPubkey - Game ID public key
  * @returns {Promise<string>} Transaction signature
  */
-export async function reload(gameIdPubkey) {
+export async function finishReload(gameIdPubkey) {
   try {
     const ephemeralKeypair = EphemeralWallet.getEphemeralKeypair();
     if (!ephemeralKeypair) {
@@ -2685,7 +2753,7 @@ export async function reload(gameIdPubkey) {
       GAME_PROGRAM_ID
     );
 
-    // Call reload instruction
+    // Call reload instruction to complete the reload
     const tx = await gameProgram.methods
       .reload()
       .accounts({
@@ -2697,7 +2765,7 @@ export async function reload(gameIdPubkey) {
     console.log(`✅ Reload complete, transaction:`, tx);
     return tx;
   } catch (error) {
-    console.error("❌ Failed to reload:", error);
+    console.error("❌ Failed to finish reload:", error);
     throw error;
   }
 }
