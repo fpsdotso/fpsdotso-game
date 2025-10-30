@@ -283,21 +283,53 @@ function App() {
             }
 
             // Initialize WebSocket connection and subscribe to game players
+            // Store critical data in closure variables to prevent stale closure issues
+            const gamePubkeyForConnection = currentLobbyData.gamePublicKey;
+            const mapNameForConnection = currentLobbyData.mapName;
+
             // This is run as an immediately invoked async function
             (async () => {
               try {
-                console.log('🔌 Initializing WebSocket connection...');
+                console.log('🔌 ========== GAME START INITIALIZATION ==========');
+                console.log('🔌 window.gameBridge available:', !!window.gameBridge);
+                console.log('🔌 connectWebSocket available:', !!(window.gameBridge && window.gameBridge.connectWebSocket));
+                console.log('🔌 subscribeToGamePlayers available:', !!(window.gameBridge && window.gameBridge.subscribeToGamePlayers));
+                console.log('🔌 Game Public Key:', gamePubkeyForConnection);
+                console.log('🔌 Map Name:', mapNameForConnection);
 
-                // Connect to WebSocket
-                if (window.gameBridge && window.gameBridge.connectWebSocket) {
-                  await window.gameBridge.connectWebSocket();
-                  console.log('✅ WebSocket connected');
+                // Wait for gameBridge to be available if it's not ready yet
+                let waitAttempts = 0;
+                while (!window.gameBridge && waitAttempts < 20) {
+                  console.log(`⏳ Waiting for gameBridge... (attempt ${waitAttempts + 1})`);
+                  await new Promise(resolve => setTimeout(resolve, 100));
+                  waitAttempts++;
                 }
 
+                if (!window.gameBridge) {
+                  console.error('❌ gameBridge not available after waiting!');
+                  setInLobby(false);
+                  return;
+                }
+
+                // Connect to WebSocket
+                if (window.gameBridge.connectWebSocket) {
+                  console.log('🔌 [STEP 1] Calling connectWebSocket...');
+                  const wsResult = await window.gameBridge.connectWebSocket();
+                  console.log('✅ [STEP 1] WebSocket connect result:', wsResult);
+                } else {
+                  console.error('❌ [STEP 1] gameBridge.connectWebSocket not available!');
+                }
+
+                // Small delay to ensure WebSocket is ready
+                await new Promise(resolve => setTimeout(resolve, 500));
+
                 // Subscribe to game players
-                if (window.gameBridge && window.gameBridge.subscribeToGamePlayers && currentLobbyData?.gamePublicKey) {
-                  await window.gameBridge.subscribeToGamePlayers(currentLobbyData.gamePublicKey);
-                  console.log('✅ Subscribed to game players');
+                if (window.gameBridge.subscribeToGamePlayers && gamePubkeyForConnection) {
+                  console.log('📡 [STEP 2] Calling subscribeToGamePlayers for game:', gamePubkeyForConnection);
+                  await window.gameBridge.subscribeToGamePlayers(gamePubkeyForConnection);
+                  console.log('✅ [STEP 2] Subscribed to game players');
+                } else {
+                  console.error('❌ [STEP 2] gameBridge.subscribeToGamePlayers not available or no game pubkey!');
                 }
 
                 // Load the map data from blockchain

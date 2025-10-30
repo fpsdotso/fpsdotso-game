@@ -1526,6 +1526,32 @@ export async function setReadyState(gamePubkey, isReady) {
 
       console.log("✅ Step 3 complete - GamePlayer delegated:", delegateTx);
 
+      // Step 4: Send initial player input to populate GamePlayer account on ephemeral rollup
+      // This ensures the account has actual data that can be subscribed to via WebSocket
+      console.log("📝 Step 4: Sending initial player input to ephemeral rollup...");
+
+      try {
+        // Send one processInput call with default/neutral values
+        // This populates the GamePlayer account on the ephemeral rollup
+        await sendPlayerInput({
+          gameId: gamePublicKey.toString(),
+          forward: false,
+          backward: false,
+          left: false,
+          right: false,
+          rotationX: 0.0, // Default pitch
+          rotationY: 0.0, // Default yaw
+          rotationZ: 0.0, // Default roll
+          deltaTime: 0.033 // Default delta time
+        });
+        console.log("✅ Step 4 complete - Initial player input sent to ephemeral rollup");
+      } catch (error) {
+        console.warn("⚠️ Failed to send initial player input (non-critical):", error);
+        // Don't fail the whole ready operation if this fails
+        // Wait a bit anyway to give delegation time to propagate
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+
       return {
         readyTransaction: readyTx,
         initTransaction: initTx,
