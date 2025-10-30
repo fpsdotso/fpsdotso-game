@@ -250,9 +250,13 @@ export function initGameBridge() {
       return await solanaBridge.respawnPlayer(gameId, spawnX, spawnY, spawnZ);
     },
 
-    // Reload function
-    reload: async (gameId) => {
-      return await solanaBridge.reload(gameId);
+    // Reload functions (two-step process with 1 second delay)
+    startReload: async (gameId) => {
+      return await solanaBridge.startReload(gameId);
+    },
+
+    finishReload: async (gameId) => {
+      return await solanaBridge.finishReload(gameId);
     },
 
     // Function for Rust to manually update UI with current bullet count
@@ -461,7 +465,7 @@ export function initGameBridge() {
                   if (dataChanged) {
                     lastLoggedPositions[accountPubkey] = posKey;
                     const totalPlayers = Object.keys(window.___websocket_player_updates).length;
-                    console.log(`[WebSocket] 📡 Player ${accountPubkey.slice(0, 8)} | Pos(${gamePlayerData.positionX.toFixed(1)}, ${gamePlayerData.positionY.toFixed(1)}, ${gamePlayerData.positionZ.toFixed(1)}) | Rot(${gamePlayerData.rotationY.toFixed(2)}) | Team ${gamePlayerData.team} | HP ${gamePlayerData.health} | Alive: ${gamePlayerData.isAlive} | Ammo: ${gamePlayerData.bulletCount} | Total: ${totalPlayers} players`);
+                    console.log(`[WebSocket] 📡 Player ${accountPubkey.slice(0, 8)} | Pos(${gamePlayerData.positionX.toFixed(1)}, ${gamePlayerData.positionY.toFixed(1)}, ${gamePlayerData.positionZ.toFixed(1)}) | Rot(${gamePlayerData.rotationY.toFixed(2)}) | Team ${gamePlayerData.team} | HP ${gamePlayerData.health} | Alive: ${gamePlayerData.isAlive} | Ammo: ${gamePlayerData.bulletCount} | Reload: ${gamePlayerData.reloadStartTimestamp} | Total: ${totalPlayers} players`);
                   }
 
                   // Store the decoded data

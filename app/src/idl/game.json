@@ -508,8 +508,8 @@
     {
       "name": "reload",
       "docs": [
-        "Reload the gun (instantly refills to 10 bullets)",
-        "Client should enforce 1.5 second cooldown"
+        "Complete the reload process",
+        "Refills magazine to 10 bullets after 0.5 seconds have passed"
       ],
       "discriminator": [
         68,
@@ -615,6 +615,34 @@
       ]
     },
     {
+      "name": "start_reload",
+      "docs": [
+        "Start the reload process",
+        "Records timestamp when reload started"
+      ],
+      "discriminator": [
+        9,
+        38,
+        126,
+        243,
+        157,
+        218,
+        237,
+        153
+      ],
+      "accounts": [
+        {
+          "name": "game_player",
+          "writable": true
+        },
+        {
+          "name": "authority",
+          "signer": true
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "undelegate_game_player",
       "docs": [
         "Undelegate GamePlayer account from game ephemeral rollup",
@@ -674,13 +702,23 @@
   "errors": [
     {
       "code": 6000,
-      "name": "PlayerStillAlive",
-      "msg": "Player is still alive and cannot respawn"
+      "name": "MagazineAlreadyFull",
+      "msg": "Magazine is already full. No need to reload."
     },
     {
       "code": 6001,
-      "name": "RespawnCooldownActive",
-      "msg": "Respawn cooldown not finished. Wait 3 seconds after death."
+      "name": "AlreadyReloading",
+      "msg": "Already reloading. Wait for reload to complete."
+    },
+    {
+      "code": 6002,
+      "name": "NotReloading",
+      "msg": "Not reloading. Call start_reload first."
+    },
+    {
+      "code": 6003,
+      "name": "ReloadNotReady",
+      "msg": "Reload not ready yet. Must wait 0.5 seconds after starting reload."
     }
   ],
   "types": [
@@ -806,7 +844,7 @@
             "name": "reload_start_timestamp",
             "docs": [
               "Timestamp when reload started (0 if not reloading)",
-              "Reload takes 1.5 seconds"
+              "Reload takes 0.5 seconds"
             ],
             "type": "i64"
           },
