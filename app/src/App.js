@@ -339,6 +339,11 @@ function App() {
             const gamePubkeyForConnection = currentLobbyData.gamePublicKey;
             const mapNameForConnection = currentLobbyData.mapName;
 
+            console.log("🎮 Captured data for game initialization:");
+            console.log("   - Game Pubkey:", gamePubkeyForConnection);
+            console.log("   - Map Name:", mapNameForConnection);
+            console.log("   - Full lobby data:", currentLobbyData);
+
             // This is run as an immediately invoked async function
             (async () => {
               try {
@@ -418,26 +423,32 @@ function App() {
                 // Load the map data from blockchain
                 if (
                   window.gameBridge &&
-                  window.gameBridge.getMapDataById &&
-                  currentLobbyData?.mapName
+                  window.gameBridge.getMapDataById
                 ) {
+                  // Use the captured mapNameForConnection variable to avoid stale closure
+                  const mapToLoad = mapNameForConnection || "Default Map";
                   console.log(
-                    "🗺️ Loading map from blockchain:",
-                    currentLobbyData.mapName
+                    "🗺️ [STEP 3] Loading map from blockchain:",
+                    mapToLoad,
+                    "(original mapName from lobby:",
+                    mapNameForConnection,
+                    ")"
                   );
                   const mapData = await window.gameBridge.getMapDataById(
-                    currentLobbyData.mapName
+                    mapToLoad
                   );
                   if (mapData) {
                     console.log(
-                      "✅ Map data loaded, length:",
+                      "✅ [STEP 3] Map data loaded, length:",
                       mapData ? mapData.length : 0
                     );
                     // Wait a bit for the Rust side to fully process the map
                     await new Promise((resolve) => setTimeout(resolve, 1000));
                   } else {
-                    console.warn("⚠️ No map data returned");
+                    console.warn("⚠️ [STEP 3] No map data returned for map:", mapToLoad);
                   }
+                } else {
+                  console.warn("⚠️ [STEP 3] gameBridge or getMapDataById not available for map loading");
                 }
 
                 // Now that everything is set up, tell Raylib game to switch to playing mode

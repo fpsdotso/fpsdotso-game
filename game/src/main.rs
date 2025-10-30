@@ -1,18 +1,22 @@
 use raylib::prelude::*;
 use raylib_imgui::RaylibGui;
 use std::cell::RefCell;
+use std::ffi::CString;
+use std::ffi::CStr;
+use serde_json::Value;
 
 mod map;
 mod menu;
 mod game;
 
-use map::MapBuilder;
+use map::{MapBuilder, map::Map};
 use menu::{MenuState, MenuTab};
 use game::GameState;
 
 // Emscripten bindings for JavaScript interop
 extern "C" {
     fn emscripten_run_script_string(script: *const std::os::raw::c_char) -> *const std::os::raw::c_char;
+    fn emscripten_run_script(script: *const std::os::raw::c_char);
 }
 
 // Global game state for JavaScript interop
@@ -31,11 +35,74 @@ fn set_game_state_ptr(state: *mut GameState) {
 /// JavaScript-callable function to start playing mode
 #[no_mangle]
 pub extern "C" fn start_game() {
+    use std::ffi::{CString, CStr};
+    use serde_json::Value;
+
     println!("📞 JavaScript called start_game()");
+
     GAME_STATE.with(|gs| {
         if let Some(state_ptr) = *gs.borrow() {
             unsafe {
+                // First, check if JavaScript has already fetched map data
+                println!("🗺️ Checking for pre-fetched map data in Module.mapDataResult...");
+                let check_js = CString::new("Module.mapDataResult || null").unwrap();
+                let result_ptr = emscripten_run_script_string(check_js.as_ptr());
+
+                if !result_ptr.is_null() {
+                    let result_str = CStr::from_ptr(result_ptr).to_str().unwrap_or("null");
+
+                    if result_str != "null" {
+                        println!("🗺️ Map data found in Module.mapDataResult, attempting to load...");
+
+                        // Parse JSON and load map
+                        match serde_json::from_str::<Value>(result_str) {
+                            Ok(json_value) => {
+                                if let Some(base64_data) = json_value.get("data").and_then(|v| v.as_str()) {
+                                    println!("🗺️ Decoding base64 map data...");
+
+                                    use base64::{Engine as _, engine::general_purpose};
+                                    match general_purpose::STANDARD.decode(base64_data) {
+                                        Ok(bytes) => {
+                                            println!("🗺️ Decoded {} bytes, deserializing Borsh...", bytes.len());
+
+                                            match Map::from_borsh_bytes(&bytes) {
+                                                Ok(map) => {
+                                                    println!("✅ Map deserialized successfully: '{}' with {} objects", map.name, map.objects.len());
+                                                    (*state_ptr).load_map(map);
+                                                    println!("✅ Map loaded into game state!");
+                                                }
+                                                Err(e) => {
+                                                    println!("❌ Failed to deserialize map from Borsh: {:?}", e);
+                                                }
+                                            }
+                                        }
+                                        Err(e) => {
+                                            println!("❌ Failed to decode base64: {:?}", e);
+                                        }
+                                    }
+                                } else {
+                                    println!("⚠️ No 'data' field in mapDataResult JSON");
+                                }
+                            }
+                            Err(e) => {
+                                println!("❌ Failed to parse mapDataResult JSON: {:?}", e);
+                            }
+                        }
+
+                        // Clear the result after processing
+                        let clear_js = CString::new("Module.mapDataResult = null").unwrap();
+                        emscripten_run_script(clear_js.as_ptr());
+                        println!("🧹 Cleared Module.mapDataResult");
+                    } else {
+                        println!("⚠️ Module.mapDataResult is null - no map data available");
+                    }
+                } else {
+                    println!("⚠️ Module.mapDataResult is not set");
+                }
+
+                // Start playing mode
                 (*state_ptr).start_playing();
+                println!("✅ Game mode set to Playing");
             }
         } else {
             println!("⚠️ Game state not initialized");

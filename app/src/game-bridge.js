@@ -183,6 +183,26 @@ export function initGameBridge() {
       console.log("[Game Bridge] getMapDataById called:", mapId);
       const result = await solanaBridge.getMapData(mapId, "borsh");
       console.log("[Game Bridge] getMapDataById result:", result ? `${result.length} bytes` : 'null');
+
+      // The Rust game expects Module.mapDataResult to be set with base64-encoded data
+      if (result && window.Module) {
+        try {
+          // Convert Uint8Array to base64 string
+          const base64 = btoa(String.fromCharCode.apply(null, result));
+          // Set Module.mapDataResult as JSON string expected by Rust
+          window.Module.mapDataResult = JSON.stringify({ success: true, data: base64 });
+          console.log("[Game Bridge] ✅ Set Module.mapDataResult with", result.length, "bytes as base64");
+        } catch (error) {
+          console.error("[Game Bridge] ❌ Failed to set Module.mapDataResult:", error);
+          window.Module.mapDataResult = JSON.stringify({ error: error.message });
+        }
+      } else if (!result) {
+        console.warn("[Game Bridge] ⚠️ No map data to set");
+        if (window.Module) {
+          window.Module.mapDataResult = JSON.stringify({ error: 'Failed to fetch map data' });
+        }
+      }
+
       return result;
     },
 
