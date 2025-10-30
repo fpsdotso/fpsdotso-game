@@ -608,7 +608,7 @@ impl GameState {
         // Get spawn position from the loaded map
         let (spawn_x, spawn_y, spawn_z) = if let Some(ref map) = self.map {
             // Filter spawn points by team from the loaded map
-            let target_model_type = if team == 0 {
+            let target_model_type = if team == 1 {
                 ModelType::SpawnPointBlue
             } else {
                 ModelType::SpawnPointRed
