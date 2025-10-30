@@ -1522,10 +1522,64 @@ export async function setReadyState(gamePubkey, isReady) {
       const team = playerAccount.team;
       const isSpectator = playerAccount.isSpectator || false;
 
-      // Default spawn positions (you can customize these based on team/map)
-      const spawnX = team === 0 ? -10.0 : 10.0;
-      const spawnY = 1.0;
-      const spawnZ = 0.0;
+      // Get the game account to retrieve map_id
+      const gameAccount = await matchmakingProgram.account.game.fetch(gamePublicKey);
+      const mapId = gameAccount.mapId;
+      console.log(`📍 Loading spawn points from map: ${mapId}`);
+
+      // Load map data to get spawn points
+      let spawnX = 0.0;
+      let spawnY = 1.0;
+      let spawnZ = 0.0;
+
+      try {
+        const mapData = await getMapData(mapId, 'gameObjects');
+        
+        if (mapData && mapData.length > 0) {
+          // Filter spawn points by team
+          const teamSpawnPoints = mapData.filter(obj => {
+            const modelType = obj.modelType;
+            // Check if it's a spawn point for the player's team
+            if (team === 0) {
+              // Team A (Blue team) - look for SpawnPointBlue
+              return modelType?.spawnPointBlue !== undefined;
+            } else {
+              // Team B (Red team) - look for SpawnPointRed
+              return modelType?.spawnPointRed !== undefined;
+            }
+          });
+
+          console.log(`📍 Found ${teamSpawnPoints.length} spawn points for team ${team === 0 ? 'Blue' : 'Red'}`);
+
+          if (teamSpawnPoints.length > 0) {
+            // Randomly select a spawn point
+            const randomSpawnPoint = teamSpawnPoints[Math.floor(Math.random() * teamSpawnPoints.length)];
+            spawnX = randomSpawnPoint.position.x;
+            spawnY = randomSpawnPoint.position.y;
+            spawnZ = randomSpawnPoint.position.z;
+            console.log(`✅ Selected spawn point: (${spawnX}, ${spawnY}, ${spawnZ})`);
+          } else {
+            // Fallback to default positions based on team
+            console.warn(`⚠️ No spawn points found for team ${team === 0 ? 'Blue' : 'Red'}, using default position`);
+            spawnX = team === 0 ? -10.0 : 10.0;
+            spawnY = 1.0;
+            spawnZ = 0.0;
+          }
+        } else {
+          console.warn(`⚠️ Map data not found or empty, using default spawn position`);
+          spawnX = team === 0 ? -10.0 : 10.0;
+          spawnY = 1.0;
+          spawnZ = 0.0;
+        }
+      } catch (error) {
+        console.error(`❌ Failed to load map spawn points:`, error);
+        // Fallback to default positions based on team
+        spawnX = team === 0 ? -10.0 : 10.0;
+        spawnY = 1.0;
+        spawnZ = 0.0;
+      }
+
+      console.log(`🎯 Final spawn position: (${spawnX}, ${spawnY}, ${spawnZ}) for team ${team === 0 ? 'Blue' : 'Red'}`);
 
       // Derive GamePlayer PDA with canonical bump
       const [gamePlayerPda, gamePlayerBump] = PublicKey.findProgramAddressSync(
