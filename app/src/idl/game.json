@@ -1,5 +1,5 @@
 {
-  "address": "4pfYuQkFmGXPFMjBNmYUstnC3jjgjxcBS8rSk8qcUUnE",
+  "address": "A1KLs6jenzoHGoayeSBrcpj22DhcYdXfMBwPStESDN4h",
   "metadata": {
     "name": "game",
     "version": "0.1.0",
@@ -702,23 +702,13 @@
   "errors": [
     {
       "code": 6000,
-      "name": "MagazineAlreadyFull",
-      "msg": "Magazine is already full. No need to reload."
+      "name": "NoBulletsLeft",
+      "msg": "No bullets left. Reload your gun first."
     },
     {
       "code": 6001,
-      "name": "AlreadyReloading",
-      "msg": "Already reloading. Wait for reload to complete."
-    },
-    {
-      "code": 6002,
-      "name": "NotReloading",
-      "msg": "Not reloading. Call start_reload first."
-    },
-    {
-      "code": 6003,
-      "name": "ReloadNotReady",
-      "msg": "Reload not ready yet. Must wait 0.5 seconds after starting reload."
+      "name": "ShooterDead",
+      "msg": "Cannot shoot while dead. Wait for respawn."
     }
   ],
   "types": [
