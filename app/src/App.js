@@ -32,6 +32,7 @@ import VirtualJoystick from "./components/VirtualJoystick";
 import VictoryDialog from "./components/VictoryDialog";
 import PauseMenu from "./components/PauseMenu";
 import SettingsPanel from "./components/SettingsPanel";
+import DebugConsole from "./components/DebugConsole";
 
 // NOTE: This app is configured to connect to Solana LOCALNET only
 // RPC URL is hardcoded to http://127.0.0.1:8899 in solana-bridge.js
@@ -2031,6 +2032,9 @@ function App() {
           onQuit={handleQuitGame}
         />
       )}
+
+      {/* Debug Console - Press '/' to toggle */}
+      <DebugConsole />
     </div>
   );
 }

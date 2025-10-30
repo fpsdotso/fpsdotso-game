@@ -13,6 +13,7 @@ import {
   showMatchmakingTransaction, 
   showMapRegistryTransaction 
 } from "./utils/toast-notifications.js";
+import { logTransaction, logTransactionPromise } from "./utils/debug-logger.js";
 
 // Program IDs from the IDLs
 const PROGRAM_ID = new PublicKey(mapRegistryIdl.address);
@@ -676,7 +677,8 @@ export async function createMap(
           user: wallet.publicKey,
           systemProgram: web3.SystemProgram.programId,
         })
-        .rpc()
+        .rpc(),
+      'createMap' // Function name
     );
 
     console.log("✅ Map created! Transaction:", tx);
@@ -1042,7 +1044,8 @@ export async function initPlayer(username) {
           systemProgram: web3.SystemProgram.programId,
         })
         //.signers() // Add ephemeralKeypair as a signer
-        .rpc()
+        .rpc(),
+      'initPlayer' // Function name
     );
 
     console.log("✅ Player initialized! Transaction:", tx);
@@ -1166,7 +1169,8 @@ export async function initGame(mapId) {
           authority: wallet.publicKey,
           systemProgram: web3.SystemProgram.programId,
         })
-        .rpc()
+        .rpc(),
+      'initGame' // Function name
     );
 
     console.log("✅ Game initialized! Transaction:", tx);
@@ -1248,7 +1252,8 @@ export async function leaveCurrentGame() {
           player: playerPda,
           authority: wallet.publicKey,
         })
-        .rpc()
+        .rpc(),
+      'leaveGame' // Function name
     );
 
     console.log("✅ Left game! Transaction:", tx);
@@ -1307,7 +1312,8 @@ export async function joinGame(gamePubkey) {
           player: playerPda,
           authority: wallet.publicKey,
         })
-        .rpc()
+        .rpc(),
+      'joinGame' // Function name
     );
 
     console.log("✅ Joined game! Transaction:", tx);
@@ -1448,7 +1454,8 @@ export async function startGame(gamePubkey) {
           player: playerPda,
           authority: wallet.publicKey,
         })
-        .rpc()
+        .rpc(),
+      'startGame' // Function name
     );
 
     console.log("✅ Game started! Transaction:", tx);
@@ -1502,7 +1509,8 @@ export async function setReadyState(gamePubkey, isReady) {
           player: playerPda,
           authority: wallet.publicKey,
         })
-        .rpc()
+        .rpc(),
+      'setReadyState' // Function name
     );
 
     console.log("✅ Step 1 complete - Ready state set:", readyTx);
@@ -2501,7 +2509,7 @@ export async function sendPlayerInput(input) {
     // Send input to game program on ephemeral rollup (using HTTP RPC)
     // Now sending calculated rotation values instead of mouse deltas
     // Note: We use .rpc() which sends to the ephemeral RPC endpoint for fast processing
-    const tx = await gameProgram.methods
+    const txPromise = gameProgram.methods
       .processInput(
         input.forward || false,
         input.backward || false,
@@ -2518,6 +2526,15 @@ export async function sendPlayerInput(input) {
         authority: getEphemeralPublicKey,
       })
       .rpc({ skipPreflight: true }); // Skip preflight checks for maximum speed
+
+    // Log to debug console
+    const tx = await logTransactionPromise(
+      'Game Input',
+      'Process Player Input',
+      EPHEMERAL_RPC_URL,
+      txPromise,
+      'processInput' // Function name
+    );
 
     return tx;
   } catch (error) {

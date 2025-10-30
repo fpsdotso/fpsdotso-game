@@ -4,6 +4,7 @@
  */
 
 import toast from 'react-hot-toast';
+import { logTransaction } from './debug-logger.js';
 
 // Get RPC URL from environment
 const RPC_URL = process.env.REACT_APP_SOLANA_RPC_URL || 'http://127.0.0.1:8899';
@@ -108,16 +109,48 @@ export const showTransactionError = (toastId, message) => {
  * Show a matchmaking transaction notification
  * @param {string} action - Action being performed (e.g., "Creating Game", "Joining Game")
  * @param {Promise} txPromise - Promise that resolves to transaction signature
+ * @param {string} functionName - Optional function name being called
  */
-export const showMatchmakingTransaction = async (action, txPromise) => {
+export const showMatchmakingTransaction = async (action, txPromise, functionName = null) => {
   const toastId = showTransactionPending(`${action}...`);
+  
+  // Log to debug console - pending
+  logTransaction({
+    type: 'Matchmaking',
+    action,
+    functionName,
+    endpoint: RPC_URL,
+    status: 'pending',
+  });
   
   try {
     const signature = await txPromise;
     showTransactionSuccess(toastId, `${action} successful!`, signature);
+    
+    // Log to debug console - success
+    logTransaction({
+      type: 'Matchmaking',
+      action,
+      functionName,
+      signature,
+      endpoint: RPC_URL,
+      status: 'success',
+    });
+    
     return signature;
   } catch (error) {
     showTransactionError(toastId, `${action} failed: ${error.message}`);
+    
+    // Log to debug console - error
+    logTransaction({
+      type: 'Matchmaking',
+      action,
+      functionName,
+      endpoint: RPC_URL,
+      status: 'error',
+      error: error.message,
+    });
+    
     throw error;
   }
 };
@@ -126,16 +159,48 @@ export const showMatchmakingTransaction = async (action, txPromise) => {
  * Show a map registry transaction notification
  * @param {string} action - Action being performed (e.g., "Creating Map", "Updating Map")
  * @param {Promise} txPromise - Promise that resolves to transaction signature
+ * @param {string} functionName - Optional function name being called
  */
-export const showMapRegistryTransaction = async (action, txPromise) => {
+export const showMapRegistryTransaction = async (action, txPromise, functionName = null) => {
   const toastId = showTransactionPending(`${action}...`);
+  
+  // Log to debug console - pending
+  logTransaction({
+    type: 'Map Registry',
+    action,
+    functionName,
+    endpoint: RPC_URL,
+    status: 'pending',
+  });
   
   try {
     const signature = await txPromise;
     showTransactionSuccess(toastId, `${action} successful!`, signature);
+    
+    // Log to debug console - success
+    logTransaction({
+      type: 'Map Registry',
+      action,
+      functionName,
+      signature,
+      endpoint: RPC_URL,
+      status: 'success',
+    });
+    
     return signature;
   } catch (error) {
     showTransactionError(toastId, `${action} failed: ${error.message}`);
+    
+    // Log to debug console - error
+    logTransaction({
+      type: 'Map Registry',
+      action,
+      functionName,
+      endpoint: RPC_URL,
+      status: 'error',
+      error: error.message,
+    });
+    
     throw error;
   }
 };
