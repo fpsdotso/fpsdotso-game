@@ -29,7 +29,7 @@ FPS.so is a skill‑based first‑person shooter on Solana. We stream inputs thr
 
 - Q1: More maps, game modes, and weapons; improved movement & gun physics; publish on Solana Dapp Store.
 - Q2: Ranked matchmaking with MMR; leaderboards; online tourneys.
-- Q3: Marketplace for cosmetic gun skins as NFTs.
+- Q3: Marketplace for cosmetic gun skins as NFTs, Battlepasses as subscription model for players to enjoy premium perks.
 
 ## Architecture
 
