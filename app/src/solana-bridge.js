@@ -412,18 +412,21 @@ export async function refreshEphemeralConnection() {
     // Create new ephemeral connection
     ephemeralConnection = new Connection(EPHEMERAL_RPC_URL, "confirmed");
     
-    // Recreate ephemeral provider if wallet exists
-    if (wallet && wallet.publicKey) {
+    // Recreate ephemeral provider if wallet and ephemeral keypair exist
+    const ephemeralKeypair = EphemeralWallet.getEphemeralKeypair();
+    if (ephemeralKeypair) {
       ephemeralProvider = new AnchorProvider(
         ephemeralConnection,
-        wallet,
+        new NodeWallet(ephemeralKeypair),
         { commitment: "confirmed" }
       );
       
-      // Recreate game program on ephemeral
+      // Recreate game program on ephemeral with ephemeral keypair
       gameProgram = new Program(gameIdl, GAME_PROGRAM_ID, ephemeralProvider);
       
-      console.log("✅ Ephemeral provider and game program recreated");
+      console.log("✅ Ephemeral provider and game program recreated with ephemeral keypair");
+    } else {
+      console.warn("⚠️ Ephemeral keypair not available, skipping game program recreation");
     }
     
     // Update global reference
