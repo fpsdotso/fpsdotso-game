@@ -18,6 +18,8 @@ function LobbyBrowser({
   const [selectedMap, setSelectedMap] = useState("");
   const [maxPlayers, setMaxPlayers] = useState(10);
   const [availableMaps, setAvailableMaps] = useState([]);
+  const [defaultMaps, setDefaultMaps] = useState([]);
+  const [userMaps, setUserMaps] = useState([]);
   const [loadingMaps, setLoadingMaps] = useState(false);
 
   // Load user's maps when modal opens
@@ -30,7 +32,31 @@ function LobbyBrowser({
   const loadUserMaps = async () => {
     setLoadingMaps(true);
     try {
-      console.log("🗺️ Loading user maps from blockchain...");
+      console.log("🗺️ Loading maps from blockchain...");
+      
+      const defaultMapId = "cube-in-center-default";
+      const fetchedDefaultMaps = [];
+      const fetchedUserMaps = [];
+      
+      // Try to fetch the default map first
+      try {
+        console.log(`🔍 Checking for default map: ${defaultMapId}...`);
+        const defaultMapMetadata = await window.solanaMapBridge.getMapMetadata(defaultMapId);
+        
+        if (defaultMapMetadata) {
+          console.log("✅ Default map found:", defaultMapMetadata);
+          fetchedDefaultMaps.push({
+            id: defaultMapId,
+            name: defaultMapMetadata.name || "Cube in Center Map",
+          });
+        } else {
+          console.log("⚠️ Default map metadata not found");
+        }
+      } catch (error) {
+        console.log(`ℹ️ Default map "${defaultMapId}" not available:`, error.message);
+      }
+
+      // Load user's maps
       const userMapIndex = await window.solanaMapBridge.getUserMaps();
       console.log("✅ Loaded user map index:", userMapIndex);
 
@@ -64,18 +90,33 @@ function LobbyBrowser({
           }
         });
 
-        const resolvedMaps = await Promise.all(mapPromises);
-        setAvailableMaps(resolvedMaps);
-        setSelectedMap(resolvedMaps[0].id); // Set first map as default
+        const resolvedUserMaps = await Promise.all(mapPromises);
+        fetchedUserMaps.push(...resolvedUserMaps);
       } else {
         console.log("ℹ️ No user maps found");
-        // User has no maps - don't set any default
-        setAvailableMaps([]);
+      }
+
+      // Store maps separately
+      setDefaultMaps(fetchedDefaultMaps);
+      setUserMaps(fetchedUserMaps);
+      
+      // Combine all maps for availability check
+      const allMaps = [...fetchedDefaultMaps, ...fetchedUserMaps];
+      setAvailableMaps(allMaps);
+
+      // Set the first map as selected if any exist
+      if (allMaps.length > 0) {
+        setSelectedMap(allMaps[0].id); // Set first map (default or user's first) as selected
+        console.log(`✅ Loaded ${fetchedDefaultMaps.length} default maps and ${fetchedUserMaps.length} user maps`);
+      } else {
+        console.log("⚠️ No maps available (neither default nor user-created)");
         setSelectedMap("");
       }
     } catch (error) {
       console.error("❌ Error loading maps:", error);
       // On error, assume no maps
+      setDefaultMaps([]);
+      setUserMaps([]);
       setAvailableMaps([]);
       setSelectedMap("");
     } finally {
@@ -243,11 +284,26 @@ function LobbyBrowser({
                 ) : availableMaps.length === 0 ? (
                   <option>No maps available</option>
                 ) : (
-                  availableMaps.map((map) => (
-                    <option key={map.id} value={map.id}>
-                      {map.name}
-                    </option>
-                  ))
+                  <>
+                    {defaultMaps.length > 0 && (
+                      <optgroup label="🎮 Default Maps">
+                        {defaultMaps.map((map) => (
+                          <option key={map.id} value={map.id}>
+                            {map.name}
+                          </option>
+                        ))}
+                      </optgroup>
+                    )}
+                    {userMaps.length > 0 && (
+                      <optgroup label="🗺️ Your Custom Maps">
+                        {userMaps.map((map) => (
+                          <option key={map.id} value={map.id}>
+                            {map.name}
+                          </option>
+                        ))}
+                      </optgroup>
+                    )}
+                  </>
                 )}
               </select>
               {!loadingMaps && availableMaps.length === 0 && (
@@ -259,7 +315,7 @@ function LobbyBrowser({
                     fontWeight: "600",
                   }}
                 >
-                  ⚠️ No maps found. Create a map in the Map Editor first!
+                  ⚠️ No maps found. The default map may not be deployed yet, or create your own in the Map Editor!
                 </div>
               )}
             </div>
